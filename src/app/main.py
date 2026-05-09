@@ -12,6 +12,7 @@ from app.api.routes.imports import router as imports_router
 from app.api.routes.library_api import router as library_api_router
 from app.api.routes.pages import router as pages_router
 from app.api.routes.settings import router as settings_router
+from app.api.routes.stream import router as stream_router
 from app.core.config import Settings, get_settings
 from app.db.schema import initialize_database
 
@@ -42,6 +43,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(imports_router)
     app.include_router(library_api_router)
     app.include_router(settings_router)
+    app.include_router(stream_router)
     app.include_router(pages_router)
     return app
 

@@ -14,6 +14,9 @@ const error = ref("");
 const loading = ref(false);
 
 const coverUrl = computed(() => buildAssetUrl(video.value?.cover_path ?? null));
+const streamUrl = computed(() =>
+  video.value ? buildAssetUrl(`/api/videos/${video.value.id}/stream`) : null,
+);
 
 async function load(): Promise<void> {
   loading.value = true;
@@ -42,6 +45,13 @@ onMounted(load);
       <p v-else-if="error" class="error">{{ error }}</p>
       <template v-else-if="video">
         <img v-if="coverUrl" class="cover" :src="coverUrl" :alt="video.title" />
+        <video
+          v-if="streamUrl"
+          controls
+          crossorigin="use-credentials"
+          :src="streamUrl"
+          style="width: 100%; max-width: 960px; border-radius: 0.75rem;"
+        />
         <div class="grid two">
           <div><strong>标题：</strong>{{ video.title }}</div>
           <div><strong>MIME：</strong>{{ video.mime_type }}</div>
@@ -51,7 +61,7 @@ onMounted(load);
           <div><strong>源路径：</strong>{{ video.source_path ?? "-" }}</div>
         </div>
         <p class="muted">
-          当前前端已经切到前后端分离架构。回放页后续将直接消费后端流接口。
+          当前页面已经直接消费后端流接口；目前流来自本地主机源文件，后续会切到分片/加密/百度网盘链路。
         </p>
       </template>
     </section>

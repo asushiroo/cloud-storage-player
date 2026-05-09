@@ -19,6 +19,8 @@
 - 本地文件导入任务与 `ffprobe` 媒体探测
 - 导入时封面抽取与 `/covers/*` 静态访问
 - 设置读写 API
+- 本地源文件流播放接口（支持 Range）
+- Vue 视频详情页已接通后端播放流
 - 认证、目录、导入、设置接口测试
 
 当前**还没有实现**：
@@ -26,7 +28,7 @@
 - 百度网盘接入
 - 视频分片与加密
 - 清单同步
-- Range 播放流
+- 基于百度网盘加密分片的播放流
 
 ## Python 版本
 
@@ -91,6 +93,7 @@ uv run cloud-storage-player
 - `GET /api/folders`
 - `GET /api/videos`
 - `GET /api/videos/{video_id}`
+- `GET /api/videos/{video_id}/stream`
 
 导入接口：
 
