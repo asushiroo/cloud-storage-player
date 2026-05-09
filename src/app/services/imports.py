@@ -10,6 +10,7 @@ from app.media.crypto import encrypt_segment
 from app.media.probe import MediaProbeError, probe_video
 from app.models.imports import ImportJob
 from app.models.library import Video
+from app.models.segments import VideoSegment
 from app.repositories.folders import get_folder
 from app.repositories.import_jobs import (
     create_import_job,
@@ -19,7 +20,16 @@ from app.repositories.import_jobs import (
     update_import_job_progress,
 )
 from app.repositories.video_segments import NewVideoSegment, create_video_segments
-from app.repositories.videos import create_video, update_video_cover_path
+from app.repositories.videos import (
+    create_video,
+    update_video_cover_path,
+    update_video_manifest_path,
+)
+from app.services.manifests import (
+    build_remote_manifest_path,
+    build_remote_segment_path,
+    write_local_manifest,
+)
 
 
 class ImportValidationError(ValueError):
@@ -61,8 +71,10 @@ def import_local_video(
             duration_seconds=metadata.duration_seconds,
         )
         update_import_job_progress(settings, job.id, progress_percent=40)
-        _materialize_encrypted_segments(settings, source=source, video=video)
-        update_import_job_progress(settings, job.id, progress_percent=80)
+        segments = _materialize_encrypted_segments(settings, source=source, video=video)
+        update_import_job_progress(settings, job.id, progress_percent=70)
+        video = _write_manifest(settings, video=video, segments=segments)
+        update_import_job_progress(settings, job.id, progress_percent=85)
         video = _maybe_extract_cover(settings, source=source, video=video)
     except MediaProbeError as exc:
         return mark_import_job_failed(settings, job.id, error_message=str(exc))
@@ -113,9 +125,15 @@ def _maybe_extract_cover(settings: Settings, *, source: Path, video: Video) -> V
     )
 
 
-def _materialize_encrypted_segments(settings: Settings, *, source: Path, video: Video) -> None:
+def _materialize_encrypted_segments(
+    settings: Settings,
+    *,
+    source: Path,
+    video: Video,
+) -> list[VideoSegment]:
     content_key = load_or_create_content_key(settings)
-    video_segment_dir = settings.segment_staging_dir / str(video.id)
+    video_stage_dir = settings.segment_staging_dir / str(video.id)
+    video_segment_dir = video_stage_dir / "segments"
     video_segment_dir.mkdir(parents=True, exist_ok=True)
 
     segments_to_insert: list[NewVideoSegment] = []
@@ -132,13 +150,36 @@ def _materialize_encrypted_segments(settings: Settings, *, source: Path, video: 
                 plaintext_sha256=encrypted.plaintext_sha256,
                 nonce_b64=encrypted.nonce_b64,
                 tag_b64=encrypted.tag_b64,
-                cloud_path=None,
+                cloud_path=build_remote_segment_path(
+                    settings,
+                    video_id=video.id,
+                    segment_index=chunk.index,
+                ),
                 local_staging_path=str(segment_path),
             )
         )
 
-    create_video_segments(
+    return create_video_segments(
         settings,
         video_id=video.id,
         segments=segments_to_insert,
+    )
+
+
+def _write_manifest(
+    settings: Settings,
+    *,
+    video: Video,
+    segments: list[VideoSegment],
+) -> Video:
+    remote_manifest_path = build_remote_manifest_path(settings, video_id=video.id)
+    write_local_manifest(
+        settings,
+        video=video,
+        segments=segments,
+    )
+    return update_video_manifest_path(
+        settings,
+        video.id,
+        manifest_path=remote_manifest_path,
     )

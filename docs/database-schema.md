@@ -56,8 +56,8 @@
 当前字段说明：
 
 - `manifest_path`
-  - 未来用于百度网盘 manifest 路径
-  - 当前导入切片里还没有生成，因此通常为 `NULL`
+  - 用于记录目标 manifest 路径
+  - 当前会写入未来的百度网盘目标路径，例如 `/CloudStoragePlayer/videos/1/manifest.json`
 - `cover_path`
   - 当前用于保存浏览器可访问的相对 URL
   - 例如：`/covers/1.jpg`
@@ -90,8 +90,8 @@
 当前字段说明：
 
 - `cloud_path`
-  - 当前通常为 `NULL`
-  - 未来接百度网盘上传后再写入
+  - 当前会预先写入未来的百度网盘目标分片路径
+  - 例如 `/CloudStoragePlayer/videos/1/segments/000000.cspseg`
 - `local_staging_path`
   - 当前指向本地主机上的已加密分片文件
   - 这是过渡阶段的本地暂存能力

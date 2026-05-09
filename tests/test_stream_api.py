@@ -14,6 +14,9 @@ def build_client(tmp_path: Path, password: str = "shared-secret") -> tuple[TestC
         password_hash=hash_password(password),
         database_path=tmp_path / "stream.db",
         covers_path=tmp_path / "covers",
+        content_key_path=tmp_path / "keys" / "content.key",
+        segment_staging_path=tmp_path / "segments",
+        segment_size_bytes=512,
     )
     return TestClient(create_app(settings)), settings, password
 
@@ -121,11 +124,33 @@ def test_stream_rejects_unsatisfiable_ranges(tmp_path: Path) -> None:
     assert response.headers["content-range"] == f"bytes */{len(file_bytes)}"
 
 
-def test_stream_returns_404_when_source_file_has_been_removed(tmp_path: Path) -> None:
+def test_stream_can_fallback_to_local_encrypted_segments_when_source_is_removed(tmp_path: Path) -> None:
     client, settings, password = build_client(tmp_path)
     source_path = create_sample_video(tmp_path / "removed.mp4")
+    file_bytes = source_path.read_bytes()
     job = import_local_video(settings, source_path=str(source_path))
     source_path.unlink()
+    login(client, password)
+
+    response = client.get(f"/api/videos/{job.video_id}/stream")
+
+    assert response.status_code == 200
+    assert response.content == file_bytes
+
+
+def test_stream_returns_404_when_source_and_segments_are_both_missing(tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    source_path = create_sample_video(tmp_path / "missing-everywhere.mp4")
+    job = import_local_video(settings, source_path=str(source_path))
+    source_path.unlink()
+    segment_root = settings.segment_staging_dir / str(job.video_id)
+    for path in sorted(segment_root.rglob("*"), reverse=True):
+        if path.is_file():
+            path.unlink()
+        else:
+            path.rmdir()
+    if segment_root.exists():
+        segment_root.rmdir()
     login(client, password)
 
     response = client.get(f"/api/videos/{job.video_id}/stream")

@@ -97,10 +97,13 @@ def test_import_video_creates_completed_job_and_video(tmp_path: Path) -> None:
     assert video_payload["source_path"] == str(source_path)
     assert video_payload["cover_path"] is not None
     assert video_payload["segment_count"] >= 1
+    assert video_payload["manifest_path"] == f"/CloudStoragePlayer/videos/{payload['video_id']}/manifest.json"
 
     segments = list_video_segments(settings, video_id=payload["video_id"])
     assert len(segments) == video_payload["segment_count"]
     assert all(Path(segment.local_staging_path).exists() for segment in segments)
+    manifest_file = settings.segment_staging_dir / str(payload["video_id"]) / "manifest.json"
+    assert manifest_file.exists()
 
     cover_response = client.get(video_payload["cover_path"])
     assert cover_response.status_code == 200

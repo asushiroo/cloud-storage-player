@@ -22,7 +22,7 @@
 - 设置 API 默认值与更新
 - 导入成功后封面文件可访问
 - 播放流整文件返回
-- 播放流 Range / suffix range / 416 / 源文件缺失路径
+- 播放流 Range / suffix range / 416 / 源文件缺失后分片回退
 - chunker 单元测试
 - AES-GCM round trip 单元测试
 - 导入后 `video_segments` 元数据落库验证
@@ -93,12 +93,13 @@ ffmpeg -y -f lavfi -i color=c=black:s=160x90:d=1 -c:v libx264 -pix_fmt yuv420p d
 - 媒体探测集成
 - 数据库存储
 - 封面抽取后的静态文件可读
+- 本地 manifest 生成
+- 本地分片回放
 
 它并没有覆盖未来的：
 
 - 百度上传
-- 分片加密
 - manifest 同步
-- 回放 Range 流
+- 基于远端分片的回放 Range 流
 
 所以通过当前测试，只能说明“本地导入最小切片可用”，不能说明最终系统已经完整。

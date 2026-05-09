@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Protocol, Sequence
 
 
 class RangeNotSatisfiableError(ValueError):
@@ -15,6 +16,24 @@ class ByteRange:
     @property
     def length(self) -> int:
         return self.end - self.start + 1
+
+
+class SegmentLike(Protocol):
+    segment_index: int
+    original_offset: int
+    original_length: int
+
+
+@dataclass(slots=True)
+class SegmentSlice:
+    segment_index: int
+    segment_offset: int
+    read_start: int
+    read_end: int
+
+    @property
+    def length(self) -> int:
+        return self.read_end - self.read_start + 1
 
 
 def parse_range_header(range_header: str | None, *, size: int) -> ByteRange | None:
@@ -68,3 +87,32 @@ def parse_range_header(range_header: str | None, *, size: int) -> ByteRange | No
         return ByteRange(start=0, end=size - 1)
 
     return ByteRange(start=size - suffix_length, end=size - 1)
+
+
+def map_byte_range_to_segments(
+    byte_range: ByteRange,
+    *,
+    segments: Sequence[SegmentLike],
+) -> list[SegmentSlice]:
+    slices: list[SegmentSlice] = []
+    for segment in segments:
+        segment_start = segment.original_offset
+        segment_end = segment.original_offset + segment.original_length - 1
+        if segment_end < byte_range.start or segment_start > byte_range.end:
+            continue
+
+        read_start = max(byte_range.start, segment_start) - segment_start
+        read_end = min(byte_range.end, segment_end) - segment_start
+        slices.append(
+            SegmentSlice(
+                segment_index=segment.segment_index,
+                segment_offset=segment.original_offset,
+                read_start=read_start,
+                read_end=read_end,
+            )
+        )
+
+    if not slices:
+        raise RangeNotSatisfiableError("Requested range did not match any stored segment.")
+
+    return slices

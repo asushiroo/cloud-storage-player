@@ -9,13 +9,21 @@ from app.core.config import Settings
 CONTENT_KEY_SIZE_BYTES = 32
 
 
+def load_content_key(settings: Settings) -> bytes:
+    key_path = settings.content_key_file
+    if not key_path.exists():
+        raise FileNotFoundError("Content encryption key file does not exist.")
+
+    key_material = _decode_key_material(key_path.read_text(encoding="utf-8").strip())
+    if len(key_material) != CONTENT_KEY_SIZE_BYTES:
+        raise ValueError("Content encryption key has an invalid length.")
+    return key_material
+
+
 def load_or_create_content_key(settings: Settings) -> bytes:
     key_path = settings.content_key_file
     if key_path.exists():
-        key_material = _decode_key_material(key_path.read_text(encoding="utf-8").strip())
-        if len(key_material) != CONTENT_KEY_SIZE_BYTES:
-            raise ValueError("Content encryption key has an invalid length.")
-        return key_material
+        return load_content_key(settings)
 
     key_material = secrets.token_bytes(CONTENT_KEY_SIZE_BYTES)
     key_path.parent.mkdir(parents=True, exist_ok=True)

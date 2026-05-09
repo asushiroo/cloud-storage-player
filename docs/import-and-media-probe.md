@@ -2,7 +2,7 @@
 
 ## 当前导入切片的目标
 
-这一步并没有直接实现“上传百度网盘 + 分片加密”。
+这一步并没有直接实现“上传百度网盘 + 远端分片回放”。
 
 当前目标已经扩展为五个：
 
@@ -10,7 +10,7 @@
 2. 记录导入任务状态
 3. 生成最小视频元数据
 4. 尽力抽取一张本地封面
-5. 生成本地加密分片和分片元数据
+5. 生成本地加密分片、manifest 和分片元数据
 
 也就是说，现在的导入能力本质上是：
 
@@ -49,9 +49,10 @@
 9. 对每个分片执行 AES-256-GCM 加密
 10. 将加密分片写入本地 staging 目录
 11. 将分片元数据写入 `video_segments`
-12. 调用 `extract_cover()` 尝试抽取封面
-13. 将任务标记为 `completed`
-14. 如果 `ffprobe` 或其他步骤报错，则标记为 `failed`
+12. 生成本地 manifest，并写入目标 manifest 路径
+13. 调用 `extract_cover()` 尝试抽取封面
+14. 将任务标记为 `completed`
+15. 如果 `ffprobe` 或其他步骤报错，则标记为 `failed`
 
 ## 媒体探测实现细节
 
@@ -100,6 +101,20 @@ ffprobe -v error -show_entries format=duration,format_name:stream=codec_type -of
 - tag
 - 本地 staging 路径
 
+### 本地 manifest
+
+当前会在每个视频的 staging 目录下生成：
+
+- `manifest.json`
+
+manifest 中会记录：
+
+- 视频标题
+- 源文件元数据
+- 分片数量
+- 分片大小
+- 每片的偏移、长度、checksum、nonce、tag、目标 cloud path
+
 ### 本地内容密钥
 
 当前内容密钥存放在：
@@ -114,13 +129,12 @@ ffprobe -v error -show_entries format=duration,format_name:stream=codec_type -of
 这一版导入**不会**：
 
 - 上传百度网盘
-- 生成 manifest
 - 按分片播放
 
 更准确地说：
 
-- 已经做了“本地切片 + 本地加密 + checksum”
-- 还没做“云上传 + manifest + 基于分片的播放链路”
+- 已经做了“本地切片 + 本地加密 + checksum + 本地 manifest”
+- 还没做“云上传 + 远端 manifest 同步 + 基于远端分片的播放链路”
 
 ## 封面抽取实现细节
 
@@ -171,9 +185,9 @@ ffmpeg -y -ss 0 -i <path> -frames:v 1 <output>.jpg
 未来继续扩展时，优先建议按这个顺序推进：
 
 1. 增加导入任务的阶段字段 / 更细状态
-2. 接入 Baidu 上传与 cloud_path
-3. 生成 manifest
-4. 将播放流底层从源文件切换到分片解密
+2. 接入 Baidu 上传与真实 cloud_path 状态
+3. 将本地 manifest 推进为远端 manifest 发布
+4. 将播放流底层稳定到分片解密，不再依赖源文件回退
 5. 增加恢复与断点续传
 
 ## 关于 `/tmp` 测试视频

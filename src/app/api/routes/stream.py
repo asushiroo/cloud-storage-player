@@ -7,7 +7,7 @@ from app.api.dependencies import require_authenticated
 from app.media.range_map import RangeNotSatisfiableError
 from app.services.streaming import (
     VideoStreamNotFoundError,
-    iter_file_range,
+    iter_video_stream,
     prepare_video_stream,
 )
 
@@ -43,17 +43,13 @@ async def stream_video(
     byte_range = payload.byte_range
     if byte_range is None:
         headers["Content-Length"] = str(payload.size)
-        start = 0
-        end = payload.size - 1
     else:
         headers["Content-Length"] = str(byte_range.length)
         headers["Content-Range"] = f"bytes {byte_range.start}-{byte_range.end}/{payload.size}"
         status_code = status.HTTP_206_PARTIAL_CONTENT
-        start = byte_range.start
-        end = byte_range.end
 
     return StreamingResponse(
-        iter_file_range(payload.source_path, start=start, end=end),
+        iter_video_stream(payload),
         media_type=payload.mime_type,
         status_code=status_code,
         headers=headers,
