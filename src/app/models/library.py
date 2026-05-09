@@ -23,3 +23,4 @@ class Video:
     manifest_path: str | None
     source_path: str | None
     created_at: str
+    segment_count: int = 0

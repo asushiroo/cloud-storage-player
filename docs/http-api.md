@@ -175,6 +175,7 @@ HTTP 状态码为 `401`。
 - `manifest_path`
 - `source_path`
 - `created_at`
+- `segment_count`
 
 ### `GET /api/videos/{video_id}`
 
@@ -297,8 +298,10 @@ HTTP 状态码为 `401`。
 3. 创建 `import_jobs` 记录
 4. 调用 `ffprobe` 探测媒体信息
 5. 写入 `videos` 记录
-6. 尝试抽取封面
-7. 更新任务状态为 `completed` 或 `failed`
+6. 生成固定大小分片并做 AES-256-GCM 加密
+7. 写入 `video_segments` 元数据和本地 staging 文件
+8. 尝试抽取封面
+9. 更新任务状态为 `completed` 或 `failed`
 
 成功返回：
 
@@ -311,6 +314,11 @@ HTTP 状态码为 `401`。
 - 还没有上传百度网盘
 - 还没有做切片、加密、manifest 生成
 - 封面抽取失败不会阻塞视频元数据导入
+
+更正：
+
+- 现在已经做了“本地切片 + 本地 AES-256-GCM 加密 + 元数据落库”
+- 当前还没做的是“百度网盘上传 + manifest 生成 + 基于加密分片的播放”
 
 ### `GET /api/imports`
 

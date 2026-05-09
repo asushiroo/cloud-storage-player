@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     ffprobe_binary: str = "ffprobe"
     ffmpeg_binary: str = "ffmpeg"
     covers_path: Path = Path("data/covers")
+    content_key_path: Path = Path("data/keys/content.key")
+    segment_staging_path: Path = Path("data/segments")
+    segment_size_bytes: int = 4 * 1024 * 1024
     cors_allowed_origins_raw: str = "http://127.0.0.1:5173,http://localhost:5173"
 
     @cached_property
@@ -52,6 +55,18 @@ class Settings(BaseSettings):
         if self.covers_path.is_absolute():
             return self.covers_path
         return PROJECT_ROOT / self.covers_path
+
+    @property
+    def content_key_file(self) -> Path:
+        if self.content_key_path.is_absolute():
+            return self.content_key_path
+        return PROJECT_ROOT / self.content_key_path
+
+    @property
+    def segment_staging_dir(self) -> Path:
+        if self.segment_staging_path.is_absolute():
+            return self.segment_staging_path
+        return PROJECT_ROOT / self.segment_staging_path
 
     @property
     def cors_allowed_origins(self) -> list[str]:

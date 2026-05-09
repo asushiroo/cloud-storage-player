@@ -23,6 +23,9 @@
 - 导入成功后封面文件可访问
 - 播放流整文件返回
 - 播放流 Range / suffix range / 416 / 源文件缺失路径
+- chunker 单元测试
+- AES-GCM round trip 单元测试
+- 导入后 `video_segments` 元数据落库验证
 
 当前还**没有**自动化覆盖 Vue 前端构建和页面行为，这部分后续应通过：
 

@@ -7,6 +7,7 @@ from app.core.config import Settings
 from app.core.security import hash_password
 from app.main import create_app
 from app.repositories.folders import create_folder
+from app.repositories.video_segments import list_video_segments
 
 
 def build_client(
@@ -20,6 +21,10 @@ def build_client(
         password_hash=hash_password(password),
         database_path=tmp_path / "import.db",
         ffmpeg_binary=ffmpeg_binary,
+        covers_path=tmp_path / "covers",
+        content_key_path=tmp_path / "keys" / "content.key",
+        segment_staging_path=tmp_path / "segments",
+        segment_size_bytes=512,
     )
     return TestClient(create_app(settings)), settings, password
 
@@ -91,6 +96,11 @@ def test_import_video_creates_completed_job_and_video(tmp_path: Path) -> None:
     assert video_payload["duration_seconds"] is not None
     assert video_payload["source_path"] == str(source_path)
     assert video_payload["cover_path"] is not None
+    assert video_payload["segment_count"] >= 1
+
+    segments = list_video_segments(settings, video_id=payload["video_id"])
+    assert len(segments) == video_payload["segment_count"]
+    assert all(Path(segment.local_staging_path).exists() for segment in segments)
 
     cover_response = client.get(video_payload["cover_path"])
     assert cover_response.status_code == 200

@@ -3,7 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.core.config import Settings
+from app.core.keys import load_or_create_content_key
+from app.media.chunker import iter_file_chunks
 from app.media.covers import CoverExtractionError, extract_cover
+from app.media.crypto import encrypt_segment
 from app.media.probe import MediaProbeError, probe_video
 from app.models.imports import ImportJob
 from app.models.library import Video
@@ -13,7 +16,9 @@ from app.repositories.import_jobs import (
     mark_import_job_completed,
     mark_import_job_failed,
     mark_import_job_running,
+    update_import_job_progress,
 )
+from app.repositories.video_segments import NewVideoSegment, create_video_segments
 from app.repositories.videos import create_video, update_video_cover_path
 
 
@@ -55,6 +60,9 @@ def import_local_video(
             size=metadata.size,
             duration_seconds=metadata.duration_seconds,
         )
+        update_import_job_progress(settings, job.id, progress_percent=40)
+        _materialize_encrypted_segments(settings, source=source, video=video)
+        update_import_job_progress(settings, job.id, progress_percent=80)
         video = _maybe_extract_cover(settings, source=source, video=video)
     except MediaProbeError as exc:
         return mark_import_job_failed(settings, job.id, error_message=str(exc))
@@ -102,4 +110,35 @@ def _maybe_extract_cover(settings: Settings, *, source: Path, video: Video) -> V
         settings,
         video.id,
         cover_path=cover_web_path,
+    )
+
+
+def _materialize_encrypted_segments(settings: Settings, *, source: Path, video: Video) -> None:
+    content_key = load_or_create_content_key(settings)
+    video_segment_dir = settings.segment_staging_dir / str(video.id)
+    video_segment_dir.mkdir(parents=True, exist_ok=True)
+
+    segments_to_insert: list[NewVideoSegment] = []
+    for chunk in iter_file_chunks(source, segment_size=settings.segment_size_bytes):
+        encrypted = encrypt_segment(chunk.payload, content_key)
+        segment_path = video_segment_dir / f"{chunk.index:06d}.cspseg"
+        segment_path.write_bytes(encrypted.ciphertext + encrypted.tag)
+        segments_to_insert.append(
+            NewVideoSegment(
+                segment_index=chunk.index,
+                original_offset=chunk.original_offset,
+                original_length=chunk.original_length,
+                ciphertext_size=encrypted.ciphertext_size,
+                plaintext_sha256=encrypted.plaintext_sha256,
+                nonce_b64=encrypted.nonce_b64,
+                tag_b64=encrypted.tag_b64,
+                cloud_path=None,
+                local_staging_path=str(segment_path),
+            )
+        )
+
+    create_video_segments(
+        settings,
+        video_id=video.id,
+        segments=segments_to_insert,
     )

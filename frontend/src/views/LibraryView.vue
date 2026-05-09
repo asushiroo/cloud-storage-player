@@ -123,6 +123,7 @@ onMounted(load);
               <th>封面</th>
               <th>标题</th>
               <th>目录</th>
+              <th>分片数</th>
               <th>时长</th>
               <th>大小</th>
             </tr>
@@ -143,6 +144,7 @@ onMounted(load);
                 <RouterLink :to="`/videos/${video.id}`">{{ video.title }}</RouterLink>
               </td>
               <td>{{ video.folder_id ?? "-" }}</td>
+              <td>{{ video.segment_count }}</td>
               <td>{{ video.duration_seconds ?? "-" }}</td>
               <td>{{ video.size }}</td>
             </tr>

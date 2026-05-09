@@ -17,6 +17,7 @@
 - 受保护的只读目录接口
 - 视频详情接口
 - 本地文件导入任务与 `ffprobe` 媒体探测
+- 导入时固定大小分片、AES-256-GCM 加密与分片元数据落库
 - 导入时封面抽取与 `/covers/*` 静态访问
 - 设置读写 API
 - 本地源文件流播放接口（支持 Range）
@@ -62,6 +63,9 @@ uv run cloud-storage-player
 - `CSP_FFPROBE_BINARY`
 - `CSP_FFMPEG_BINARY`
 - `CSP_COVERS_PATH`
+- `CSP_CONTENT_KEY_PATH`
+- `CSP_SEGMENT_STAGING_PATH`
+- `CSP_SEGMENT_SIZE_BYTES`
 - `CSP_CORS_ALLOWED_ORIGINS_RAW`
 
 说明：
@@ -71,6 +75,9 @@ uv run cloud-storage-player
 - 如果两者都未设置，默认密码为 `admin`。
 - `CSP_DATABASE_PATH` 默认值为 `data/cloud_storage_player.db`。
 - `CSP_COVERS_PATH` 默认值为 `data/covers`。
+- `CSP_CONTENT_KEY_PATH` 默认值为 `data/keys/content.key`。
+- `CSP_SEGMENT_STAGING_PATH` 默认值为 `data/segments`。
+- `CSP_SEGMENT_SIZE_BYTES` 默认值为 `4194304`。
 - `CSP_CORS_ALLOWED_ORIGINS_RAW` 默认允许 Vue dev server 来源。
 
 ## 当前已实现接口

@@ -86,6 +86,15 @@ npm run dev
 - `CSP_COVERS_PATH`
   - 默认：`data/covers`
   - 用于指定封面输出目录
+- `CSP_CONTENT_KEY_PATH`
+  - 默认：`data/keys/content.key`
+  - 用于指定本地内容加密密钥文件
+- `CSP_SEGMENT_STAGING_PATH`
+  - 默认：`data/segments`
+  - 用于指定本地加密分片暂存目录
+- `CSP_SEGMENT_SIZE_BYTES`
+  - 默认：`4194304`
+  - 用于指定导入时的固定分片大小
 - `CSP_CORS_ALLOWED_ORIGINS_RAW`
   - 默认：`http://127.0.0.1:5173,http://localhost:5173`
   - 逗号分隔的前端允许来源列表
@@ -144,6 +153,18 @@ npm run dev
 - 分片
 - 解密
 - 百度网盘拉取
+
+## 当前分片与密钥模式
+
+当前导入阶段已经会：
+
+1. 读取本地源文件
+2. 按固定大小切成多个分片
+3. 用 AES-256-GCM 加密每个分片
+4. 将加密结果写入本地 staging 目录
+5. 将 nonce、tag、checksum、偏移等元数据写入 SQLite
+
+当前内容密钥保存在本地主机文件中，不会写入远端 manifest。
 
 ## 为什么当前不用 ORM
 

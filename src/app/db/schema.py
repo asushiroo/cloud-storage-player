@@ -44,6 +44,21 @@ CREATE TABLE IF NOT EXISTS import_jobs (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS video_segments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    segment_index INTEGER NOT NULL,
+    original_offset INTEGER NOT NULL,
+    original_length INTEGER NOT NULL,
+    ciphertext_size INTEGER NOT NULL,
+    plaintext_sha256 TEXT NOT NULL,
+    nonce_b64 TEXT NOT NULL,
+    tag_b64 TEXT NOT NULL,
+    cloud_path TEXT,
+    local_staging_path TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 

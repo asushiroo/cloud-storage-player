@@ -9,15 +9,29 @@ from app.models.library import Video
 
 def list_videos(settings: Settings, *, folder_id: int | None = None) -> list[Video]:
     query = """
-        SELECT id, folder_id, title, cover_path, mime_type, size, duration_seconds,
-               manifest_path, source_path, created_at
+        SELECT videos.id,
+               videos.folder_id,
+               videos.title,
+               videos.cover_path,
+               videos.mime_type,
+               videos.size,
+               videos.duration_seconds,
+               videos.manifest_path,
+               videos.source_path,
+               videos.created_at,
+               COUNT(video_segments.id) AS segment_count
         FROM videos
+        LEFT JOIN video_segments ON video_segments.video_id = videos.id
     """
     parameters: tuple[object, ...] = ()
     if folder_id is None:
-        query += " ORDER BY title COLLATE NOCASE, id"
+        query += " GROUP BY videos.id ORDER BY videos.title COLLATE NOCASE, videos.id"
     else:
-        query += " WHERE folder_id = ? ORDER BY title COLLATE NOCASE, id"
+        query += """
+            WHERE videos.folder_id = ?
+            GROUP BY videos.id
+            ORDER BY videos.title COLLATE NOCASE, videos.id
+        """
         parameters = (folder_id,)
 
     with connect_database(settings) as connection:
@@ -67,10 +81,21 @@ def create_video(
         connection.commit()
         row = connection.execute(
             """
-            SELECT id, folder_id, title, cover_path, mime_type, size, duration_seconds,
-                   manifest_path, source_path, created_at
+            SELECT videos.id,
+                   videos.folder_id,
+                   videos.title,
+                   videos.cover_path,
+                   videos.mime_type,
+                   videos.size,
+                   videos.duration_seconds,
+                   videos.manifest_path,
+                   videos.source_path,
+                   videos.created_at,
+                   COUNT(video_segments.id) AS segment_count
             FROM videos
-            WHERE id = ?
+            LEFT JOIN video_segments ON video_segments.video_id = videos.id
+            WHERE videos.id = ?
+            GROUP BY videos.id
             """,
             (cursor.lastrowid,),
         ).fetchone()
@@ -82,10 +107,21 @@ def get_video(settings: Settings, video_id: int) -> Video | None:
     with connect_database(settings) as connection:
         row = connection.execute(
             """
-            SELECT id, folder_id, title, cover_path, mime_type, size, duration_seconds,
-                   manifest_path, source_path, created_at
+            SELECT videos.id,
+                   videos.folder_id,
+                   videos.title,
+                   videos.cover_path,
+                   videos.mime_type,
+                   videos.size,
+                   videos.duration_seconds,
+                   videos.manifest_path,
+                   videos.source_path,
+                   videos.created_at,
+                   COUNT(video_segments.id) AS segment_count
             FROM videos
-            WHERE id = ?
+            LEFT JOIN video_segments ON video_segments.video_id = videos.id
+            WHERE videos.id = ?
+            GROUP BY videos.id
             """,
             (video_id,),
         ).fetchone()
@@ -113,10 +149,21 @@ def update_video_cover_path(
         connection.commit()
         row = connection.execute(
             """
-            SELECT id, folder_id, title, cover_path, mime_type, size, duration_seconds,
-                   manifest_path, source_path, created_at
+            SELECT videos.id,
+                   videos.folder_id,
+                   videos.title,
+                   videos.cover_path,
+                   videos.mime_type,
+                   videos.size,
+                   videos.duration_seconds,
+                   videos.manifest_path,
+                   videos.source_path,
+                   videos.created_at,
+                   COUNT(video_segments.id) AS segment_count
             FROM videos
-            WHERE id = ?
+            LEFT JOIN video_segments ON video_segments.video_id = videos.id
+            WHERE videos.id = ?
+            GROUP BY videos.id
             """,
             (video_id,),
         ).fetchone()
@@ -136,4 +183,5 @@ def _row_to_video(row: sqlite3.Row) -> Video:
         manifest_path=row["manifest_path"],
         source_path=row["source_path"],
         created_at=row["created_at"],
+        segment_count=row["segment_count"],
     )

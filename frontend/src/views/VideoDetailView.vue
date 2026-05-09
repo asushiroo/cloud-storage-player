@@ -59,6 +59,7 @@ onMounted(load);
           <div><strong>时长：</strong>{{ video.duration_seconds ?? "-" }}</div>
           <div><strong>目录 ID：</strong>{{ video.folder_id ?? "-" }}</div>
           <div><strong>源路径：</strong>{{ video.source_path ?? "-" }}</div>
+          <div><strong>分片数：</strong>{{ video.segment_count }}</div>
         </div>
         <p class="muted">
           当前页面已经直接消费后端流接口；目前流来自本地主机源文件，后续会切到分片/加密/百度网盘链路。

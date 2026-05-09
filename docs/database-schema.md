@@ -65,6 +65,37 @@
   - 当前用于记录本地导入源路径
   - 这是一个过渡字段，后续是否长期保留要看导入设计
 
+## 表：video_segments
+
+字段：
+
+- `id INTEGER PRIMARY KEY AUTOINCREMENT`
+- `video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE`
+- `segment_index INTEGER NOT NULL`
+- `original_offset INTEGER NOT NULL`
+- `original_length INTEGER NOT NULL`
+- `ciphertext_size INTEGER NOT NULL`
+- `plaintext_sha256 TEXT NOT NULL`
+- `nonce_b64 TEXT NOT NULL`
+- `tag_b64 TEXT NOT NULL`
+- `cloud_path TEXT`
+- `local_staging_path TEXT`
+- `created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP`
+
+用途：
+
+- 保存每个视频分片的加密元数据
+- 为后续云上传、manifest 生成、分片回放映射做准备
+
+当前字段说明：
+
+- `cloud_path`
+  - 当前通常为 `NULL`
+  - 未来接百度网盘上传后再写入
+- `local_staging_path`
+  - 当前指向本地主机上的已加密分片文件
+  - 这是过渡阶段的本地暂存能力
+
 ## 表：settings
 
 字段：
@@ -116,6 +147,7 @@
 - API 返回时任务通常已经处于 `completed` 或 `failed`
 - 这不是最终方案，只是为了先把导入路径、状态记录和媒体探测打通
 - 当前导入成功后还会尽力抽取一张封面，但封面失败不会让导入任务失败
+- 当前导入成功后还会生成本地加密分片与 `video_segments` 元数据
 
 ## 启动时的 schema bootstrap
 

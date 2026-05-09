@@ -20,6 +20,7 @@ export interface Video {
   manifest_path: string | null;
   source_path: string | null;
   created_at: string;
+  segment_count: number;
 }
 
 export interface ImportJob {

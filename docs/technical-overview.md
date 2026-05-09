@@ -16,9 +16,11 @@
 - `/api/auth/*` JSON 认证接口
 - SQLite bootstrap
 - `folders` / `videos` / `settings` / `import_jobs`
+- `video_segments`
 - 目录列表、视频详情、设置接口
 - 本地文件导入接口
 - `ffprobe` 媒体探测
+- 固定大小切片与 AES-256-GCM 加密辅助层
 - `ffmpeg` 封面抽取
 - `/covers` 静态挂载
 - 本地源文件流播放接口
@@ -27,7 +29,6 @@
 当前尚未具备：
 
 - 百度网盘接入
-- 分片加密
 - manifest 生成与同步
 - 基于加密分片的播放
 

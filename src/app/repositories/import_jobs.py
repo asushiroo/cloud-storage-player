@@ -84,6 +84,17 @@ def mark_import_job_running(settings: Settings, job_id: int) -> ImportJob:
     )
 
 
+def update_import_job_progress(settings: Settings, job_id: int, *, progress_percent: int) -> ImportJob:
+    return _update_import_job(
+        settings,
+        job_id,
+        status="running",
+        progress_percent=progress_percent,
+        error_message=None,
+        video_id=None,
+    )
+
+
 def mark_import_job_failed(settings: Settings, job_id: int, *, error_message: str) -> ImportJob:
     return _update_import_job(
         settings,
