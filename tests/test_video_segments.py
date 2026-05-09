@@ -35,6 +35,7 @@ def test_import_persists_encrypted_segment_metadata(tmp_path: Path) -> None:
         covers_path=tmp_path / "covers",
         content_key_path=tmp_path / "keys" / "content.key",
         segment_staging_path=tmp_path / "segments",
+        mock_storage_path=tmp_path / "mock-remote",
         segment_size_bytes=512,
     )
     create_app(settings)

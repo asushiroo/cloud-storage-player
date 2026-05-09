@@ -31,7 +31,9 @@ class Settings(BaseSettings):
     covers_path: Path = Path("data/covers")
     content_key_path: Path = Path("data/keys/content.key")
     segment_staging_path: Path = Path("data/segments")
+    mock_storage_path: Path = Path("data/mock-remote")
     segment_size_bytes: int = 4 * 1024 * 1024
+    storage_backend: str = "mock"
     cors_allowed_origins_raw: str = "http://127.0.0.1:5173,http://localhost:5173"
 
     @cached_property
@@ -67,6 +69,12 @@ class Settings(BaseSettings):
         if self.segment_staging_path.is_absolute():
             return self.segment_staging_path
         return PROJECT_ROOT / self.segment_staging_path
+
+    @property
+    def mock_storage_dir(self) -> Path:
+        if self.mock_storage_path.is_absolute():
+            return self.mock_storage_path
+        return PROJECT_ROOT / self.mock_storage_path
 
     @property
     def cors_allowed_origins(self) -> list[str]:

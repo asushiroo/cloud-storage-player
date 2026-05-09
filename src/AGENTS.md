@@ -2,7 +2,9 @@
 
 ## Summary
 
-Build a Python FastAPI backend that runs on a Windows host, exposes LAN JSON APIs for a separate Vue frontend, imports local videos from host paths, splits them into fixed-size byte segments, encrypts each segment, uploads segments to Baidu Netdisk, and later streams the original video bytes back to browsers through HTTP Range responses.
+Build a Python FastAPI backend that runs on a Windows host, exposes LAN JSON APIs for a separate Vue frontend, imports local videos from host paths, splits them into fixed-size byte segments, encrypts each segment, uploads segments and manifests through a storage backend, and later streams the original video bytes back to browsers through HTTP Range responses.
+
+The current default storage backend is a local `mock` implementation for offline development and tests. The long-term production target remains Baidu Netdisk.
 
 ## Core Rules
 
@@ -10,9 +12,9 @@ Build a Python FastAPI backend that runs on a Windows host, exposes LAN JSON API
 - Do not add speculative abstractions.
 - Keep business logic out of route handlers.
 - Use SQLite as the local source of truth.
-- Store encrypted segments and manifests in Baidu Netdisk.
 - Keep encryption keys on the Windows host only.
-- Prefer resumable tasks and explicit state transitions for imports.
+- Prefer explicit state transitions for imports.
+- Prefer services depending on `storage/base.py`, not on a concrete backend.
 - Keep backend/frontend contracts explicit and stable.
 
 ## Package Layout
@@ -24,21 +26,21 @@ Build a Python FastAPI backend that runs on a Windows host, exposes LAN JSON API
 - `src/app/db/`
   Engine/session setup, schema models, and migration bootstrap.
 - `src/app/models/`
-  Domain models for folders, videos, segments, imports, settings, and cache records.
+  Domain models for folders, videos, segments, imports, and settings.
 - `src/app/repositories/`
   Thin database access helpers. No cloud or media logic here.
 - `src/app/storage/`
-  Baidu Netdisk client abstraction and implementations.
+  Storage backend contract, mock implementation, backend factory, and future Baidu integration.
 - `src/app/media/`
   Probe, cover extraction, chunk mapping, encryption, and stream range helpers.
 - `src/app/services/`
-  Import workflow, playback workflow, sync workflow, cache cleanup, and settings management.
+  Import workflow, playback workflow, manifest helpers, and settings management.
 - `src/app/api/`
-  Auth, library, import, settings, sync, and stream JSON endpoints.
+  Auth, library, import, settings, and stream JSON endpoints.
 - `src/app/web/`
   Transitional server-rendered pages only for smoke tests or temporary fallback use. Do not add new product UI here.
 - `tests/`
-  Unit and integration coverage for chunking, crypto, auth, and streaming.
+  Unit and integration coverage for chunking, crypto, auth, import, storage, and streaming.
 
 ## Frontend Boundary
 
@@ -51,16 +53,18 @@ Build a Python FastAPI backend that runs on a Windows host, exposes LAN JSON API
 
 ### Config and Security
 
-- `core/config.py` reads environment variables and persisted settings.
-- `core/security.py` manages password hashing, cookie sessions, and local key wrapping helpers.
+- `core/config.py` reads environment variables and resolves project-relative paths.
+- `core/security.py` manages password hashing and cookie sessions.
+- `core/keys.py` manages the local content key file.
 - Backend CORS settings must allow the separated Vue frontend origins while keeping credentialed session support.
-- Secrets needed for Baidu access are stored locally, never in Baidu manifests.
+- Secrets needed for Baidu access are stored locally, never in manifests.
 
 ### Storage
 
-- `storage/base.py` defines the cloud storage contract used by services.
-- `storage/baidu.py` implements OAuth refresh, directory creation, multipart upload, listing, and download.
-- Add a local mock storage backend for tests and offline development.
+- `storage/base.py` defines the cloud/object storage contract used by services.
+- `storage/mock.py` maps remote object paths into a local directory for tests and offline development.
+- `storage/factory.py` selects the configured backend.
+- `storage/baidu.py` remains a placeholder until the real API integration is implemented.
 
 ### Media Processing
 
@@ -73,13 +77,11 @@ Build a Python FastAPI backend that runs on a Windows host, exposes LAN JSON API
 ### Services
 
 - `ImportService`
-  Validates a host file path, probes metadata, builds segments, encrypts each segment, uploads it, writes manifest metadata, and persists task state for resume.
+  Validates a host file path, probes metadata, builds segments, encrypts each segment, writes local staging files, writes manifest metadata, uploads artifacts through the configured storage backend, and persists task state.
 - `StreamService`
-  Resolves browser Range requests, fetches encrypted segments from cache or Baidu, decrypts only what is needed, and emits the exact original bytes requested.
-- `SyncService`
-  Scans the configured Baidu root for manifests and imports missing catalog entries into SQLite.
-- `CacheService`
-  Tracks local encrypted segment cache entries and evicts least-recently-used files once the configured size cap is exceeded.
+  Resolves browser Range requests, prefers local encrypted staging files, falls back to remote objects through the storage backend when needed, decrypts only what is needed, and emits the exact original bytes requested.
+- `SettingsService`
+  Reads and updates public runtime settings such as Baidu root path and cache limit.
 
 ## Data Model
 
@@ -88,23 +90,22 @@ Keep the schema explicit and small.
 - `folders`
   Display categories shown in the UI.
 - `videos`
-  One row per imported video, including folder assignment, title, cover path, mime type, size, duration, and cloud manifest path.
+  One row per imported video, including folder assignment, title, cover path, mime type, size, duration, remote manifest path, and source path.
 - `video_segments`
-  One row per encrypted segment with index, original offset, original length, ciphertext size, checksum, cloud path, nonce, and tag or combined AEAD metadata.
+  One row per encrypted segment with index, original offset, original length, ciphertext size, checksum, remote path, nonce/tag metadata, and local staging path.
 - `import_jobs`
-  Tracks queued, running, failed, and completed imports with resumable progress.
+  Tracks queued, running, failed, and completed imports.
 - `settings`
-  Stores local configuration such as Baidu app identifiers, refresh token, root path, and cache limit.
-- `cache_entries`
-  Tracks local encrypted segment cache files, size, and last-access time.
+  Stores local configuration such as Baidu root path and cache limit.
 
 ## Remote Layout
 
-Store each video under its own directory in Baidu Netdisk.
+Store each video under its own logical directory.
 
 - `/CloudStoragePlayer/videos/{video_id}/manifest.json`
 - `/CloudStoragePlayer/videos/{video_id}/segments/{index}.cspseg`
-- `/CloudStoragePlayer/covers/{video_id}.jpg`
+
+In the current `mock` backend these remote paths are mapped into a local directory tree.
 
 The manifest must include:
 
@@ -123,55 +124,45 @@ The manifest must not include:
 ## HTTP Surface
 
 - `GET /api/auth/session`
-  Read current session state for the frontend.
 - `POST /api/auth/login`
-  JSON password authentication, sets session cookie.
 - `POST /api/auth/logout`
-  JSON logout, clears the session.
 - `GET /api/folders`
-  JSON folder list.
 - `GET /api/videos`
-  JSON video list, optionally filtered by folder.
 - `GET /api/videos/{video_id}`
-  JSON video details.
 - `GET /api/videos/{video_id}/stream`
-  Range-capable original byte stream for HTML5 video playback.
 - `POST /api/imports`
-  Create import job from a Windows host file path.
 - `GET /api/imports`
-  Import job list.
 - `GET /api/imports/{job_id}`
-  Import job status and progress.
-- `POST /api/sync/baidu`
-  Scan manifests from Baidu and sync local catalog.
 - `GET /api/settings`
-  Read non-secret settings needed by the admin page.
 - `POST /api/settings`
-  Update local settings.
-- `POST /api/settings/baidu/oauth`
-  Exchange authorization code and save refresh token.
 
-Transitional server-rendered routes like `/login` or `/` may remain temporarily, but they are no longer the primary product contract.
+Transitional server-rendered routes like `/login` or `/` may remain temporarily, but they are not the primary product contract.
 
 ## Playback Model
 
 - Browsers receive a normal video URL backed by `GET /api/videos/{video_id}/stream`.
 - The stream endpoint must support `Accept-Ranges` and `206 Partial Content`.
 - The service must return original file bytes so the browser can seek without custom client-side decryption logic.
-- Keep decrypted data in memory or short-lived temp buffers only. Do not maintain a long-lived plaintext cache unless a future requirement explicitly asks for it.
+- Current resolution order is:
+  1. local encrypted staging files
+  2. remote objects from the configured storage backend
+  3. source file fallback
+- Keep decrypted data in memory or short-lived buffers only.
 
 ## Testing Requirements
 
 - Unit-test segment slicing and range-to-segment mapping.
 - Unit-test AES-GCM round trips and checksum stability.
 - Unit-test auth guards and session handling.
-- Integration-test import workflow against a mock storage backend.
-- Integration-test playback range requests against stored encrypted segments.
+- Integration-test import workflow against the mock storage backend.
+- Integration-test playback range requests against locally staged encrypted segments.
+- Integration-test playback fallback against mock remote objects after local staging removal.
 
-## Non-Goals For First Version
+## Non-Goals For Current Phase
 
 - Multi-user access control.
 - Browser-side upload of large video files from remote devices.
 - Browser-side decryption.
 - Re-encoding, HLS generation, or adaptive bitrate streaming.
 - Full Windows service packaging.
+- Final Baidu production integration.

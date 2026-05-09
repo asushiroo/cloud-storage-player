@@ -1,60 +1,51 @@
 # 本地导入与媒体探测
 
-## 当前导入切片的目标
+## 1. 当前导入切片的目标
 
-这一步并没有直接实现“上传百度网盘 + 远端分片回放”。
+当前导入已经不只是“把文件登记进数据库”，而是要完成一个更完整的导入闭环：
 
-当前目标已经扩展为五个：
-
-1. 验证本地主机路径导入链路可行
+1. 验证本地主机路径
 2. 记录导入任务状态
-3. 生成最小视频元数据
-4. 尽力抽取一张本地封面
-5. 生成本地加密分片、manifest 和分片元数据
+3. 写入视频元数据
+4. 固定大小切片
+5. AES-256-GCM 加密
+6. 写入本地 staging 分片
+7. 生成本地 manifest
+8. 上传 manifest / 分片到存储 backend
+9. 尽力抽取一张封面
 
-也就是说，现在的导入能力本质上是：
+## 2. 为什么当前仍保留同步导入
 
-> “把一个本地视频文件注册进目录数据库，并记录导入任务过程。”
+虽然最终形态更适合后台任务，但当前同步实现有两个优势：
 
-## 为什么先做同步导入
+1. 可以先稳定接口契约和状态流转
+2. 自动化测试更容易覆盖整个导入闭环
 
-最终架构当然更适合后台任务、可恢复导入、分阶段状态流转。
+因此当前 `POST /api/imports` 返回时，任务通常已经完成或失败。
 
-但当前阶段先做同步实现有几个好处：
+## 3. 当前导入服务流程
 
-1. 路径校验逻辑能先固定
-2. `ffprobe` 集成能先打通
-3. `import_jobs` 表和状态字段能先稳定
-4. API 和前端后续不用重画入口
+`import_local_video()` 当前主要执行下面这些步骤：
 
-后面要升级成异步任务时，可以保留：
-
-- 请求结构
-- `import_jobs` 表
-- 状态字段
-- 视频元数据写入路径
-
-## 导入服务当前流程
-
-当前 `import_local_video()` 做的事情：
-
-1. 校验 `source_path` 对应文件存在且是普通文件
-2. 如果给了 `folder_id`，校验目录存在
-3. 创建 `queued` 状态导入任务
-4. 将任务推进到 `running`
-5. 调用 `probe_video()` 执行 `ffprobe`
-6. 根据探测结果写入 `videos` 表
-7. 加载或创建本地主机内容密钥
-8. 将源文件按固定大小切片
+1. 校验 `source_path` 存在且是文件
+2. 如果传了 `folder_id`，校验目录存在
+3. 创建 `queued` 导入任务
+4. 标记为 `running`
+5. 调用 `probe_video()` 获取媒体元数据
+6. 写入 `videos`
+7. 读取或生成本地主机内容密钥
+8. 以固定大小遍历源文件
 9. 对每个分片执行 AES-256-GCM 加密
-10. 将加密分片写入本地 staging 目录
+10. 将密文写入本地 staging 目录
 11. 将分片元数据写入 `video_segments`
-12. 生成本地 manifest，并写入目标 manifest 路径
-13. 调用 `extract_cover()` 尝试抽取封面
-14. 将任务标记为 `completed`
-15. 如果 `ffprobe` 或其他步骤报错，则标记为 `failed`
+12. 生成本地 `manifest.json`
+13. 更新 `videos.manifest_path`
+14. 通过存储 backend 上传 manifest 与所有加密分片
+15. 尝试执行封面抽取
+16. 标记任务为 `completed`
+17. 任一关键步骤异常时标记为 `failed`
 
-## 媒体探测实现细节
+## 4. 媒体探测实现细节
 
 当前使用外部命令：
 
@@ -62,141 +53,153 @@
 ffprobe -v error -show_entries format=duration,format_name:stream=codec_type -of json <path>
 ```
 
-当前解析结果只关心这些信息：
+当前关心的信息主要有：
 
-- 是否包含视频流
-- 总时长 `duration`
-- 格式名 `format_name`
+- 是否存在视频流
+- `duration`
+- `format_name`
 
-另外两项元数据不依赖 `ffprobe`：
+另外两项元数据来自本地文件系统 / 文件名推断：
 
 - `size`
-  - 直接来自文件系统 `stat()`
 - `mime_type`
-  - 由文件扩展名通过 `mimetypes.guess_type()` 推断
 
-## 当前分片与加密实现细节
+## 5. 固定大小切片
 
-### 固定大小切片
-
-当前切片大小来自：
+分片大小来自：
 
 - `CSP_SEGMENT_SIZE_BYTES`
 
-默认值是 `4194304` 字节，也就是 `4 MiB`。
+默认值：
 
-### 加密算法
+- `4194304` 字节（`4 MiB`）
 
-当前每个分片使用：
+当前 `chunker` 只做**字节切片**，不做任何转码和封装改写。
 
-- AES-256-GCM
+## 6. 当前加密格式
 
-当前保存的元数据包括：
+每个分片使用：
 
-- 原始偏移
-- 原始长度
-- 密文长度
-- 明文 SHA-256
-- nonce
-- tag
-- 本地 staging 路径
+- `AES-256-GCM`
 
-### 本地 manifest
+当前会保存这些字段：
 
-当前会在每个视频的 staging 目录下生成：
+- `segment_index`
+- `original_offset`
+- `original_length`
+- `ciphertext_size`
+- `plaintext_sha256`
+- `nonce_b64`
+- `tag_b64`
+- `cloud_path`
+- `local_staging_path`
 
-- `manifest.json`
+其中：
 
-manifest 中会记录：
+- `cloud_path` 是远端对象逻辑路径
+- `local_staging_path` 是当前本地主机上的密文暂存文件路径
+
+## 7. manifest 结构
+
+当前本地 manifest 会写到：
+
+- `data/segments/<video_id>/manifest.json`
+
+manifest 里包含：
 
 - 视频标题
 - 源文件元数据
-- 分片数量
-- 分片大小
-- 每片的偏移、长度、checksum、nonce、tag、目标 cloud path
+- `segment_size_bytes`
+- `segment_count`
+- 原始文件大小与 MIME
+- 加密算法信息
+- 每个分片的偏移、长度、checksum、remote path、nonce、tag
 
-### 本地内容密钥
+manifest 不包含：
 
-当前内容密钥存放在：
+- 明文内容密钥
+- Session 凭据
+- 登录密码材料
 
-- `CSP_CONTENT_KEY_PATH`
+## 8. 当前上传行为
 
-如果文件不存在，系统会在本地主机自动生成一个 32 字节密钥并保存。
-这保证了密钥只保留在受信任主机上。
+当前导入服务会把以下对象上传到配置的存储 backend：
 
-## 当前导入不会做的事情
+- `manifest.json`
+- `segments/*.cspseg`
 
-这一版导入**不会**：
+在默认 `mock` backend 下，这些“远端对象”会映射到本地目录：
 
-- 上传百度网盘
-- 按分片播放
+- `data/mock-remote/CloudStoragePlayer/videos/<video_id>/manifest.json`
+- `data/mock-remote/CloudStoragePlayer/videos/<video_id>/segments/*.cspseg`
 
-更准确地说：
+## 9. 封面抽取
 
-- 已经做了“本地切片 + 本地加密 + checksum + 本地 manifest”
-- 还没做“云上传 + 远端 manifest 同步 + 基于远端分片的播放链路”
-
-## 封面抽取实现细节
-
-当前封面抽取使用外部命令：
+当前封面抽取使用：
 
 ```bash
 ffmpeg -y -ss 0 -i <path> -frames:v 1 <output>.jpg
 ```
 
-当前实现策略：
+策略：
 
-- 从视频开头抽取第一帧
-- 输出为 JPG
-- 文件保存在本地封面目录
-- `videos.cover_path` 保存的是浏览器访问路径，例如 `/covers/12.jpg`
+- 从视频开头取第一帧
+- 输出 JPG
+- 成功时写到本地封面目录，并给 `videos.cover_path` 写入 `/covers/<video_id>.jpg`
 
-当前故障策略：
+失败策略：
 
-- 如果 `ffmpeg` 失败，导入任务仍然可以成功
-- 只是该视频的 `cover_path` 会保持 `NULL`
+- 封面失败不会让导入任务失败
+- 但分片/manifest 上传失败会导致导入任务失败
 
-## 当前失败语义
+## 10. 当前失败语义
 
-### 1. 请求级失败
+### 10.1 请求级失败
 
-如果 `source_path` 根本不存在，接口直接返回 `400`。
+如果 `source_path` 本身不存在：
 
-这种错误说明请求本身无效，不会创建成功任务。
+- 直接返回 `400`
+- 说明请求无效
 
-### 2. 处理级失败
+### 10.2 处理级失败
 
-如果路径存在，但 `ffprobe` 失败或文件里没有视频流：
+如果路径存在，但后续处理失败，例如：
+
+- `ffprobe` 失败
+- 不是有效视频
+- 分片上传失败
+
+则：
 
 - 导入任务会进入 `failed`
-- 接口仍返回任务详情
+- 接口仍返回任务记录
 
-这样做是为了保留任务记录，方便后面追踪失败原因。
+## 11. 与后续真实百度接入的关系
 
-## 与未来目标架构的关系
-
-当前导入切片已经把这些基础接口对齐了：
+当前这套导入流程已经把最关键的边界先固定住了：
 
 - 本地路径导入入口
-- 服务层负责导入逻辑
-- 数据库保留任务状态
-- 视频元数据有固定落点
+- 任务状态模型
+- 分片元数据结构
+- remote path 约定
+- manifest 结构
+- 存储 backend 抽象
 
-未来继续扩展时，优先建议按这个顺序推进：
+因此下一步只需要把 `mock` backend 换成真实 `baidu` backend，而不必推翻导入流程本身。
 
-1. 增加导入任务的阶段字段 / 更细状态
-2. 接入 Baidu 上传与真实 cloud_path 状态
-3. 将本地 manifest 推进为远端 manifest 发布
-4. 将播放流底层稳定到分片解密，不再依赖源文件回退
-5. 增加恢复与断点续传
+## 12. 关于 `tmp/` 测试视频
 
-## 关于 `/tmp` 测试视频
+如果项目里已经放了测试视频，例如：
 
-当前代码支持直接导入本机绝对路径，所以如果测试视频放在 `/tmp`，理论上可以直接调用：
+- `tmp/rieri.mp4`
+
+那么可以直接把服务器看到的**绝对路径**传给导入接口，例如：
 
 ```json
-{"source_path":"/tmp/your-video.mp4"}
+{
+  "source_path": "/root/cloud-storage-player/tmp/rieri.mp4",
+  "title": "rieri sample"
+}
 ```
 
-不过自动化测试并不依赖外部固定文件，而是运行时动态生成一个小样例视频。
-这样测试更稳定，也不会依赖某个环境里恰好存在的文件。
+自动化测试本身不依赖这个文件；测试会动态生成一个很小的 MP4 样例，以避免对外部文件产生硬依赖。

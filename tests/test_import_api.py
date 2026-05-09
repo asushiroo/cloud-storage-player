@@ -1,3 +1,4 @@
+import json
 import subprocess
 from pathlib import Path
 
@@ -8,6 +9,7 @@ from app.core.security import hash_password
 from app.main import create_app
 from app.repositories.folders import create_folder
 from app.repositories.video_segments import list_video_segments
+from app.storage.mock import MockStorageBackend
 
 
 def build_client(
@@ -24,6 +26,7 @@ def build_client(
         covers_path=tmp_path / "covers",
         content_key_path=tmp_path / "keys" / "content.key",
         segment_staging_path=tmp_path / "segments",
+        mock_storage_path=tmp_path / "mock-remote",
         segment_size_bytes=512,
     )
     return TestClient(create_app(settings)), settings, password
@@ -104,6 +107,16 @@ def test_import_video_creates_completed_job_and_video(tmp_path: Path) -> None:
     assert all(Path(segment.local_staging_path).exists() for segment in segments)
     manifest_file = settings.segment_staging_dir / str(payload["video_id"]) / "manifest.json"
     assert manifest_file.exists()
+
+    storage = MockStorageBackend(settings.mock_storage_dir)
+    remote_manifest_path = storage.local_path_for(video_payload["manifest_path"])
+    assert remote_manifest_path.exists()
+    remote_manifest = json.loads(remote_manifest_path.read_text(encoding="utf-8"))
+    assert remote_manifest["video_id"] == payload["video_id"]
+    assert remote_manifest["segment_count"] == len(segments)
+    for segment in segments:
+        assert segment.cloud_path is not None
+        assert storage.local_path_for(segment.cloud_path).exists()
 
     cover_response = client.get(video_payload["cover_path"])
     assert cover_response.status_code == 200

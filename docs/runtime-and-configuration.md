@@ -1,32 +1,33 @@
 # 运行与配置
 
-## 运行前提
+## 1. 运行前提
 
-当前运行依赖：
+当前开发/测试环境依赖：
 
 - Python 3.12
 - UV
-- Node.js / npm（前端开发时）
+- Node.js / npm（前端开发）
 - `ffprobe`
-- `ffmpeg`（当前主要用于测试或未来封面抽取，不是应用启动硬依赖）
+- `ffmpeg`
 
-项目使用：
+项目当前采用：
 
-- FastAPI 作为后端 Web 框架
-- Vue 3 + Vite 作为前端开发架构
-- Starlette `SessionMiddleware` 作为 Session 中间件
-- 标准库 `sqlite3` 作为当前阶段数据库访问实现
+- 后端：FastAPI
+- 前端：Vue 3 + Vite
+- 数据库：SQLite
+- 密钥管理：本地文件
+- 存储后端：默认 `mock`
 
-## 初始化方式
+## 2. UV 初始化方式
 
-首次执行：
+### 后端
 
 ```bash
 uv sync --dev
 uv run cloud-storage-player
 ```
 
-前端开发执行：
+### 前端
 
 ```bash
 cd frontend
@@ -34,22 +35,26 @@ npm install
 npm run dev
 ```
 
-启动时会自动执行：
+## 3. 启动时会做什么
 
-1. 读取环境变量
-2. 创建 FastAPI 应用
-3. 初始化 SQLite 数据库
-4. 创建封面输出目录
-5. 注册 Session 中间件
-6. 注册 CORS 中间件
-7. 挂载 `/covers` 静态目录
-8. 注册页面路由、JSON 认证路由、目录路由、导入路由、设置路由
+后端启动后会依次执行：
 
-## 环境变量
+1. 读取环境变量与 `.env`
+2. 初始化 FastAPI 应用
+3. 初始化 SQLite schema
+4. 创建本地封面目录
+5. 注册 SessionMiddleware
+6. 注册 CORS
+7. 挂载 `/covers`
+8. 注册认证、目录、导入、设置、播放路由
+
+当前 mock 存储目录不要求启动前预创建；首次上传时会自动创建。
+
+## 4. 环境变量
 
 统一使用 `CSP_` 前缀。
 
-### 基础运行配置
+### 4.1 基础运行配置
 
 - `CSP_APP_NAME`
   - 默认：`Cloud Storage Player`
@@ -58,134 +63,148 @@ npm run dev
 - `CSP_PORT`
   - 默认：`8000`
 
-### 认证相关
+### 4.2 认证配置
 
 - `CSP_SESSION_SECRET`
   - 默认：`change-me-before-production`
-  - 用于签名 Session Cookie
   - 生产环境必须修改
 - `CSP_PASSWORD`
   - 默认：`admin`
-  - 当未显式提供密码哈希时，会在启动时被哈希化
 - `CSP_PASSWORD_HASH`
-  - 如果存在，优先级高于 `CSP_PASSWORD`
-  - 格式为：
-    - `pbkdf2_sha256$iterations$salt$digest`
+  - 如果存在，优先于明文密码配置
 
-### 数据库与工具
+### 4.3 数据库与媒体工具
 
 - `CSP_DATABASE_PATH`
   - 默认：`data/cloud_storage_player.db`
-  - 如果是相对路径，则相对于项目根目录解析
 - `CSP_FFPROBE_BINARY`
   - 默认：`ffprobe`
-  - 用于覆盖 `ffprobe` 可执行文件路径
 - `CSP_FFMPEG_BINARY`
   - 默认：`ffmpeg`
-  - 用于覆盖封面抽取使用的 `ffmpeg`
+
+### 4.4 本地文件路径
+
 - `CSP_COVERS_PATH`
   - 默认：`data/covers`
-  - 用于指定封面输出目录
 - `CSP_CONTENT_KEY_PATH`
   - 默认：`data/keys/content.key`
-  - 用于指定本地内容加密密钥文件
 - `CSP_SEGMENT_STAGING_PATH`
   - 默认：`data/segments`
-  - 用于指定本地加密分片暂存目录
+- `CSP_MOCK_STORAGE_PATH`
+  - 默认：`data/mock-remote`
+
+这些路径如果传入相对路径，都会按**项目根目录**解析。
+
+### 4.5 分片与存储配置
+
 - `CSP_SEGMENT_SIZE_BYTES`
   - 默认：`4194304`
-  - 用于指定导入时的固定分片大小
+  - 即 `4 MiB`
+- `CSP_STORAGE_BACKEND`
+  - 默认：`mock`
+  - 当前支持值：
+    - `mock`
+    - `baidu`（仅占位，尚未实现）
+
+### 4.6 前后端联调配置
+
 - `CSP_CORS_ALLOWED_ORIGINS_RAW`
   - 默认：`http://127.0.0.1:5173,http://localhost:5173`
-  - 逗号分隔的前端允许来源列表
 
-## Session 策略
+## 5. Session 策略
 
 当前 Session 使用 Starlette 的签名 Cookie：
 
 - `same_site = "lax"`
 - `https_only = False`
 
-这里 `https_only=False` 只是为了当前开发切片能够直接在本地网络环境跑起来。
-如果后续进入真实部署，应至少补上：
+这是为了当前局域网开发和测试切片能快速跑通。
+未来部署时至少需要补：
 
-- HTTPS 传输
-- 更严格的 Cookie 策略
-- 密钥轮换策略
+- HTTPS
+- 更严格 Cookie 策略
+- 密钥轮换
 
-## 前端开发模式
+## 6. 前后端开发模式
 
-当前前端开发模式是：
+默认本地联调：
 
 - 后端：`http://127.0.0.1:8000`
 - 前端：`http://127.0.0.1:5173`
 
-前端通过 `VITE_API_BASE_URL` 指向后端 API。
-后端通过 CORS 配置允许前端来源，并启用带凭据请求。
+前端通过：
 
-## 静态封面目录
+```bash
+VITE_API_BASE_URL=http://127.0.0.1:8000
+```
 
-当前导入成功后，如果封面抽取成功，会把 JPG 文件写入本地封面目录，并通过 `/covers/<video_id>.jpg` 访问。
+指向后端 API。
 
-默认映射关系：
+## 7. 当前存储后端模式
 
-- 本地目录：`data/covers`
-- URL 前缀：`/covers`
+### 7.1 mock backend
 
-## 当前播放流模式
+当 `CSP_STORAGE_BACKEND=mock` 时：
 
-当前播放流接口已经存在，但还只是过渡实现：
+- 远端对象不会发到真实云
+- 会按“远端路径”映射到 `CSP_MOCK_STORAGE_PATH` 下的本地文件
+
+例如：
+
+- 远端路径：`/CloudStoragePlayer/videos/12/manifest.json`
+- 本地映射：`data/mock-remote/CloudStoragePlayer/videos/12/manifest.json`
+
+### 7.2 baidu backend
+
+当前只是预留名称和占位模块，真实实现还没有接入。
+
+## 8. 当前播放流模式
+
+播放接口：
 
 - `GET /api/videos/{video_id}/stream`
 
-当前它会优先使用：
+当前读取优先级：
 
-- 本地已加密分片
+1. 本地加密分片 staging
+2. mock 远端对象存储
+3. 本地源文件
 
-如果分片或密钥不可用，再回退到：
+只要内容密钥可用，后端就会在服务端解密并返回浏览器需要的原始字节。
 
-- 本地导入源文件
+## 9. 当前导入落地产物
 
-这样可以先把：
+一次成功导入会产生这些产物：
 
-- 前端播放器
-- Cookie 认证
-- Range 请求
-- 视频详情页
+### 本地数据库
 
-这些链路打通。
+- `videos`
+- `video_segments`
+- `import_jobs`
 
-后续再把底层数据来源替换成：
+### 本地文件
 
-- 百度网盘拉取
-- 远端分片读取
-- 按需解密拼装
+- `data/segments/<video_id>/segments/*.cspseg`
+- `data/segments/<video_id>/manifest.json`
+- `data/covers/<video_id>.jpg`（如果封面抽取成功）
+- `data/keys/content.key`
 
-## 当前分片与密钥模式
+### mock 远端对象
 
-当前导入阶段已经会：
+- `data/mock-remote/CloudStoragePlayer/videos/<video_id>/manifest.json`
+- `data/mock-remote/CloudStoragePlayer/videos/<video_id>/segments/*.cspseg`
 
-1. 读取本地源文件
-2. 按固定大小切成多个分片
-3. 用 AES-256-GCM 加密每个分片
-4. 将加密结果写入本地 staging 目录
-5. 将 nonce、tag、checksum、偏移等元数据写入 SQLite
-6. 生成本地 manifest 文件
+## 10. 推荐验证命令
 
-当前内容密钥保存在本地主机文件中，不会写入远端 manifest。
+后端测试：
 
-## 为什么当前不用 ORM
+```bash
+uv run pytest
+```
 
-这一步我刻意保留在标准库 `sqlite3` 层：
+前端构建：
 
-1. 当前表数量少
-2. 查询和写入路径很短
-3. 还没进入复杂关联和迁移阶段
-4. 先把业务边界跑通，比先引入 ORM 更符合“最小实现”的要求
-
-等后续出现这些需求时，再考虑是否要升级：
-
-- 更复杂的查询组合
-- 多阶段迁移
-- 更强的事务封装
-- 多数据库后端兼容
+```bash
+cd frontend
+npm run build
+```

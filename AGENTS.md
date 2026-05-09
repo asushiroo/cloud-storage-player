@@ -8,7 +8,8 @@ This repository hosts a Windows-first internal video server that stores encrypte
 - Use Python with UV-managed project metadata and environment setup.
 - Use a separated frontend/backend architecture.
 - Do not re-encode or compress video/audio payloads during import or playback.
-- Use only Baidu Netdisk official open platform APIs for cloud storage access.
+- Use only Baidu Netdisk official open platform APIs for real cloud storage access.
+- Allow a local mock storage backend for offline development, tests, and pre-Baidu integration phases.
 - Treat the Windows host as the trusted machine. Other devices access only the web UI and playback stream.
 - Preserve existing code style and make surgical changes only.
 
@@ -30,6 +31,7 @@ This repository hosts a Windows-first internal video server that stores encrypte
 - Media metadata and cover extraction may use external `ffmpeg` and `ffprobe`.
 - Segment encryption uses `AES-256-GCM`.
 - Stream decryption happens on the server, not in the browser.
+- Default pre-production storage backend is local `mock`; production cloud backend targets Baidu APIs.
 - Cached encrypted segments use an LRU size cap.
 
 ## Source Layout

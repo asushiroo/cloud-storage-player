@@ -30,6 +30,7 @@ from app.services.manifests import (
     build_remote_segment_path,
     write_local_manifest,
 )
+from app.storage.factory import build_storage_backend
 
 
 class ImportValidationError(ValueError):
@@ -73,8 +74,15 @@ def import_local_video(
         update_import_job_progress(settings, job.id, progress_percent=40)
         segments = _materialize_encrypted_segments(settings, source=source, video=video)
         update_import_job_progress(settings, job.id, progress_percent=70)
-        video = _write_manifest(settings, video=video, segments=segments)
+        video, local_manifest = _write_manifest(settings, video=video, segments=segments)
         update_import_job_progress(settings, job.id, progress_percent=85)
+        _upload_remote_artifacts(
+            settings,
+            video=video,
+            segments=segments,
+            manifest_path=local_manifest,
+        )
+        update_import_job_progress(settings, job.id, progress_percent=95)
         video = _maybe_extract_cover(settings, source=source, video=video)
     except MediaProbeError as exc:
         return mark_import_job_failed(settings, job.id, error_message=str(exc))
@@ -171,15 +179,37 @@ def _write_manifest(
     *,
     video: Video,
     segments: list[VideoSegment],
-) -> Video:
+) -> tuple[Video, Path]:
     remote_manifest_path = build_remote_manifest_path(settings, video_id=video.id)
-    write_local_manifest(
+    local_manifest_path = write_local_manifest(
         settings,
         video=video,
         segments=segments,
     )
-    return update_video_manifest_path(
+    updated_video = update_video_manifest_path(
         settings,
         video.id,
         manifest_path=remote_manifest_path,
     )
+    return updated_video, local_manifest_path
+
+
+def _upload_remote_artifacts(
+    settings: Settings,
+    *,
+    video: Video,
+    segments: list[VideoSegment],
+    manifest_path: Path,
+) -> None:
+    storage = build_storage_backend(settings)
+
+    for segment in segments:
+        if not segment.local_staging_path:
+            raise ValueError("Segment staging path is missing.")
+        if not segment.cloud_path:
+            raise ValueError("Segment cloud path is missing.")
+        storage.upload_file(Path(segment.local_staging_path), segment.cloud_path)
+
+    if not video.manifest_path:
+        raise ValueError("Video manifest path is missing.")
+    storage.upload_file(manifest_path, video.manifest_path)

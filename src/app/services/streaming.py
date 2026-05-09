@@ -15,6 +15,8 @@ from app.media.range_map import (
 from app.models.segments import VideoSegment
 from app.repositories.video_segments import list_video_segments
 from app.repositories.videos import get_video
+from app.storage.base import StorageBackend
+from app.storage.factory import build_storage_backend
 
 
 class VideoStreamNotFoundError(FileNotFoundError):
@@ -29,6 +31,7 @@ class VideoStreamPayload:
     source_path: Path | None = None
     segment_reads: list["PreparedSegmentRead"] | None = None
     content_key: bytes | None = None
+    storage_backend: StorageBackend | None = None
 
 
 @dataclass(slots=True)
@@ -89,6 +92,7 @@ def iter_video_stream(payload: VideoStreamPayload):
             yield from iter_segment_slice(
                 segment_read,
                 key=payload.content_key,
+                storage_backend=payload.storage_backend,
             )
         return
 
@@ -114,9 +118,6 @@ def _prepare_segment_stream(
     except (FileNotFoundError, ValueError):
         return None
 
-    if not _segments_are_usable(segments):
-        return None
-
     segment_slices = map_byte_range_to_segments(
         effective_range,
         segments=segments,
@@ -131,26 +132,59 @@ def _prepare_segment_stream(
         for segment_slice in segment_slices
     ]
 
+    if not all(_segment_is_addressable(segment_read.segment) for segment_read in prepared_reads):
+        return None
+
+    storage_backend = _build_storage_backend_if_needed(settings, prepared_reads)
+    if storage_backend is False:
+        return None
+
     return VideoStreamPayload(
         mime_type=mime_type,
         size=size,
         byte_range=byte_range,
         segment_reads=prepared_reads,
         content_key=content_key,
+        storage_backend=storage_backend or None,
     )
 
 
-def _segments_are_usable(segments: list[VideoSegment]) -> bool:
-    if not segments:
+def _build_storage_backend_if_needed(
+    settings: Settings,
+    segment_reads: list[PreparedSegmentRead],
+) -> StorageBackend | bool | None:
+    missing_local_segments = [
+        segment_read.segment
+        for segment_read in segment_reads
+        if not _local_segment_exists(segment_read.segment)
+    ]
+    if not missing_local_segments:
+        return None
+
+    try:
+        storage_backend = build_storage_backend(settings)
+    except (NotImplementedError, ValueError):
         return False
 
-    for segment in segments:
-        if not segment.local_staging_path:
-            return False
-        segment_path = Path(segment.local_staging_path)
-        if not segment_path.exists() or not segment_path.is_file():
-            return False
-    return True
+    try:
+        for segment in missing_local_segments:
+            if not segment.cloud_path or not storage_backend.exists(segment.cloud_path):
+                return False
+    except NotImplementedError:
+        return False
+
+    return storage_backend
+
+
+def _segment_is_addressable(segment: VideoSegment) -> bool:
+    return _local_segment_exists(segment) or bool(segment.cloud_path)
+
+
+def _local_segment_exists(segment: VideoSegment) -> bool:
+    if not segment.local_staging_path:
+        return False
+    segment_path = Path(segment.local_staging_path)
+    return segment_path.exists() and segment_path.is_file()
 
 
 def iter_file_range(
@@ -171,12 +205,16 @@ def iter_file_range(
             yield chunk
 
 
-def iter_segment_slice(segment_read: PreparedSegmentRead, *, key: bytes):
-    if not segment_read.segment.local_staging_path:
-        raise VideoStreamNotFoundError("Segment staging path is missing.")
-
-    segment_path = Path(segment_read.segment.local_staging_path)
-    payload = segment_path.read_bytes()
+def iter_segment_slice(
+    segment_read: PreparedSegmentRead,
+    *,
+    key: bytes,
+    storage_backend: StorageBackend | None = None,
+):
+    payload = _read_segment_payload(
+        segment_read.segment,
+        storage_backend=storage_backend,
+    )
     if len(payload) < TAG_SIZE_BYTES:
         raise VideoStreamNotFoundError("Encrypted segment file is incomplete.")
 
@@ -188,6 +226,25 @@ def iter_segment_slice(segment_read: PreparedSegmentRead, *, key: bytes):
         tag=decode_token(segment_read.segment.tag_b64),
     )
     yield plaintext[segment_read.read_start : segment_read.read_end + 1]
+
+
+def _read_segment_payload(
+    segment: VideoSegment,
+    *,
+    storage_backend: StorageBackend | None,
+) -> bytes:
+    if segment.local_staging_path:
+        segment_path = Path(segment.local_staging_path)
+        if segment_path.exists() and segment_path.is_file():
+            return segment_path.read_bytes()
+
+    if storage_backend is not None and segment.cloud_path:
+        try:
+            return storage_backend.download_bytes(segment.cloud_path)
+        except (FileNotFoundError, NotImplementedError) as exc:
+            raise VideoStreamNotFoundError("Encrypted segment file is missing.") from exc
+
+    raise VideoStreamNotFoundError("Encrypted segment file is missing.")
 
 
 __all__ = [

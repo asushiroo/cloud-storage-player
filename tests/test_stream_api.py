@@ -6,6 +6,7 @@ from app.core.config import Settings
 from app.core.security import hash_password
 from app.main import create_app
 from app.services.imports import import_local_video
+from app.storage.mock import MockStorageBackend
 
 
 def build_client(tmp_path: Path, password: str = "shared-secret") -> tuple[TestClient, Settings, str]:
@@ -16,6 +17,7 @@ def build_client(tmp_path: Path, password: str = "shared-secret") -> tuple[TestC
         covers_path=tmp_path / "covers",
         content_key_path=tmp_path / "keys" / "content.key",
         segment_staging_path=tmp_path / "segments",
+        mock_storage_path=tmp_path / "mock-remote",
         segment_size_bytes=512,
     )
     return TestClient(create_app(settings)), settings, password
@@ -44,6 +46,17 @@ def create_sample_video(output_path: Path) -> Path:
     ]
     subprocess.run(command, check=True, capture_output=True, text=True)
     return output_path
+
+
+def remove_tree(root: Path) -> None:
+    if not root.exists():
+        return
+    for path in sorted(root.rglob("*"), reverse=True):
+        if path.is_file():
+            path.unlink()
+        else:
+            path.rmdir()
+    root.rmdir()
 
 
 def test_stream_requires_authentication(tmp_path: Path) -> None:
@@ -138,19 +151,34 @@ def test_stream_can_fallback_to_local_encrypted_segments_when_source_is_removed(
     assert response.content == file_bytes
 
 
-def test_stream_returns_404_when_source_and_segments_are_both_missing(tmp_path: Path) -> None:
+def test_stream_can_fallback_to_mock_remote_when_source_and_local_segments_are_removed(tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    source_path = create_sample_video(tmp_path / "remote-fallback.mp4")
+    file_bytes = source_path.read_bytes()
+    job = import_local_video(settings, source_path=str(source_path))
+    source_path.unlink()
+    remove_tree(settings.segment_staging_dir / str(job.video_id))
+    login(client, password)
+
+    response = client.get(
+        f"/api/videos/{job.video_id}/stream",
+        headers={"Range": "bytes=16-127"},
+    )
+
+    assert response.status_code == 206
+    assert response.headers["content-length"] == str(127 - 16 + 1)
+    assert response.content == file_bytes[16:128]
+
+
+def test_stream_returns_404_when_source_local_and_remote_segments_are_all_missing(tmp_path: Path) -> None:
     client, settings, password = build_client(tmp_path)
     source_path = create_sample_video(tmp_path / "missing-everywhere.mp4")
     job = import_local_video(settings, source_path=str(source_path))
     source_path.unlink()
-    segment_root = settings.segment_staging_dir / str(job.video_id)
-    for path in sorted(segment_root.rglob("*"), reverse=True):
-        if path.is_file():
-            path.unlink()
-        else:
-            path.rmdir()
-    if segment_root.exists():
-        segment_root.rmdir()
+    remove_tree(settings.segment_staging_dir / str(job.video_id))
+
+    storage = MockStorageBackend(settings.mock_storage_dir)
+    remove_tree(storage.local_path_for(f"/CloudStoragePlayer/videos/{job.video_id}"))
     login(client, password)
 
     response = client.get(f"/api/videos/{job.video_id}/stream")

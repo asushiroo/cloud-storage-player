@@ -1,0 +1,44 @@
+from __future__ import annotations
+
+import shutil
+from pathlib import Path, PurePosixPath
+
+from app.storage.base import StorageBackend
+
+
+class MockStorageBackend(StorageBackend):
+    def __init__(self, root_dir: Path) -> None:
+        self.root_dir = root_dir
+
+    def upload_file(self, local_path: Path, remote_path: str) -> None:
+        destination = self.local_path_for(remote_path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(local_path, destination)
+
+    def upload_bytes(self, payload: bytes, remote_path: str) -> None:
+        destination = self.local_path_for(remote_path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload)
+
+    def download_bytes(self, remote_path: str) -> bytes:
+        path = self.local_path_for(remote_path)
+        if not path.exists() or not path.is_file():
+            raise FileNotFoundError(f"Remote object not found: {remote_path}")
+        return path.read_bytes()
+
+    def exists(self, remote_path: str) -> bool:
+        path = self.local_path_for(remote_path)
+        return path.exists() and path.is_file()
+
+    def local_path_for(self, remote_path: str) -> Path:
+        relative_path = _normalize_remote_path(remote_path)
+        return self.root_dir / Path(*relative_path.parts)
+
+
+def _normalize_remote_path(remote_path: str) -> PurePosixPath:
+    normalized = PurePosixPath(remote_path.lstrip("/"))
+    if not normalized.parts:
+        raise ValueError("remote_path must not be empty.")
+    if any(part == ".." for part in normalized.parts):
+        raise ValueError("remote_path must not escape the storage root.")
+    return normalized
