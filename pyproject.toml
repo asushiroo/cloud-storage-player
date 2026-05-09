@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cloud-storage-player"
+version = "0.1.0"
+description = "Windows-first LAN video service backed by Baidu Netdisk"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115,<1.0",
+    "itsdangerous>=2.2,<3.0",
+    "jinja2>=3.1,<4.0",
+    "pydantic-settings>=2.8,<3.0",
+    "python-multipart>=0.0.9,<1.0",
+    "uvicorn>=0.30,<1.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.27,<1.0",
+    "pytest>=8.3,<9.0",
+]
+
+[project.scripts]
+cloud-storage-player = "app.main:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

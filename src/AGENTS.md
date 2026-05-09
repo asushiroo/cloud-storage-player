@@ -1,8 +1,8 @@
-# Source Architecture
+# Backend Source Architecture
 
 ## Summary
 
-Build a Python FastAPI service that runs on a Windows host, exposes a LAN web UI, imports local videos from host paths, splits them into fixed-size byte segments, encrypts each segment, uploads segments to Baidu Netdisk, and later streams the original video bytes back to browsers through HTTP Range responses.
+Build a Python FastAPI backend that runs on a Windows host, exposes LAN JSON APIs for a separate Vue frontend, imports local videos from host paths, splits them into fixed-size byte segments, encrypts each segment, uploads segments to Baidu Netdisk, and later streams the original video bytes back to browsers through HTTP Range responses.
 
 ## Core Rules
 
@@ -13,11 +13,12 @@ Build a Python FastAPI service that runs on a Windows host, exposes a LAN web UI
 - Store encrypted segments and manifests in Baidu Netdisk.
 - Keep encryption keys on the Windows host only.
 - Prefer resumable tasks and explicit state transitions for imports.
+- Keep backend/frontend contracts explicit and stable.
 
 ## Package Layout
 
 - `src/app/main.py`
-  Application entrypoint, FastAPI app creation, startup hooks, and router/template registration.
+  Backend entrypoint, FastAPI app creation, startup hooks, middleware, CORS, and router registration.
 - `src/app/core/`
   Settings, path management, session auth, password hashing, and shared security helpers.
 - `src/app/db/`
@@ -33,11 +34,18 @@ Build a Python FastAPI service that runs on a Windows host, exposes a LAN web UI
 - `src/app/services/`
   Import workflow, playback workflow, sync workflow, cache cleanup, and settings management.
 - `src/app/api/`
-  Auth, library, import, settings, sync, and stream endpoints.
+  Auth, library, import, settings, sync, and stream JSON endpoints.
 - `src/app/web/`
-  Jinja templates and static assets for login, library, folder, player, and admin pages.
+  Transitional server-rendered pages only for smoke tests or temporary fallback use. Do not add new product UI here.
 - `tests/`
   Unit and integration coverage for chunking, crypto, auth, and streaming.
+
+## Frontend Boundary
+
+- The main UI lives in `/frontend`, not in `src/app/web`.
+- Backend should expose API-ready response models for the Vue app.
+- Backend may keep simple cookie-session auth and return JSON auth endpoints under `/api/auth/*`.
+- Browser-facing playback still uses backend stream URLs; no browser-side decryption.
 
 ## Responsibilities
 
@@ -45,6 +53,7 @@ Build a Python FastAPI service that runs on a Windows host, exposes a LAN web UI
 
 - `core/config.py` reads environment variables and persisted settings.
 - `core/security.py` manages password hashing, cookie sessions, and local key wrapping helpers.
+- Backend CORS settings must allow the separated Vue frontend origins while keeping credentialed session support.
 - Secrets needed for Baidu access are stored locally, never in Baidu manifests.
 
 ### Storage
@@ -113,18 +122,12 @@ The manifest must not include:
 
 ## HTTP Surface
 
-- `GET /login`
-  Login page.
-- `POST /auth/login`
-  Password authentication, sets secure session cookie.
-- `POST /auth/logout`
-  Clears the session.
-- `GET /`
-  Library homepage with folders.
-- `GET /folders/{folder_id}`
-  Video grid for a folder.
-- `GET /videos/{video_id}`
-  Player page.
+- `GET /api/auth/session`
+  Read current session state for the frontend.
+- `POST /api/auth/login`
+  JSON password authentication, sets session cookie.
+- `POST /api/auth/logout`
+  JSON logout, clears the session.
 - `GET /api/folders`
   JSON folder list.
 - `GET /api/videos`
@@ -147,6 +150,8 @@ The manifest must not include:
   Update local settings.
 - `POST /api/settings/baidu/oauth`
   Exchange authorization code and save refresh token.
+
+Transitional server-rendered routes like `/login` or `/` may remain temporarily, but they are no longer the primary product contract.
 
 ## Playback Model
 

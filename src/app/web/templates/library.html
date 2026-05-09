@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="card stack">
+    <div class="stack">
+      <h1>Library</h1>
+      <p>The initial FastAPI shell is ready.</p>
+      <p>Next slices can add folders, import jobs, and playback.</p>
+    </div>
+
+    <form action="/auth/logout" method="post">
+      <button type="submit">Sign out</button>
+    </form>
+  </section>
+{% endblock %}

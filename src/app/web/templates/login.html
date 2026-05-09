@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="card stack">
+    <div class="stack">
+      <h1>Cloud Storage Player</h1>
+      <p>Enter the shared password to open the LAN video library.</p>
+    </div>
+
+    {% if error %}
+      <p class="error">{{ error }}</p>
+    {% endif %}
+
+    <form action="/auth/login" method="post">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+      <button type="submit">Sign in</button>
+    </form>
+  </section>
+{% endblock %}
