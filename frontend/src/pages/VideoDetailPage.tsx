@@ -86,7 +86,7 @@ export function VideoDetailPage() {
         <Surface>
           <div className="detail-layout">
             <div className="detail-cover">
-              <CoverCard coverPath={video.cover_path} title={video.title} versionToken={videoQuery.dataUpdatedAt} />
+              <CoverCard artworkPath={video.poster_path ?? video.cover_path} title={video.title} versionToken={videoQuery.dataUpdatedAt} />
             </div>
             <div className="detail-main">
               <p className="eyebrow">Video #{video.id}</p>
@@ -100,7 +100,7 @@ export function VideoDetailPage() {
                 <p>Manifest：{video.manifest_path ?? "未生成"}</p>
                 <p>创建时间：{formatDateTime(video.created_at)}</p>
                 <p>分片数量：{video.segment_count}</p>
-                <p>Banner Poster：{video.poster_path ?? video.cover_path ?? "未设置"}</p>
+                <p>Poster：{video.poster_path ?? video.cover_path ?? "未设置"}</p>
               </div>
               <div className="action-row">
                 <Link className="primary-button link-button" to={`/videos/${video.id}/play`}>

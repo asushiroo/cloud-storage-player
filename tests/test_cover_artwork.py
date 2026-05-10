@@ -59,7 +59,7 @@ def read_image_size(image_path: Path) -> tuple[int, int]:
     return int(width_text), int(height_text)
 
 
-def test_import_generates_separate_fixed_ratio_cover_and_poster(tmp_path: Path) -> None:
+def test_import_generates_fixed_ratio_poster_only(tmp_path: Path) -> None:
     settings = build_settings(tmp_path)
     source_path = create_sample_video(tmp_path / "landscape.mp4")
 
@@ -67,14 +67,10 @@ def test_import_generates_separate_fixed_ratio_cover_and_poster(tmp_path: Path) 
     video = get_video(settings, job.video_id)
 
     assert video is not None
-    assert video.cover_path is not None
+    assert video.cover_path is None
     assert video.poster_path is not None
-    cover_file = settings.covers_dir / Path(video.cover_path).name
     poster_file = settings.covers_dir / Path(video.poster_path).name
-    assert cover_file.exists()
     assert poster_file.exists()
 
-    cover_width, cover_height = read_image_size(cover_file)
     poster_width, poster_height = read_image_size(poster_file)
-    assert (cover_width, cover_height) == (540, 810)
     assert (poster_width, poster_height) == (1280, 720)

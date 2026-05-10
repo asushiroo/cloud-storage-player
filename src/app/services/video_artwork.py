@@ -35,23 +35,16 @@ def replace_video_artwork(
     if video is None:
         raise VideoArtworkNotFoundError(f"Video not found: {video_id}")
 
-    if cover_data_url is not None and poster_data_url is not None:
-        return update_video_artwork_paths(
-            settings,
-            video_id,
-            cover_path=_write_artwork_file(settings, video_id=video_id, kind="cover", data_url=cover_data_url),
-            poster_path=_write_artwork_file(settings, video_id=video_id, kind="poster", data_url=poster_data_url),
-        )
-    if cover_data_url is not None:
-        return update_video_artwork_paths(
-            settings,
-            video_id,
-            cover_path=_write_artwork_file(settings, video_id=video_id, kind="cover", data_url=cover_data_url),
-        )
+    poster_source = poster_data_url or cover_data_url
+    if poster_source is None:
+        raise VideoArtworkValidationError("At least one artwork image is required.")
+
+    _delete_existing_artwork_files(settings, video_id=video_id, kind="cover")
     return update_video_artwork_paths(
         settings,
         video_id,
-        poster_path=_write_artwork_file(settings, video_id=video_id, kind="poster", data_url=poster_data_url),
+        cover_path=None,
+        poster_path=_write_artwork_file(settings, video_id=video_id, kind="poster", data_url=poster_source),
     )
 
 

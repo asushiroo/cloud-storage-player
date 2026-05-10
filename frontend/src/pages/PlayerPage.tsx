@@ -7,7 +7,6 @@ import { useRequireSession } from "../hooks/session";
 import type { ApiError, Video } from "../types/api";
 import { formatBytes, formatDuration } from "../utils/format";
 
-const COVER_TARGET = { width: 540, height: 810 };
 const POSTER_TARGET = { width: 1280, height: 720 };
 const DEFAULT_CROP = { zoom: 1, offsetX: 0, offsetY: 0 };
 const OVERLAY_HIDE_DELAY_MS = 2600;
@@ -121,12 +120,8 @@ export function PlayerPage() {
   const [isPlaying, setIsPlaying] = useState(true);
   const [showOverlay, setShowOverlay] = useState(true);
   const [capturedDataUrl, setCapturedDataUrl] = useState<string | null>(null);
-  const [coverPreviewDataUrl, setCoverPreviewDataUrl] = useState<string | null>(null);
   const [posterPreviewDataUrl, setPosterPreviewDataUrl] = useState<string | null>(null);
-  const [coverCrop, setCoverCrop] = useState<CropConfig>(DEFAULT_CROP);
   const [posterCrop, setPosterCrop] = useState<CropConfig>(DEFAULT_CROP);
-  const [replaceCover, setReplaceCover] = useState(true);
-  const [replacePoster, setReplacePoster] = useState(true);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const videoQuery = useQuery({
@@ -175,20 +170,15 @@ export function PlayerPage() {
 
   useEffect(() => {
     if (!capturedDataUrl) {
-      setCoverPreviewDataUrl(null);
       setPosterPreviewDataUrl(null);
       return;
     }
     let active = true;
-    Promise.all([
-      buildArtworkDataUrl(capturedDataUrl, COVER_TARGET, coverCrop),
-      buildArtworkDataUrl(capturedDataUrl, POSTER_TARGET, posterCrop),
-    ])
-      .then(([cover, poster]) => {
+    buildArtworkDataUrl(capturedDataUrl, POSTER_TARGET, posterCrop)
+      .then((poster) => {
         if (!active) {
           return;
         }
-        setCoverPreviewDataUrl(cover);
         setPosterPreviewDataUrl(poster);
       })
       .catch((exc: Error) => {
@@ -200,19 +190,18 @@ export function PlayerPage() {
     return () => {
       active = false;
     };
-  }, [capturedDataUrl, coverCrop, posterCrop]);
+  }, [capturedDataUrl, posterCrop]);
 
   const artworkMutation = useMutation({
     mutationFn: () =>
       updateVideoArtwork({
         videoId,
-        coverDataUrl: replaceCover ? coverPreviewDataUrl ?? undefined : undefined,
-        posterDataUrl: replacePoster ? posterPreviewDataUrl ?? undefined : undefined,
+        posterDataUrl: posterPreviewDataUrl ?? undefined,
       }),
     onSuccess: async (updatedVideo) => {
       refreshVideoCaches(updatedVideo);
       setCapturedDataUrl(null);
-      setFeedback("封面 / Poster 已更新。现在 cover 会固定输出竖版比例，poster 固定输出横版比例。");
+      setFeedback("Poster 已更新。媒体库和首页推荐位都会直接使用这张横版图。");
       setError(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["video", videoId] }),
@@ -276,10 +265,9 @@ export function PlayerPage() {
       return;
     }
     context.drawImage(element, 0, 0, canvas.width, canvas.height);
-    setCoverCrop(DEFAULT_CROP);
     setPosterCrop(DEFAULT_CROP);
     setCapturedDataUrl(canvas.toDataURL("image/jpeg", 0.92));
-    setFeedback("已捕获当前帧。你现在可以分别调整竖版 cover 与横版 poster 的缩放和截取位置。");
+    setFeedback("已捕获当前帧。现在只需要调整一个横版 poster。");
     setError(null);
   };
 
@@ -299,11 +287,7 @@ export function PlayerPage() {
           <p>{feedback}</p>
         </Surface>
       ) : null}
-      <div
-        className="player-surface"
-        onMouseMove={revealOverlay}
-        onTouchStart={revealOverlay}
-      >
+      <div className="player-surface" onMouseMove={revealOverlay} onTouchStart={revealOverlay}>
         <video
           autoPlay
           className="player-video"
@@ -364,43 +348,21 @@ export function PlayerPage() {
         <div className="section-head">
           <div>
             <h2>帧捕获</h2>
-            <p className="muted">捕获后会分别生成固定比例的竖版 cover 与横版 poster，你可以独立调整缩放和截取位置。</p>
+            <p className="muted">捕获后会生成固定 16:9 的横版 poster，用于首页推荐位和媒体库缩略图。</p>
           </div>
           <button className="primary-button" onClick={captureCurrentFrame} type="button">
             捕获当前帧
           </button>
         </div>
-        {capturedDataUrl && coverPreviewDataUrl && posterPreviewDataUrl ? (
+        {capturedDataUrl && posterPreviewDataUrl ? (
           <div className="artwork-editor">
-            <div className="artwork-preview-grid">
-              <div className="artwork-preview-card">
-                <p className="small-text muted">Cover 预览（固定竖版）</p>
-                <img alt="Cover preview" className="artwork-preview-image artwork-preview-cover" src={coverPreviewDataUrl} />
-                <CropControls crop={coverCrop} onChange={setCoverCrop} title="调整竖版 cover" />
-              </div>
-              <div className="artwork-preview-card">
-                <p className="small-text muted">Poster 预览（固定横版）</p>
-                <img alt="Poster preview" className="artwork-preview-image artwork-preview-poster" src={posterPreviewDataUrl} />
-                <CropControls crop={posterCrop} onChange={setPosterCrop} title="调整横版 poster" />
-              </div>
-            </div>
-            <div className="checkbox-row">
-              <label className="checkbox-item">
-                <input checked={replaceCover} onChange={(event) => setReplaceCover(event.target.checked)} type="checkbox" />
-                替换 cover
-              </label>
-              <label className="checkbox-item">
-                <input checked={replacePoster} onChange={(event) => setReplacePoster(event.target.checked)} type="checkbox" />
-                替换 poster
-              </label>
+            <div className="artwork-preview-card">
+              <p className="small-text muted">Poster 预览（固定横版）</p>
+              <img alt="Poster preview" className="artwork-preview-image artwork-preview-poster" src={posterPreviewDataUrl} />
+              <CropControls crop={posterCrop} onChange={setPosterCrop} title="调整横版 poster" />
             </div>
             <div className="action-row">
-              <button
-                className="primary-button"
-                disabled={artworkMutation.isPending || (!replaceCover && !replacePoster)}
-                onClick={() => artworkMutation.mutate()}
-                type="button"
-              >
+              <button className="primary-button" disabled={artworkMutation.isPending} onClick={() => artworkMutation.mutate()} type="button">
                 {artworkMutation.isPending ? "保存中..." : "应用到数据库"}
               </button>
               <button

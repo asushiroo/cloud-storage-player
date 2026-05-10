@@ -159,11 +159,9 @@ def test_import_video_creates_queued_job_and_completes_in_background(tmp_path: P
     assert video_payload["size"] > 0
     assert video_payload["duration_seconds"] is not None
     assert video_payload["source_path"] == str(source_path)
-    assert video_payload["cover_path"] is not None
-    assert video_payload["cover_path"].endswith("-cover.jpg")
+    assert video_payload["cover_path"] is None
     assert video_payload["poster_path"] is not None
     assert video_payload["poster_path"].endswith("-poster.jpg")
-    assert video_payload["poster_path"] != video_payload["cover_path"]
     assert video_payload["segment_count"] >= 1
     assert video_payload["tags"] == ["动画", "治愈"]
     assert video_payload["manifest_path"] is not None
@@ -199,9 +197,9 @@ def test_import_video_creates_queued_job_and_completes_in_background(tmp_path: P
         assert "segments" not in segment.cloud_path
         assert segment.cloud_path.endswith(".bin")
 
-    cover_response = client.get(video_payload["cover_path"])
-    assert cover_response.status_code == 200
-    assert cover_response.headers["content-type"] == "image/jpeg"
+    poster_response = client.get(video_payload["poster_path"])
+    assert poster_response.status_code == 200
+    assert poster_response.headers["content-type"] == "image/jpeg"
 
 
 def test_import_job_list_and_detail_endpoints_work(tmp_path: Path) -> None:
@@ -454,7 +452,6 @@ def test_update_video_artwork_replaces_cover_and_poster(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["cover_path"].endswith("-cover.png")
+    assert payload["cover_path"] is None
     assert payload["poster_path"].endswith("-poster.png")
-    assert client.get(payload["cover_path"]).status_code == 200
     assert client.get(payload["poster_path"]).status_code == 200

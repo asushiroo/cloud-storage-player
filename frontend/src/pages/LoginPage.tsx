@@ -29,7 +29,6 @@ export function LoginPage() {
       <div className="login-card">
         <p className="eyebrow">Kyoo code moved into frontend/</p>
         <h1>登录局域网影库</h1>
-        <p className="muted">当前前端已不再兼容原 Vue 实现，主线直接以迁入 frontend/ 的新代码为准。</p>
         <div className="form-stack">
           <input
             autoFocus

@@ -175,7 +175,7 @@ export function EditableTagList({ disabled = false, tags, onSave }: EditableTagL
         )}
       </div>
       {!hasTags ? <p className="muted small-text">暂无标签，点击“添加标签”开始。</p> : null}
-      <p className="muted small-text">双击标签可编辑，右上角 × 可删除；修改后会自动保存。</p>
+      <p className="muted small-text">双击标签可编辑，右上角 × 可删除；如需二级分类可使用“一级/二级”格式，修改后会自动保存。</p>
     </div>
   );
 }

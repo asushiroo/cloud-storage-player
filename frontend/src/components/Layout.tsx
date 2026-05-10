@@ -1,14 +1,16 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { PropsWithChildren } from "react";
-import { Link, NavLink, useNavigate } from "react-router-dom";
+import { useEffect, useState, type PropsWithChildren } from "react";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import logoImage from "../../asserts/logo.png";
 import { logout } from "../api/client";
 import { sessionQueryKey, useSession } from "../hooks/session";
 
 export function Layout({ children }: PropsWithChildren) {
   const session = useSession();
+  const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [librarySearchInput, setLibrarySearchInput] = useState("");
   const logoutMutation = useMutation({
     mutationFn: logout,
     onSuccess: async () => {
@@ -16,6 +18,26 @@ export function Layout({ children }: PropsWithChildren) {
       navigate("/login", { replace: true });
     },
   });
+
+  useEffect(() => {
+    if (location.pathname !== "/") {
+      setLibrarySearchInput("");
+      return;
+    }
+    const currentSearch = new URLSearchParams(location.search).get("q") ?? "";
+    setLibrarySearchInput(currentSearch);
+  }, [location.pathname, location.search]);
+
+  const submitLibrarySearch = () => {
+    const nextSearch = librarySearchInput.trim();
+    navigate(
+      {
+        pathname: "/",
+        search: nextSearch ? `?q=${encodeURIComponent(nextSearch)}` : "",
+      },
+      { replace: location.pathname === "/" },
+    );
+  };
 
   return (
     <div className="app-shell">
@@ -37,6 +59,21 @@ export function Layout({ children }: PropsWithChildren) {
           </nav>
         </div>
         <div className="header-right">
+          <form
+            className="header-search-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              submitLibrarySearch();
+            }}
+          >
+            <input
+              className="header-search-input"
+              onChange={(event) => setLibrarySearchInput(event.target.value)}
+              placeholder="搜索片名 / 标签 / 路径"
+              type="search"
+              value={librarySearchInput}
+            />
+          </form>
           {session.data?.authenticated ? (
             <button className="header-button" disabled={logoutMutation.isPending} onClick={() => logoutMutation.mutate()} type="button">
               {logoutMutation.isPending ? "退出中..." : "退出"}

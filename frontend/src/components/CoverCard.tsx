@@ -1,13 +1,13 @@
 import { buildAssetUrl } from "../api/client";
 
 interface CoverCardProps {
-  coverPath: string | null;
+  artworkPath: string | null;
   title: string;
   versionToken?: string | number;
 }
 
-export function CoverCard({ coverPath, title, versionToken }: CoverCardProps) {
-  const url = buildAssetUrl(coverPath, versionToken);
+export function CoverCard({ artworkPath, title, versionToken }: CoverCardProps) {
+  const url = buildAssetUrl(artworkPath, versionToken);
   return (
     <div className="cover-card">
       {url ? <img alt={title} className="cover-image" src={url} /> : <div className="cover-placeholder">No Cover</div>}
