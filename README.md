@@ -26,13 +26,14 @@
 - 导入时把 manifest / 加密分片上传到当前配置的存储后端
 - 远端 manifest 扫描 / catalog sync
 - 播放流优先读取本地加密分片，其次回退到远端对象，最后回退到源文件
+- 真实百度链路 smoke CLI（上传 / 远端 sync / 远端回放校验）
 - `ffmpeg` 封面抽取与 `/covers/*` 静态访问
 - `uv run pytest` 自动化测试
 - `frontend` 构建通过
 
 ## 当前仍未完成
 
-- 真实百度网盘链路的端到端在线验收脚本
+- 真实百度网盘链路的首次 OAuth 手工授权仍需要拿到 authorization code
 - 后台异步导入、断点续传、LRU 分片缓存
 - 更完善的百度错误重试与分片并发上传策略
 - 远端封面同步与更完整的 catalog 元数据恢复
@@ -167,6 +168,24 @@ uv run pytest
 ```bash
 cd frontend
 npm run build
+```
+
+真实百度 smoke：
+
+```bash
+uv run cloud-storage-player-baidu-smoke
+```
+
+如果还没有 refresh token，先按脚本打印的授权链接拿到 `code`，再执行：
+
+```bash
+uv run cloud-storage-player-baidu-smoke --oauth-code "你的百度授权码"
+```
+
+如果你想直接用 `tmp/rieri.mp4` 跑真实百度链路：
+
+```bash
+uv run cloud-storage-player-baidu-smoke --source-path tmp/rieri.mp4
 ```
 
 如果你在项目 `tmp/` 目录放了测试视频，例如 `tmp/rieri.mp4`，可以在服务启动后通过 `POST /api/imports` 手工导入验证。
