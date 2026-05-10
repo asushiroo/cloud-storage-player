@@ -647,7 +647,7 @@ h2 {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: min(50vw, 29rem);
+  width: 52%;
   aspect-ratio: 16 / 9;
   overflow: hidden;
   border-radius: 1.5rem;
@@ -658,7 +658,7 @@ h2 {
 }
 
 .banner-poster-card-left {
-  transform: translate3d(-86%, -50%, -12rem) rotateY(40deg) scale(0.82);
+  transform: translate3d(-96%, -50%, -12rem) rotateY(40deg) scale(0.82);
   opacity: 0.58;
 }
 
@@ -669,7 +669,7 @@ h2 {
 }
 
 .banner-poster-card-right {
-  transform: translate3d(-14%, -50%, -12rem) rotateY(-40deg) scale(0.82);
+  transform: translate3d(-4%, -50%, -12rem) rotateY(-40deg) scale(0.82);
   opacity: 0.58;
 }
 

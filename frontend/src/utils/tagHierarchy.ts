@@ -1,4 +1,5 @@
 const SECONDARY_PREFIX = "\u001fsecondary:";
+const LEGACY_SECONDARY_PREFIX = "secondary:";
 
 export interface ParsedTag {
   level: "primary" | "secondary";
@@ -12,6 +13,14 @@ export function expandTagValue(tag: string): ParsedTag[] {
       {
         level: "secondary",
         label: normalizedTag.slice(SECONDARY_PREFIX.length).trim(),
+      },
+    ];
+  }
+  if (normalizedTag.toLocaleLowerCase().startsWith(LEGACY_SECONDARY_PREFIX)) {
+    return [
+      {
+        level: "secondary",
+        label: normalizedTag.slice(LEGACY_SECONDARY_PREFIX.length).trim(),
       },
     ];
   }
@@ -51,5 +60,5 @@ export function buildPrimaryTagValue(label: string): string {
 
 export function buildSecondaryTagValue(label: string): string {
   const normalizedLabel = label.trim();
-  return normalizedLabel ? `${SECONDARY_PREFIX}${normalizedLabel}` : "";
+  return normalizedLabel ? `${LEGACY_SECONDARY_PREFIX}${normalizedLabel}` : "";
 }
