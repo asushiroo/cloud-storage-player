@@ -8,7 +8,13 @@ from app.db.connection import connect_database
 from app.models.library import Video
 
 
-def list_videos(settings: Settings, *, folder_id: int | None = None) -> list[Video]:
+def list_videos(
+    settings: Settings,
+    *,
+    folder_id: int | None = None,
+    q: str | None = None,
+    tag: str | None = None,
+) -> list[Video]:
     query = """
         SELECT videos.id,
                videos.folder_id,
@@ -39,7 +45,21 @@ def list_videos(settings: Settings, *, folder_id: int | None = None) -> list[Vid
     with connect_database(settings) as connection:
         rows = connection.execute(query, parameters).fetchall()
 
-    return [_row_to_video(row) for row in rows]
+    videos = [_row_to_video(row) for row in rows]
+    normalized_query = q.strip().casefold() if q and q.strip() else None
+    normalized_tag = tag.strip().casefold() if tag and tag.strip() else None
+    if normalized_query is None and normalized_tag is None:
+        return videos
+
+    return [
+        video
+        for video in videos
+        if _matches_video_filters(
+            video,
+            normalized_query=normalized_query,
+            normalized_tag=normalized_tag,
+        )
+    ]
 
 
 def create_video(
@@ -367,3 +387,22 @@ def _row_to_video(row: sqlite3.Row) -> Video:
         segment_count=row["segment_count"],
         tags=decode_tags(row["tags_json"]),
     )
+
+
+def _matches_video_filters(
+    video: Video,
+    *,
+    normalized_query: str | None,
+    normalized_tag: str | None,
+) -> bool:
+    if normalized_tag is not None and normalized_tag not in {tag.casefold() for tag in video.tags}:
+        return False
+
+    if normalized_query is None:
+        return True
+
+    haystacks = [video.title.casefold()]
+    if video.source_path:
+        haystacks.append(video.source_path.casefold())
+    haystacks.extend(tag.casefold() for tag in video.tags)
+    return any(normalized_query in value for value in haystacks)

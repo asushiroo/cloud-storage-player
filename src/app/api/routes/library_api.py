@@ -33,12 +33,14 @@ async def get_folders(
 async def get_videos(
     request: Request,
     folder_id: int | None = None,
+    q: str | None = None,
+    tag: str | None = None,
     _: None = Depends(require_authenticated),
 ) -> list[VideoResponse]:
     settings = request.app.state.settings
     return [
         VideoResponse.model_validate(video)
-        for video in list_videos(settings, folder_id=folder_id)
+        for video in list_videos(settings, folder_id=folder_id, q=q, tag=tag)
     ]
 
 

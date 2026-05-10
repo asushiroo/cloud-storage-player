@@ -106,6 +106,59 @@ def test_videos_endpoint_can_filter_by_folder(tmp_path: Path) -> None:
     assert [item["title"] for item in response.json()] == ["Anime B"]
 
 
+def test_videos_endpoint_can_filter_by_exact_tag(tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    create_video(
+        settings,
+        title="Family Movie",
+        mime_type="video/mp4",
+        size=100,
+        tags=["Family", "Weekend"],
+    )
+    create_video(
+        settings,
+        title="Sci-Fi Movie",
+        mime_type="video/mp4",
+        size=200,
+        tags=["Sci-Fi"],
+    )
+    login(client, password)
+
+    response = client.get("/api/videos?tag=family")
+
+    assert response.status_code == 200
+    assert [item["title"] for item in response.json()] == ["Family Movie"]
+
+
+def test_videos_endpoint_can_search_by_title_source_path_or_tag(tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    create_video(
+        settings,
+        title="Ocean Documentary",
+        mime_type="video/mp4",
+        size=100,
+        source_path="/media/docs/ocean-blue.mp4",
+        tags=["Nature"],
+    )
+    create_video(
+        settings,
+        title="City Walk",
+        mime_type="video/mp4",
+        size=200,
+        source_path="/media/travel/tokyo-night.mp4",
+        tags=["Weekend"],
+    )
+    login(client, password)
+
+    response = client.get("/api/videos?q=week")
+    assert response.status_code == 200
+    assert [item["title"] for item in response.json()] == ["City Walk"]
+
+    response = client.get("/api/videos?q=ocean-blue")
+    assert response.status_code == 200
+    assert [item["title"] for item in response.json()] == ["Ocean Documentary"]
+
+
 def test_video_tags_endpoint_updates_saved_tags(tmp_path: Path) -> None:
     client, settings, password = build_client(tmp_path)
     video = create_video(

@@ -1,14 +1,24 @@
 import { http } from "./http";
 import type { CatalogSyncResult, Folder, Video } from "../types/api";
 
+export interface FetchVideosParams {
+  folderId?: number;
+  q?: string;
+  tag?: string;
+}
+
 export async function fetchFolders(): Promise<Folder[]> {
   const response = await http.get<Folder[]>("/api/folders");
   return response.data;
 }
 
-export async function fetchVideos(folderId?: number): Promise<Video[]> {
+export async function fetchVideos(params?: FetchVideosParams): Promise<Video[]> {
   const response = await http.get<Video[]>("/api/videos", {
-    params: folderId ? { folder_id: folderId } : undefined,
+    params: {
+      folder_id: params?.folderId,
+      q: params?.q?.trim() || undefined,
+      tag: params?.tag?.trim() || undefined,
+    },
   });
   return response.data;
 }

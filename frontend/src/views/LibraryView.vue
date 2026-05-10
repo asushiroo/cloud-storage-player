@@ -16,6 +16,9 @@ const videos = ref<Video[]>([]);
 const importJobs = ref<ImportJob[]>([]);
 const selectedFolderId = ref<number | "">("");
 const importFolderId = ref<number | "">("");
+const searchInput = ref("");
+const appliedSearchText = ref("");
+const activeTag = ref("");
 const sourcePath = ref("");
 const title = ref("");
 const tagInput = ref("");
@@ -45,11 +48,23 @@ const totalTags = computed(() => {
   }
   return tagSet.size;
 });
+const availableTags = computed(() => {
+  const counts = new Map<string, number>();
+  for (const video of videos.value) {
+    for (const tag of video.tags) {
+      counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name));
+});
 const activeImportJobs = computed(() =>
   importJobs.value.filter((job) => job.status === "queued" || job.status === "running"),
 );
 const recentImportJobs = computed(() => importJobs.value.slice(0, 6));
 const shouldPoll = computed(() => activeImportJobs.value.length > 0);
+const hasActiveLibraryFilters = computed(() => Boolean(appliedSearchText.value || activeTag.value));
 
 async function load(options?: { silent?: boolean }): Promise<void> {
   const silent = options?.silent ?? false;
@@ -59,9 +74,11 @@ async function load(options?: { silent?: boolean }): Promise<void> {
   }
   try {
     folders.value = await libraryApi.fetchFolders();
-    videos.value = await libraryApi.fetchVideos(
-      selectedFolderId.value === "" ? undefined : Number(selectedFolderId.value),
-    );
+    videos.value = await libraryApi.fetchVideos({
+      folderId: selectedFolderId.value === "" ? undefined : Number(selectedFolderId.value),
+      q: appliedSearchText.value,
+      tag: activeTag.value || undefined,
+    });
     importJobs.value = await importsApi.fetchImportJobs();
   } catch (exc) {
     if (axios.isAxiosError(exc)) {
@@ -74,6 +91,23 @@ async function load(options?: { silent?: boolean }): Promise<void> {
       loading.value = false;
     }
   }
+}
+
+async function applyLibraryFilters(): Promise<void> {
+  appliedSearchText.value = searchInput.value.trim();
+  await load();
+}
+
+async function toggleTagFilter(tag: string): Promise<void> {
+  activeTag.value = activeTag.value === tag ? "" : tag;
+  await load();
+}
+
+async function clearLibraryFilters(): Promise<void> {
+  searchInput.value = "";
+  appliedSearchText.value = "";
+  activeTag.value = "";
+  await load();
 }
 
 async function submitImport(): Promise<void> {
@@ -227,8 +261,63 @@ onUnmounted(() => {
             </option>
           </select>
         </div>
+        <div class="field">
+          <label for="library-search">标题 / 路径 / 标签搜索</label>
+          <div class="search-inline">
+            <input
+              id="library-search"
+              v-model="searchInput"
+              placeholder="例如 动画、weekend、tmp/rieri"
+              @keyup.enter="applyLibraryFilters"
+            />
+            <button class="button" type="button" :disabled="loading" @click="applyLibraryFilters">
+              搜索
+            </button>
+            <button
+              v-if="hasActiveLibraryFilters"
+              class="button ghost"
+              type="button"
+              :disabled="loading"
+              @click="clearLibraryFilters"
+            >
+              清空
+            </button>
+          </div>
+        </div>
         <div class="control-hint">
           <span v-if="pollingActive" class="muted">检测到导入任务，列表每 2 秒自动刷新。</span>
+          <span v-else-if="activeTag" class="muted">当前标签过滤：{{ activeTag }}</span>
+        </div>
+      </section>
+
+      <section v-if="availableTags.length > 0" class="surface section-card">
+        <div class="section-heading">
+          <div>
+            <div class="eyebrow">Tags</div>
+            <h2>标签筛选</h2>
+          </div>
+          <span class="muted">{{ availableTags.length }} 个可见标签</span>
+        </div>
+        <div class="tag-filter-row">
+          <button
+            class="chip-button"
+            :class="{ active: !activeTag }"
+            type="button"
+            @click="toggleTagFilter('')"
+          >
+            全部标签
+          </button>
+          <button
+            v-for="tag in availableTags"
+            :key="tag.name"
+            class="chip-button"
+            :class="{ active: activeTag === tag.name }"
+            type="button"
+            @click="toggleTagFilter(tag.name)"
+          >
+            <span>{{ tag.name }}</span>
+            <strong>{{ tag.count }}</strong>
+          </button>
         </div>
       </section>
 
