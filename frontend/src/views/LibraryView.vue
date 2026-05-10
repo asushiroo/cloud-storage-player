@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import axios from "axios";
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { RouterLink } from "vue-router";
 import * as importsApi from "../api/imports";
 import * as libraryApi from "../api/library";
@@ -17,14 +17,29 @@ const title = ref("");
 const loading = ref(false);
 const importLoading = ref(false);
 const syncLoading = ref(false);
+const pollingActive = ref(false);
 const message = ref("");
 const error = ref("");
+let pollTimer: number | null = null;
 
 const filteredVideos = computed(() => videos.value);
+const activeImportJobs = computed(() =>
+  importJobs.value.filter((job) => job.status === "queued" || job.status === "running"),
+);
+const completedImportJobs = computed(() =>
+  importJobs.value.filter((job) => job.status === "completed"),
+);
+const failedImportJobs = computed(() =>
+  importJobs.value.filter((job) => job.status === "failed"),
+);
+const shouldPoll = computed(() => activeImportJobs.value.length > 0);
 
-async function load(): Promise<void> {
-  loading.value = true;
-  error.value = "";
+async function load(options?: { silent?: boolean }): Promise<void> {
+  const silent = options?.silent ?? false;
+  if (!silent) {
+    loading.value = true;
+    error.value = "";
+  }
   try {
     folders.value = await libraryApi.fetchFolders();
     videos.value = await libraryApi.fetchVideos(
@@ -38,7 +53,9 @@ async function load(): Promise<void> {
       error.value = "加载媒体库失败。";
     }
   } finally {
-    loading.value = false;
+    if (!silent) {
+      loading.value = false;
+    }
   }
 }
 
@@ -54,6 +71,7 @@ async function submitImport(): Promise<void> {
     });
     sourcePath.value = "";
     title.value = "";
+    message.value = "导入任务已入队，页面会自动刷新任务状态。";
     await load();
   } catch (exc) {
     if (axios.isAxiosError(exc)) {
@@ -64,6 +82,40 @@ async function submitImport(): Promise<void> {
   } finally {
     importLoading.value = false;
   }
+}
+
+function startPolling(): void {
+  if (pollTimer !== null) {
+    return;
+  }
+  pollingActive.value = true;
+  pollTimer = window.setInterval(() => {
+    void load({ silent: true });
+  }, 2000);
+}
+
+function stopPolling(): void {
+  if (pollTimer !== null) {
+    window.clearInterval(pollTimer);
+    pollTimer = null;
+  }
+  pollingActive.value = false;
+}
+
+function statusLabel(status: string): string {
+  if (status === "queued") {
+    return "排队中";
+  }
+  if (status === "running") {
+    return "处理中";
+  }
+  if (status === "completed") {
+    return "已完成";
+  }
+  if (status === "failed") {
+    return "失败";
+  }
+  return status;
 }
 
 async function syncCatalog(): Promise<void> {
@@ -93,7 +145,25 @@ async function syncCatalog(): Promise<void> {
   }
 }
 
-onMounted(load);
+watch(
+  shouldPoll,
+  (value) => {
+    if (value) {
+      startPolling();
+    } else {
+      stopPolling();
+    }
+  },
+  { immediate: true },
+);
+
+onMounted(() => {
+  void load();
+});
+
+onUnmounted(() => {
+  stopPolling();
+});
 </script>
 
 <template>
@@ -108,10 +178,25 @@ onMounted(load);
         <p v-if="error" class="error">{{ error }}</p>
         <p v-if="message">{{ message }}</p>
 
+        <div class="grid three">
+          <div class="panel stat-card">
+            <div class="muted">视频总数</div>
+            <strong>{{ filteredVideos.length }}</strong>
+          </div>
+          <div class="panel stat-card">
+            <div class="muted">进行中任务</div>
+            <strong>{{ activeImportJobs.length }}</strong>
+          </div>
+          <div class="panel stat-card">
+            <div class="muted">失败任务</div>
+            <strong>{{ failedImportJobs.length }}</strong>
+          </div>
+        </div>
+
         <div class="grid two">
           <div class="field">
             <label for="folder-filter">目录过滤</label>
-            <select id="folder-filter" v-model="selectedFolderId" @change="load">
+            <select id="folder-filter" v-model="selectedFolderId" @change="() => load()">
               <option value="">全部目录</option>
               <option v-for="folder in folders" :key="folder.id" :value="folder.id">
                 {{ folder.name }}
@@ -124,6 +209,10 @@ onMounted(load);
           <button class="button secondary" type="button" :disabled="syncLoading" @click="syncCatalog">
             {{ syncLoading ? "同步中..." : "同步远端目录" }}
           </button>
+          <button class="button secondary" type="button" :disabled="loading" @click="() => load()">
+            {{ loading ? "刷新中..." : "刷新列表" }}
+          </button>
+          <span v-if="pollingActive" class="muted">检测到导入任务正在进行，列表每 2 秒自动刷新。</span>
         </div>
       </section>
 
@@ -191,22 +280,40 @@ onMounted(load);
 
       <section class="panel stack">
         <h3>导入任务</h3>
+        <p class="muted">
+          已完成 {{ completedImportJobs.length }} 个，进行中 {{ activeImportJobs.length }} 个，失败
+          {{ failedImportJobs.length }} 个。
+        </p>
         <table class="table">
           <thead>
             <tr>
               <th>ID</th>
+              <th>标题</th>
               <th>源路径</th>
               <th>状态</th>
               <th>进度</th>
+              <th>结果</th>
               <th>错误</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="job in importJobs" :key="job.id">
               <td>{{ job.id }}</td>
+              <td>{{ job.requested_title ?? "-" }}</td>
               <td>{{ job.source_path }}</td>
-              <td>{{ job.status }}</td>
-              <td>{{ job.progress_percent }}%</td>
+              <td>
+                <span class="status-badge" :class="job.status">{{ statusLabel(job.status) }}</span>
+              </td>
+              <td style="min-width: 180px;">
+                <div class="progress-track">
+                  <div class="progress-fill" :style="{ width: `${job.progress_percent}%` }" />
+                </div>
+                <div class="muted progress-text">{{ job.progress_percent }}%</div>
+              </td>
+              <td>
+                <RouterLink v-if="job.video_id" :to="`/videos/${job.video_id}`">查看视频</RouterLink>
+                <span v-else class="muted">-</span>
+              </td>
               <td>{{ job.error_message ?? "-" }}</td>
             </tr>
           </tbody>

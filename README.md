@@ -25,6 +25,7 @@
 - 百度 OAuth 授权码换取 refresh token，并缓存 access token
 - 导入时把 manifest / 加密分片上传到当前配置的存储后端
 - 后台异步导入任务（API 入队，后台 worker 执行）
+- 前端导入任务自动轮询与进度展示
 - 远端 manifest 扫描 / catalog sync
 - 百度 OpenAPI / PCS 的基础重试与退避
 - 播放流优先读取本地加密分片，其次回退到远端对象，最后回退到源文件
