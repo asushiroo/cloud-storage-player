@@ -8,6 +8,7 @@ import { Surface } from "../components/Surface";
 import { TagChip } from "../components/TagChip";
 import { useRequireSession } from "../hooks/session";
 import type { ApiError } from "../types/api";
+import { expandTagValue } from "../utils/tagHierarchy";
 import { formatBytes, formatDateTime, formatDuration } from "../utils/format";
 
 export function VideoDetailPage() {
@@ -93,7 +94,11 @@ export function VideoDetailPage() {
               <h1>{video.title}</h1>
               <p className="muted">{formatDuration(video.duration_seconds)} · {formatBytes(video.size)} · {video.mime_type}</p>
               <div className="chip-row compact">
-                {video.tags.length > 0 ? video.tags.map((tag) => <TagChip key={tag} label={tag} small />) : <span className="muted small-text">暂无标签</span>}
+                {video.tags.length > 0 ? (
+                  video.tags.flatMap(expandTagValue).map((tag, index) => <TagChip key={`${tag.level}-${tag.label}-${index}`} label={tag.label} small />)
+                ) : (
+                  <span className="muted small-text">暂无标签</span>
+                )}
               </div>
               <div className="detail-info">
                 <p>源文件：{video.source_path ?? "未保留"}</p>

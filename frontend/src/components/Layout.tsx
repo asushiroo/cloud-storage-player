@@ -58,22 +58,22 @@ export function Layout({ children }: PropsWithChildren) {
             </NavLink>
           </nav>
         </div>
+        <form
+          className="header-search-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            submitLibrarySearch();
+          }}
+        >
+          <input
+            className="header-search-input"
+            onChange={(event) => setLibrarySearchInput(event.target.value)}
+            placeholder="搜索片名 / 标签 / 路径"
+            type="search"
+            value={librarySearchInput}
+          />
+        </form>
         <div className="header-right">
-          <form
-            className="header-search-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              submitLibrarySearch();
-            }}
-          >
-            <input
-              className="header-search-input"
-              onChange={(event) => setLibrarySearchInput(event.target.value)}
-              placeholder="搜索片名 / 标签 / 路径"
-              type="search"
-              value={librarySearchInput}
-            />
-          </form>
           {session.data?.authenticated ? (
             <button className="header-button" disabled={logoutMutation.isPending} onClick={() => logoutMutation.mutate()} type="button">
               {logoutMutation.isPending ? "退出中..." : "退出"}

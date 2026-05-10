@@ -356,10 +356,14 @@ export function PlayerPage() {
         </div>
         {capturedDataUrl && posterPreviewDataUrl ? (
           <div className="artwork-editor">
-            <div className="artwork-preview-card">
-              <p className="small-text muted">Poster 预览（固定横版）</p>
-              <img alt="Poster preview" className="artwork-preview-image artwork-preview-poster" src={posterPreviewDataUrl} />
-              <CropControls crop={posterCrop} onChange={setPosterCrop} title="调整横版 poster" />
+            <div className="artwork-editor-split">
+              <div className="artwork-preview-card artwork-preview-card-compact">
+                <p className="small-text muted">Poster 预览（固定横版）</p>
+                <img alt="Poster preview" className="artwork-preview-image artwork-preview-poster" src={posterPreviewDataUrl} />
+              </div>
+              <div className="artwork-controls-shell">
+                <CropControls crop={posterCrop} onChange={setPosterCrop} title="调整横版 poster" />
+              </div>
             </div>
             <div className="action-row">
               <button className="primary-button" disabled={artworkMutation.isPending} onClick={() => artworkMutation.mutate()} type="button">

@@ -7,6 +7,7 @@ import { Surface } from "../components/Surface";
 import { TagChip } from "../components/TagChip";
 import { useRequireSession } from "../hooks/session";
 import type { Video } from "../types/api";
+import { expandTagValue } from "../utils/tagHierarchy";
 import { formatBytes, formatDuration } from "../utils/format";
 
 const BANNER_SELECTION_SIZE = 5;
@@ -15,17 +16,6 @@ const BANNER_REFRESH_MS = 10 * 60 * 1_000;
 const BANNER_VISIBLE_SLOTS = ["left", "center", "right"] as const;
 
 type BannerSlot = (typeof BANNER_VISIBLE_SLOTS)[number];
-
-function splitTagLabel(tag: string) {
-  const [primary, ...secondaryParts] = tag
-    .split("/")
-    .map((part) => part.trim())
-    .filter(Boolean);
-  return {
-    primary: primary ?? "",
-    secondary: secondaryParts.length > 0 ? secondaryParts.join("/") : null,
-  };
-}
 
 function pickBannerVideos(videoIdsSeed: number, videos: Video[]) {
   const withPoster = videos.filter((video) => video.poster_path || video.cover_path);
@@ -80,53 +70,57 @@ export function LibraryPage() {
   const videos = videosQuery.data ?? [];
   const artworkVersionToken = videosQuery.dataUpdatedAt;
   const primaryTagGroups = useMemo(() => {
-    const groups = new Map<
-      string,
-      {
-        count: number;
-        secondaries: Map<string, number>;
-      }
-    >();
+    const groups = new Map<string, number>();
     for (const video of videos) {
       for (const tag of video.tags) {
-        const parsed = splitTagLabel(tag);
-        if (!parsed.primary) {
-          continue;
+        for (const parsed of expandTagValue(tag)) {
+          if (parsed.level !== "primary" || !parsed.label) {
+            continue;
+          }
+          groups.set(parsed.label, (groups.get(parsed.label) ?? 0) + 1);
         }
-        const group = groups.get(parsed.primary) ?? { count: 0, secondaries: new Map<string, number>() };
-        group.count += 1;
-        if (parsed.secondary) {
-          group.secondaries.set(parsed.secondary, (group.secondaries.get(parsed.secondary) ?? 0) + 1);
-        }
-        groups.set(parsed.primary, group);
       }
     }
     return [...groups.entries()]
-      .map(([label, value]) => ({
-        label,
-        count: value.count,
-        secondaries: [...value.secondaries.entries()]
-          .map(([secondary, count]) => ({ label: secondary, count }))
-          .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label)),
-      }))
+      .map(([label, count]) => ({ label, count }))
       .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
   }, [videos]);
-  const activePrimaryGroup = primaryTagGroups.find((group) => group.label === activePrimaryTag);
+  const secondaryTagGroups = useMemo(() => {
+    if (!activePrimaryTag) {
+      return [];
+    }
+    const groups = new Map<string, number>();
+    for (const video of videos) {
+      const parsedTags = video.tags.flatMap(expandTagValue);
+      if (!parsedTags.some((tag) => tag.level === "primary" && tag.label === activePrimaryTag)) {
+        continue;
+      }
+      for (const tag of parsedTags) {
+        if (tag.level !== "secondary" || !tag.label) {
+          continue;
+        }
+        groups.set(tag.label, (groups.get(tag.label) ?? 0) + 1);
+      }
+    }
+    return [...groups.entries()]
+      .map(([label, count]) => ({ label, count }))
+      .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
+  }, [activePrimaryTag, videos]);
   const filteredVideos = useMemo(
     () =>
       videos.filter((video) => {
         if (!activePrimaryTag) {
           return true;
         }
-        const parsedTags = video.tags.map(splitTagLabel);
-        const matchesPrimary = parsedTags.some((tag) => tag.primary === activePrimaryTag);
+        const parsedTags = video.tags.flatMap(expandTagValue);
+        const matchesPrimary = parsedTags.some((tag) => tag.level === "primary" && tag.label === activePrimaryTag);
         if (!matchesPrimary) {
           return false;
         }
         if (!activeSecondaryTag) {
           return true;
         }
-        return parsedTags.some((tag) => tag.primary === activePrimaryTag && tag.secondary === activeSecondaryTag);
+        return parsedTags.some((tag) => tag.level === "secondary" && tag.label === activeSecondaryTag);
       }),
     [activePrimaryTag, activeSecondaryTag, videos],
   );
@@ -146,13 +140,13 @@ export function LibraryPage() {
   }, [bannerSeed, bannerVideos.length, appliedSearch, activePrimaryTag, activeSecondaryTag, selectedFolderId]);
 
   useEffect(() => {
-    if (!activePrimaryGroup || activeSecondaryTag === undefined) {
+    if (!activeSecondaryTag) {
       return;
     }
-    if (!activePrimaryGroup.secondaries.some((secondary) => secondary.label === activeSecondaryTag)) {
+    if (!secondaryTagGroups.some((secondary) => secondary.label === activeSecondaryTag)) {
       setActiveSecondaryTag(undefined);
     }
-  }, [activePrimaryGroup, activeSecondaryTag]);
+  }, [activeSecondaryTag, secondaryTagGroups]);
 
   useEffect(() => {
     if (bannerVideos.length <= 1) {
@@ -199,6 +193,8 @@ export function LibraryPage() {
         </Surface>
       )}
 
+      <div className="section-divider" />
+
       <Surface>
         <div className="library-toolbar-row">
           <div className="chip-row">
@@ -227,10 +223,10 @@ export function LibraryPage() {
             ))}
           </div>
         ) : null}
-        {activePrimaryGroup && activePrimaryGroup.secondaries.length > 0 ? (
+        {activePrimaryTag && secondaryTagGroups.length > 0 ? (
           <div className="chip-row top-gap">
             <TagChip active={activeSecondaryTag === undefined} label="全部子分类" onClick={() => setActiveSecondaryTag(undefined)} />
-            {activePrimaryGroup.secondaries.map((secondary) => (
+            {secondaryTagGroups.map((secondary) => (
               <TagChip
                 key={secondary.label}
                 active={activeSecondaryTag === secondary.label}
@@ -242,6 +238,8 @@ export function LibraryPage() {
         ) : null}
       </Surface>
 
+      <div className="section-divider" />
+
       <div className="video-grid">
         {filteredVideos.map((video) => (
           <Link className="video-card" key={video.id} to={`/videos/${video.id}`}>
@@ -251,9 +249,9 @@ export function LibraryPage() {
               <p className="muted">{formatDuration(video.duration_seconds)} · {formatBytes(video.size)} · {video.segment_count} segments</p>
               <div className="chip-row compact">
                 {video.tags.length > 0 ? (
-                  video.tags.map((tag) => (
-                    <span className="mini-tag" key={tag}>
-                      {tag}
+                  video.tags.flatMap(expandTagValue).map((tag, index) => (
+                    <span className="mini-tag" key={`${video.id}-${tag.level}-${tag.label}-${index}`}>
+                      {tag.label}
                     </span>
                   ))
                 ) : (
