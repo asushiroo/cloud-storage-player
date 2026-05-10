@@ -178,7 +178,7 @@ def test_stream_returns_404_when_source_local_and_remote_segments_are_all_missin
     remove_tree(settings.segment_staging_dir / str(job.video_id))
 
     storage = MockStorageBackend(settings.mock_storage_dir)
-    remove_tree(storage.local_path_for(f"/CloudStoragePlayer/videos/{job.video_id}"))
+    remove_tree(storage.local_path_for(f"/apps/CloudStoragePlayer/videos/{job.video_id}"))
     login(client, password)
 
     response = client.get(f"/api/videos/{job.video_id}/stream")

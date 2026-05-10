@@ -61,7 +61,7 @@ def test_catalog_endpoints_return_inserted_rows(tmp_path: Path) -> None:
         mime_type="video/mp4",
         size=1024,
         duration_seconds=12.5,
-        manifest_path="/CloudStoragePlayer/videos/1/manifest.json",
+        manifest_path="/apps/CloudStoragePlayer/videos/1/manifest.json",
     )
     login(client, password)
 

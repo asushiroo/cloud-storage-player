@@ -2,9 +2,9 @@
 
 这是一个运行在 Windows 主机上的局域网视频服务：主机负责导入本地视频、按固定大小切片、AES-256-GCM 加密、写入本地元数据，并把加密分片与 manifest 上传到配置的存储后端；浏览器侧通过普通 `video` 标签访问后端 Range 流。
 
-当前仓库已经切到**前后端分离**：
+当前仓库采用**前后端分离**：
 
-- 后端：FastAPI + SQLite + 服务层 / 仓储层
+- 后端：FastAPI + SQLite + 服务层 / 仓储层 / 存储抽象
 - 前端：Vue 3 + TypeScript + Vite
 
 ## 当前已实现
@@ -19,18 +19,22 @@
 - 固定大小切片与 AES-256-GCM 加密
 - `video_segments` 元数据落库
 - 本地 manifest 生成
-- 导入时将 manifest / 加密分片上传到**可切换存储后端**
-- 默认 `mock` 存储后端（本地目录模拟远端对象存储）
-- 播放流优先读取本地加密分片，其次回退到 mock 远端对象，最后才回退到源文件
+- 存储后端抽象
+  - `mock`：本地目录模拟远端对象存储
+  - `baidu`：基于百度网盘官方 open platform 的最小可用 backend
+- 百度 OAuth 授权码换取 refresh token
+- 导入时把 manifest / 加密分片上传到当前配置的存储后端
+- 播放流优先读取本地加密分片，其次回退到远端对象，最后回退到源文件
 - `ffmpeg` 封面抽取与 `/covers/*` 静态访问
 - `uv run pytest` 自动化测试
 - `frontend` 构建通过
 
-## 当前仍未实现
+## 当前仍未完成
 
-- 真实百度网盘 open platform 接入
-- 真实远端 manifest 扫描 / 同步
-- 断点续传、后台异步导入、LRU 分片缓存
+- 真实百度网盘链路的端到端在线验收脚本
+- 远端 manifest 扫描 / catalog sync
+- 后台异步导入、断点续传、LRU 分片缓存
+- 更完善的百度错误重试与分片并发上传策略
 
 ## Python 版本
 
@@ -81,18 +85,33 @@ npm run dev
 - `CSP_SEGMENT_STAGING_PATH`
 - `CSP_SEGMENT_SIZE_BYTES`
 
-### 前后端联调
-
-- `CSP_CORS_ALLOWED_ORIGINS_RAW`
-
 ### 存储后端
 
 - `CSP_STORAGE_BACKEND`
   - 当前默认：`mock`
-  - 预留：`baidu`
+  - 可选：`mock` / `baidu`
 - `CSP_MOCK_STORAGE_PATH`
   - 当前默认：`data/mock-remote`
-  - 用于把“远端对象”映射到本地目录，便于离线开发和测试
+- `CSP_BAIDU_OAUTH_REDIRECT_URI`
+  - 当前默认：`oob`
+  - 用于百度 OAuth 授权码回调参数
+
+### 前后端联调
+
+- `CSP_CORS_ALLOWED_ORIGINS_RAW`
+
+### 百度网盘开放平台凭据
+
+这些值按项目约定来自**不带 `CSP_` 前缀**的环境变量：
+
+- `BAIDU_APP_KEY`
+- `BAIDU_SECRET_KEY`
+- `BAIDU_SIGN_KEY`
+
+说明：
+
+- 当前上传 / 下载链路实际使用 `BAIDU_APP_KEY` 与 `BAIDU_SECRET_KEY`
+- `BAIDU_SIGN_KEY` 先保留，后续更深的开放能力接入时可能会用到
 
 ## 当前接口
 
@@ -119,6 +138,16 @@ npm run dev
 
 - `GET /api/settings`
 - `POST /api/settings`
+- `POST /api/settings/baidu/oauth`
+
+## 百度授权最小流程
+
+1. 在后端环境里配置 `BAIDU_APP_KEY`、`BAIDU_SECRET_KEY`
+2. 打开设置页或调用 `GET /api/settings`
+3. 取返回的 `baidu_authorize_url`
+4. 在浏览器打开授权页，完成授权
+5. 把返回的 `code` 提交到 `POST /api/settings/baidu/oauth`
+6. 再把 `storage_backend` 切到 `baidu`
 
 ## 测试与验证
 
@@ -142,3 +171,4 @@ npm run build
 - [docs/README.md](docs/README.md)
 - [docs/technical-overview.md](docs/technical-overview.md)
 - [docs/storage-backend-and-remote-fallback.md](docs/storage-backend-and-remote-fallback.md)
+- [docs/baidu-openapi-integration.md](docs/baidu-openapi-integration.md)

@@ -9,7 +9,7 @@ This repository hosts a Windows-first internal video server that stores encrypte
 - Use a separated frontend/backend architecture.
 - Do not re-encode or compress video/audio payloads during import or playback.
 - Use only Baidu Netdisk official open platform APIs for real cloud storage access.
-- Allow a local mock storage backend for offline development, tests, and pre-Baidu integration phases.
+- Allow a local mock storage backend for offline development, tests, and pre-production verification.
 - Treat the Windows host as the trusted machine. Other devices access only the web UI and playback stream.
 - Preserve existing code style and make surgical changes only.
 
@@ -31,7 +31,8 @@ This repository hosts a Windows-first internal video server that stores encrypte
 - Media metadata and cover extraction may use external `ffmpeg` and `ffprobe`.
 - Segment encryption uses `AES-256-GCM`.
 - Stream decryption happens on the server, not in the browser.
-- Default pre-production storage backend is local `mock`; production cloud backend targets Baidu APIs.
+- Default pre-production storage backend is local `mock`; real cloud backend targets Baidu APIs.
+- Default Baidu root path is `/apps/CloudStoragePlayer`.
 - Cached encrypted segments use an LRU size cap.
 
 ## Source Layout
@@ -49,14 +50,15 @@ Detailed frontend architecture lives in [frontend/AGENTS.md](/root/cloud-storage
 
 ## Baidu Cloud Disk API KEY
 
-百度网盘的appkey，secretkey，signkey都在环境变量中
-BAIDU_APP_KEY
-BAIDU_SECRET_KEY
-BAIDU_SIGN_KEY
+百度网盘的 appkey、secretkey、signkey 都在环境变量中：
+
+- `BAIDU_APP_KEY`
+- `BAIDU_SECRET_KEY`
+- `BAIDU_SIGN_KEY`
 
 ## 技术要求
 
-在生成代码的同时要同步在docs中更新技术文档, 技术文档使用中文
-由于该项目会有视频解码编码的操作，python的速度绝对是不够的，必要时使用rust异步操作提高速度
-需要极限也可以使用cpp
-在完成一个阶段是就用git进行commit，分阶段push代码
+在生成代码的同时要同步在 docs 中更新技术文档，技术文档使用中文。
+由于该项目会有视频解码编码的操作，python 的速度绝对是不够的，必要时使用 rust 异步操作提高速度。
+需要极限也可以使用 cpp。
+在完成一个阶段时就用 git 进行 commit，分阶段 push 代码。

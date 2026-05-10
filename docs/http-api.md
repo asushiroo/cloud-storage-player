@@ -142,14 +142,14 @@
 当前读取优先级：
 
 1. 本地加密分片 staging
-2. 配置的存储后端对象（当前默认 mock backend）
+2. 当前配置的 storage backend
 3. 本地源文件
 
 注意：
 
 - 浏览器拿到的仍是**原始视频字节**，不是加密分片
 - 分片解密发生在服务端
-- 如果分片链路不可用，当前阶段仍会回退到源文件
+- 当前 storage backend 可以是 `mock` 或 `baidu`
 
 常见响应：
 
@@ -182,7 +182,7 @@
 4. 切片并加密
 5. 写入 `video_segments`
 6. 生成本地 manifest
-7. 上传 manifest / 分片到存储 backend
+7. 上传 manifest / 分片到当前 storage backend
 8. 尝试抽取封面
 
 成功时：
@@ -212,6 +212,9 @@
 
 - `baidu_root_path`
 - `cache_limit_bytes`
+- `storage_backend`
+- `baidu_authorize_url`
+- `baidu_has_refresh_token`
 
 ### `POST /api/settings`
 
@@ -222,8 +225,31 @@
 
 - `baidu_root_path`
 - `cache_limit_bytes`
+- `storage_backend`
 
 说明：
 
-- 当前接口不暴露 `BAIDU_APP_KEY`、`BAIDU_SECRET_KEY`、`BAIDU_SIGN_KEY`
-- 这些敏感值仍由环境变量提供
+- 当 `storage_backend=baidu` 时，`baidu_root_path` 必须以 `/apps/` 开头
+- 当前默认值是 `/apps/CloudStoragePlayer`
+
+### `POST /api/settings/baidu/oauth`
+
+- 需要登录
+- 提交百度授权页返回的 `code`
+- 后端会换取并保存 refresh token
+
+请求体示例：
+
+```json
+{"code":"your-baidu-auth-code"}
+```
+
+成功后：
+
+- 返回最新设置快照
+- `baidu_has_refresh_token` 会变成 `true`
+
+说明：
+
+- 当前接口不会返回 refresh token 明文
+- `BAIDU_APP_KEY` 和 `BAIDU_SECRET_KEY` 仍必须由后端环境变量提供

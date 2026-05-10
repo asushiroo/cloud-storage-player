@@ -1,5 +1,9 @@
-from app.storage.base import StorageBackend
-from app.storage.factory import build_storage_backend
-from app.storage.mock import MockStorageBackend
+"""Storage backend package."""
 
-__all__ = ["MockStorageBackend", "StorageBackend", "build_storage_backend"]
+__all__ = [
+    "baidu",
+    "baidu_api",
+    "base",
+    "factory",
+    "mock",
+]

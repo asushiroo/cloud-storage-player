@@ -3,19 +3,26 @@ from __future__ import annotations
 from app.core.config import Settings
 from app.models.settings import PublicSettings
 from app.repositories.settings import get_setting, set_setting
+from app.services.baidu_oauth import build_baidu_authorize_url, has_baidu_refresh_token
 
 BAIDU_ROOT_PATH_KEY = "baidu_root_path"
 CACHE_LIMIT_BYTES_KEY = "cache_limit_bytes"
-DEFAULT_BAIDU_ROOT_PATH = "/CloudStoragePlayer"
+STORAGE_BACKEND_KEY = "storage_backend"
+DEFAULT_BAIDU_ROOT_PATH = "/apps/CloudStoragePlayer"
 DEFAULT_CACHE_LIMIT_BYTES = 2 * 1024 * 1024 * 1024
+SUPPORTED_STORAGE_BACKENDS = {"mock", "baidu"}
 
 
 def get_public_settings(settings: Settings) -> PublicSettings:
     baidu_root = get_setting(settings, BAIDU_ROOT_PATH_KEY)
     cache_limit = get_setting(settings, CACHE_LIMIT_BYTES_KEY)
+    storage_backend = get_setting(settings, STORAGE_BACKEND_KEY)
     return PublicSettings(
         baidu_root_path=baidu_root.value if baidu_root else DEFAULT_BAIDU_ROOT_PATH,
         cache_limit_bytes=_parse_cache_limit(cache_limit.value) if cache_limit else DEFAULT_CACHE_LIMIT_BYTES,
+        storage_backend=(storage_backend.value if storage_backend else settings.storage_backend).strip().lower(),
+        baidu_authorize_url=build_baidu_authorize_url(settings),
+        baidu_has_refresh_token=has_baidu_refresh_token(settings),
     )
 
 
@@ -24,8 +31,12 @@ def update_public_settings(
     *,
     baidu_root_path: str | None = None,
     cache_limit_bytes: int | None = None,
+    storage_backend: str | None = None,
 ) -> PublicSettings:
     current = get_public_settings(settings)
+    next_storage_backend = (
+        storage_backend.strip().lower() if storage_backend is not None else current.storage_backend
+    )
     next_baidu_root_path = (
         baidu_root_path.strip() if baidu_root_path is not None else current.baidu_root_path
     )
@@ -33,16 +44,28 @@ def update_public_settings(
         cache_limit_bytes if cache_limit_bytes is not None else current.cache_limit_bytes
     )
 
+    if next_storage_backend not in SUPPORTED_STORAGE_BACKENDS:
+        raise ValueError(
+            f"storage_backend must be one of: {', '.join(sorted(SUPPORTED_STORAGE_BACKENDS))}."
+        )
     if not next_baidu_root_path:
         raise ValueError("baidu_root_path must not be empty.")
+    if not next_baidu_root_path.startswith("/"):
+        raise ValueError("baidu_root_path must start with '/'.")
+    if next_storage_backend == "baidu" and not next_baidu_root_path.startswith("/apps/"):
+        raise ValueError("baidu_root_path must start with '/apps/' when storage_backend is baidu.")
     if next_cache_limit_bytes <= 0:
         raise ValueError("cache_limit_bytes must be greater than 0.")
 
     set_setting(settings, key=BAIDU_ROOT_PATH_KEY, value=next_baidu_root_path)
     set_setting(settings, key=CACHE_LIMIT_BYTES_KEY, value=str(next_cache_limit_bytes))
+    set_setting(settings, key=STORAGE_BACKEND_KEY, value=next_storage_backend)
     return PublicSettings(
         baidu_root_path=next_baidu_root_path,
         cache_limit_bytes=next_cache_limit_bytes,
+        storage_backend=next_storage_backend,
+        baidu_authorize_url=build_baidu_authorize_url(settings),
+        baidu_has_refresh_token=has_baidu_refresh_token(settings),
     )
 
 

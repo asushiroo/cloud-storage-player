@@ -11,7 +11,7 @@
 5. AES-256-GCM 加密
 6. 写入本地 staging 分片
 7. 生成本地 manifest
-8. 上传 manifest / 分片到存储 backend
+8. 上传 manifest / 分片到当前 storage backend
 9. 尽力抽取一张封面
 
 ## 2. 为什么当前仍保留同步导入
@@ -40,7 +40,7 @@
 11. 将分片元数据写入 `video_segments`
 12. 生成本地 `manifest.json`
 13. 更新 `videos.manifest_path`
-14. 通过存储 backend 上传 manifest 与所有加密分片
+14. 通过当前 storage backend 上传 manifest 与所有加密分片
 15. 尝试执行封面抽取
 16. 标记任务为 `completed`
 17. 任一关键步骤异常时标记为 `failed`
@@ -123,15 +123,24 @@ manifest 不包含：
 
 ## 8. 当前上传行为
 
-当前导入服务会把以下对象上传到配置的存储 backend：
+当前导入服务会把以下对象上传到配置的 storage backend：
 
 - `manifest.json`
 - `segments/*.cspseg`
 
-在默认 `mock` backend 下，这些“远端对象”会映射到本地目录：
+### 当 backend=mock
 
-- `data/mock-remote/CloudStoragePlayer/videos/<video_id>/manifest.json`
-- `data/mock-remote/CloudStoragePlayer/videos/<video_id>/segments/*.cspseg`
+会映射到本地目录：
+
+- `data/mock-remote/apps/CloudStoragePlayer/videos/<video_id>/manifest.json`
+- `data/mock-remote/apps/CloudStoragePlayer/videos/<video_id>/segments/*.cspseg`
+
+### 当 backend=baidu
+
+会上传到百度网盘应用目录，例如：
+
+- `/apps/CloudStoragePlayer/videos/<video_id>/manifest.json`
+- `/apps/CloudStoragePlayer/videos/<video_id>/segments/*.cspseg`
 
 ## 9. 封面抽取
 
@@ -150,7 +159,7 @@ ffmpeg -y -ss 0 -i <path> -frames:v 1 <output>.jpg
 失败策略：
 
 - 封面失败不会让导入任务失败
-- 但分片/manifest 上传失败会导致导入任务失败
+- 但分片 / manifest 上传失败会导致导入任务失败
 
 ## 10. 当前失败语义
 
@@ -167,7 +176,7 @@ ffmpeg -y -ss 0 -i <path> -frames:v 1 <output>.jpg
 
 - `ffprobe` 失败
 - 不是有效视频
-- 分片上传失败
+- 存储 backend 上传失败
 
 则：
 
@@ -176,16 +185,21 @@ ffmpeg -y -ss 0 -i <path> -frames:v 1 <output>.jpg
 
 ## 11. 与后续真实百度接入的关系
 
-当前这套导入流程已经把最关键的边界先固定住了：
+当前这套导入流程已经把最关键的边界固定住了：
 
 - 本地路径导入入口
 - 任务状态模型
 - 分片元数据结构
 - remote path 约定
 - manifest 结构
-- 存储 backend 抽象
+- storage backend 抽象
 
-因此下一步只需要把 `mock` backend 换成真实 `baidu` backend，而不必推翻导入流程本身。
+当前已经有百度 backend 的最小实现，下一步更大的工作会转向：
+
+- 在线验收
+- 错误重试
+- 远端同步
+- 异步导入任务化
 
 ## 12. 关于 `tmp/` 测试视频
 

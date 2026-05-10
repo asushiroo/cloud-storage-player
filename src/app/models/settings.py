@@ -14,3 +14,6 @@ class Setting:
 class PublicSettings:
     baidu_root_path: str
     cache_limit_bytes: int
+    storage_backend: str
+    baidu_authorize_url: str | None
+    baidu_has_refresh_token: bool

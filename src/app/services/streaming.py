@@ -163,14 +163,14 @@ def _build_storage_backend_if_needed(
 
     try:
         storage_backend = build_storage_backend(settings)
-    except (NotImplementedError, ValueError):
+    except (NotImplementedError, RuntimeError, ValueError):
         return False
 
     try:
         for segment in missing_local_segments:
             if not segment.cloud_path or not storage_backend.exists(segment.cloud_path):
                 return False
-    except NotImplementedError:
+    except (NotImplementedError, RuntimeError, ValueError):
         return False
 
     return storage_backend
@@ -241,7 +241,7 @@ def _read_segment_payload(
     if storage_backend is not None and segment.cloud_path:
         try:
             return storage_backend.download_bytes(segment.cloud_path)
-        except (FileNotFoundError, NotImplementedError) as exc:
+        except (FileNotFoundError, NotImplementedError, RuntimeError, ValueError) as exc:
             raise VideoStreamNotFoundError("Encrypted segment file is missing.") from exc
 
     raise VideoStreamNotFoundError("Encrypted segment file is missing.")

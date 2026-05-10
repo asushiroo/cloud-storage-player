@@ -10,3 +10,8 @@ export async function updateSettings(payload: Partial<PublicSettings>): Promise<
   const response = await http.post<PublicSettings>("/api/settings", payload);
   return response.data;
 }
+
+export async function authorizeBaidu(code: string): Promise<PublicSettings> {
+  const response = await http.post<PublicSettings>("/api/settings/baidu/oauth", { code });
+  return response.data;
+}

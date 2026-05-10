@@ -6,18 +6,35 @@ import AppShell from "../components/AppShell.vue";
 
 const baiduRootPath = ref("");
 const cacheLimitBytes = ref(0);
+const storageBackend = ref<"mock" | "baidu">("mock");
+const baiduAuthorizeUrl = ref<string | null>(null);
+const baiduHasRefreshToken = ref(false);
+const baiduCode = ref("");
 const loading = ref(false);
 const saving = ref(false);
+const authorizing = ref(false);
 const message = ref("");
 const error = ref("");
+
+function applySettings(settings: {
+  baidu_root_path: string;
+  cache_limit_bytes: number;
+  storage_backend: string;
+  baidu_authorize_url: string | null;
+  baidu_has_refresh_token: boolean;
+}): void {
+  baiduRootPath.value = settings.baidu_root_path;
+  cacheLimitBytes.value = settings.cache_limit_bytes;
+  storageBackend.value = settings.storage_backend === "baidu" ? "baidu" : "mock";
+  baiduAuthorizeUrl.value = settings.baidu_authorize_url;
+  baiduHasRefreshToken.value = settings.baidu_has_refresh_token;
+}
 
 async function load(): Promise<void> {
   loading.value = true;
   error.value = "";
   try {
-    const settings = await settingsApi.fetchSettings();
-    baiduRootPath.value = settings.baidu_root_path;
-    cacheLimitBytes.value = settings.cache_limit_bytes;
+    applySettings(await settingsApi.fetchSettings());
   } catch (exc) {
     if (axios.isAxiosError(exc)) {
       error.value = exc.response?.data?.detail ?? "读取设置失败。";
@@ -37,9 +54,9 @@ async function submit(): Promise<void> {
     const updated = await settingsApi.updateSettings({
       baidu_root_path: baiduRootPath.value,
       cache_limit_bytes: cacheLimitBytes.value,
+      storage_backend: storageBackend.value,
     });
-    baiduRootPath.value = updated.baidu_root_path;
-    cacheLimitBytes.value = updated.cache_limit_bytes;
+    applySettings(updated);
     message.value = "设置已保存。";
   } catch (exc) {
     if (axios.isAxiosError(exc)) {
@@ -49,6 +66,31 @@ async function submit(): Promise<void> {
     }
   } finally {
     saving.value = false;
+  }
+}
+
+async function authorizeBaidu(): Promise<void> {
+  if (!baiduCode.value.trim()) {
+    error.value = "请先粘贴百度授权码。";
+    return;
+  }
+
+  authorizing.value = true;
+  error.value = "";
+  message.value = "";
+  try {
+    const updated = await settingsApi.authorizeBaidu(baiduCode.value.trim());
+    applySettings(updated);
+    baiduCode.value = "";
+    message.value = "百度授权已保存。";
+  } catch (exc) {
+    if (axios.isAxiosError(exc)) {
+      error.value = exc.response?.data?.detail ?? "百度授权失败。";
+    } else {
+      error.value = "百度授权失败。";
+    }
+  } finally {
+    authorizing.value = false;
   }
 }
 
@@ -66,6 +108,14 @@ onMounted(load);
       <p v-if="message">{{ message }}</p>
 
       <div class="field">
+        <label for="storage-backend">Storage Backend</label>
+        <select id="storage-backend" v-model="storageBackend">
+          <option value="mock">mock</option>
+          <option value="baidu">baidu</option>
+        </select>
+      </div>
+
+      <div class="field">
         <label for="baidu-root-path">Baidu Root Path</label>
         <input id="baidu-root-path" v-model="baiduRootPath" />
       </div>
@@ -80,6 +130,43 @@ onMounted(load);
           {{ saving ? "保存中..." : "保存设置" }}
         </button>
       </div>
+
+      <section class="panel stack nested-panel">
+        <h3>百度授权</h3>
+        <p class="muted">
+          当前刷新令牌状态：
+          <strong>{{ baiduHasRefreshToken ? "已配置" : "未配置" }}</strong>
+        </p>
+        <p v-if="baiduAuthorizeUrl" class="muted">
+          先打开下面的授权链接完成授权，再把返回的 code 粘贴到输入框中：
+        </p>
+        <p v-if="baiduAuthorizeUrl">
+          <a :href="baiduAuthorizeUrl" target="_blank" rel="noreferrer">打开百度授权页</a>
+        </p>
+        <p v-else class="muted">当前环境未配置 BAIDU_APP_KEY，暂时无法生成授权链接。</p>
+
+        <div class="field">
+          <label for="baidu-code">Authorization Code</label>
+          <input id="baidu-code" v-model="baiduCode" placeholder="粘贴百度授权返回的 code" />
+        </div>
+
+        <div class="button-row">
+          <button
+            class="button"
+            type="button"
+            :disabled="authorizing || !baiduAuthorizeUrl"
+            @click="authorizeBaidu"
+          >
+            {{ authorizing ? "提交中..." : "保存百度授权" }}
+          </button>
+        </div>
+      </section>
     </section>
   </AppShell>
 </template>
+
+<style scoped>
+.nested-panel {
+  margin-top: 1rem;
+}
+</style>

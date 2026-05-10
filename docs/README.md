@@ -9,10 +9,11 @@
 3. [Vue 前端架构](frontend-vue-architecture.md)
 4. [运行与配置](runtime-and-configuration.md)
 5. [存储后端与远端回退](storage-backend-and-remote-fallback.md)
-6. [数据库设计](database-schema.md)
-7. [HTTP 接口说明](http-api.md)
-8. [本地导入与媒体探测](import-and-media-probe.md)
-9. [测试与样例数据](testing-and-sample-data.md)
+6. [百度网盘 OpenAPI 接入](baidu-openapi-integration.md)
+7. [数据库设计](database-schema.md)
+8. [HTTP 接口说明](http-api.md)
+9. [本地导入与媒体探测](import-and-media-probe.md)
+10. [测试与样例数据](testing-and-sample-data.md)
 
 ## 当前实现边界
 
@@ -27,13 +28,15 @@
 - 固定大小分片与 AES-256-GCM 加密
 - `video_segments` 元数据落库
 - 本地 manifest 生成
-- manifest / 加密分片上传到默认 mock 存储后端
-- 播放流从本地 staging 回退到 mock 远端对象，再回退到源文件
+- `mock` 存储 backend
+- 百度 OAuth 授权码换 refresh token
+- 基于百度官方接口的 `baidu` 存储 backend
+- 播放流从本地 staging 回退到远端对象，再回退到源文件
 
 未实现：
 
-- 真实百度网盘 API 接入
-- 真实远端目录扫描 / catalog sync
-- 导入后台异步化、断点续传、缓存淘汰
+- 真实在线账号的自动化端到端验收
+- 远端 manifest 扫描 / catalog sync
+- 异步导入、断点续传、缓存淘汰
 
 所以请把这些文档理解成：**当前阶段技术实现说明**。

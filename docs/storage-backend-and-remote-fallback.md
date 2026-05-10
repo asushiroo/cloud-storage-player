@@ -2,20 +2,22 @@
 
 ## 1. 目标
 
-这一层的目标不是“先把百度 SDK 接上”，而是先把**服务层与远端对象存储解耦**。
+这一层的目标是把“导入/回放业务流程”与“远端对象存储实现”解耦。
 
-因此当前实现先引入统一存储契约，再用本地目录模拟远端对象。
+因此当前代码始终通过统一存储契约访问远端对象，而不是在服务层里直接写百度 HTTP 请求。
 
 ## 2. 当前代码结构
 
 - `src/app/storage/base.py`
-  - 定义存储接口
+  - 定义统一存储接口
 - `src/app/storage/mock.py`
   - 本地目录版 mock backend
-- `src/app/storage/factory.py`
-  - 根据配置选择 backend
+- `src/app/storage/baidu_api.py`
+  - 百度 OpenAPI 的底层 HTTP 调用
 - `src/app/storage/baidu.py`
-  - 真实百度实现的占位文件
+  - 适配到 `StorageBackend` 的百度 backend
+- `src/app/storage/factory.py`
+  - 根据设置选择 backend
 
 ## 3. 存储契约
 
@@ -32,25 +34,28 @@
 - 播放时按 remote path 下载加密分片
 - 回退前先判断远端对象是否存在
 
-## 4. mock backend 的路径映射
+## 4. 当前支持的 backend
 
-当前 mock backend 会把远端路径映射到本地目录。
+### 4.1 mock
+
+特点：
+
+- 不访问真实云
+- 直接把 remote path 映射到本地目录
+- 最适合测试和离线开发
 
 例如：
 
-- 远端：`/CloudStoragePlayer/videos/3/manifest.json`
-- 映射后：`<mock_root>/CloudStoragePlayer/videos/3/manifest.json`
+- 远端：`/apps/CloudStoragePlayer/videos/3/manifest.json`
+- 映射后：`<mock_root>/apps/CloudStoragePlayer/videos/3/manifest.json`
 
-分片路径同理：
+### 4.2 baidu
 
-- 远端：`/CloudStoragePlayer/videos/3/segments/000005.cspseg`
-- 映射后：`<mock_root>/CloudStoragePlayer/videos/3/segments/000005.cspseg`
+特点：
 
-这样做的好处是：
-
-1. manifest / segment 的 remote path 结构已经提前稳定
-2. 自动化测试不需要真实云账号
-3. 后续切换到百度实现时，数据库里的 `cloud_path` 结构不需要重设计
+- 使用百度网盘官方 OAuth 与文件接口
+- 当前已接通上传、存在性判断、下载链路
+- 需要先完成授权并保存 refresh token
 
 ## 5. 导入时的上传时机
 
@@ -61,16 +66,11 @@
 3. 本地 manifest 生成之后
 4. 封面抽取之前
 
-也就是顺序上大致是：
+顺序上大致是：
 
 - 先保证本地加密分片存在
-- 再把这些分片与 manifest 上传到存储 backend
+- 再把这些分片与 manifest 上传到 storage backend
 - 再做非关键的封面抽取
-
-这能保证：
-
-- 播放核心数据先准备好
-- 封面失败不会影响远端分片上传
 
 ## 6. 回放时的读取优先级
 
@@ -80,43 +80,65 @@
 
 如果请求所需的加密分片仍在本地 staging 目录中，直接读取本地文件。
 
-### 第 2 层：mock 远端对象
+### 第 2 层：storage backend
 
-如果本地 staging 缺失，但数据库中有 `cloud_path`，并且 mock backend 中该对象存在，则下载远端加密分片。
+如果本地 staging 缺失，但数据库中有 `cloud_path`，则根据当前 backend 尝试读取远端对象：
+
+- `mock`：读本地模拟远端目录
+- `baidu`：走 `list` + `filemetas` + `dlink` 下载链路
 
 ### 第 3 层：源文件回退
 
-如果无法使用加密分片链路，才回退到最初的源文件路径。
+如果远端链路当前不可用，才回退到最初的源文件路径。
 
 ## 7. 为什么回退顺序是这样
 
 ### 先本地 staging
 
 - 速度最快
-- 不需要额外 I/O 映射
+- 不需要额外网络或远端 I/O
 - 适合刚导入后的立即播放
 
-### 再 mock 远端对象
+### 再 storage backend
 
-- 更接近未来真实部署形态
+- 更接近长期目标形态
 - 可以验证“源文件删除后仍能播放”的能力
 
 ### 最后源文件回退
 
 - 保持当前阶段可调试性
-- 防止远端链路尚未稳定时播放器彻底不可用
+- 防止远端链路尚未完全稳定时播放器彻底不可用
 
-## 8. 当前限制
+## 8. 当前百度 backend 的内部策略
 
-- mock backend 不是最终生产实现
+### 上传
+
+- `precreate`
+- `superfile2`
+- `create`
+
+### 下载
+
+- `list(parent_dir)` 拿到条目
+- 根据条目拿 `fs_id`
+- `filemetas(dlink=1)` 拿下载地址
+- 使用 `dlink` 下载密文对象
+
+### 认证
+
+- SQLite 中保存 refresh token
+- 后端用 `BAIDU_APP_KEY` / `BAIDU_SECRET_KEY` 刷 access token
+
+## 9. 当前限制
+
+- `mock` backend 仍然是默认开发 backend
+- `baidu` backend 还没有在线自动化验收
+- 还没有重试、退避、并发上传优化
 - 还没有远端目录扫描 / catalog sync
-- 还没有分片缓存淘汰策略
-- 还没有重试、断点续传、多段并发下载
-- `baidu` backend 仍是占位
 
-## 9. 下一阶段最自然的演进方向
+## 10. 下一阶段最自然的演进方向
 
-1. 用真实百度 API 替换 `mock` backend
+1. 增加真实百度账号 smoke 验证脚本
 2. 增加远端 manifest 扫描与目录同步
-3. 加入分片缓存与 LRU 回收
+3. 加入上传 / 下载重试与限流退避
 4. 把导入任务升级为后台异步任务

@@ -8,7 +8,7 @@
 
 1. 作为本地目录与视频元数据事实来源
 2. 记录导入任务状态
-3. 记录分片元数据与远端对象逻辑路径
+3. 记录分片元数据、远端对象逻辑路径与授权状态
 
 当前仍然没有独立 migration 框架，而是采用：
 
@@ -49,8 +49,7 @@
 
 - `manifest_path`
   - 保存远端 manifest 的逻辑路径
-  - 当前默认会写成 `/CloudStoragePlayer/videos/<id>/manifest.json`
-  - 在 mock backend 下，这个路径会映射到本地 `data/mock-remote/...`
+  - 当前默认会写成 `/apps/CloudStoragePlayer/videos/<id>/manifest.json`
 - `source_path`
   - 保存最初导入时的主机本地源文件路径
   - 当前阶段仍用于最后一层播放回退
@@ -78,7 +77,7 @@
 
 - `cloud_path`
   - 远端分片逻辑路径
-  - 当前默认格式：`/CloudStoragePlayer/videos/<id>/segments/000000.cspseg`
+  - 当前默认格式：`/apps/CloudStoragePlayer/videos/<id>/segments/000000.cspseg`
 - `local_staging_path`
   - 本地已加密分片暂存文件路径
   - 播放时会优先读取这里
@@ -96,13 +95,19 @@
 用途：
 
 - 存储公开本地设置项
-- 当前主要用于：
-  - `baidu_root_path`
-  - `cache_limit_bytes`
+- 存储百度授权后的 refresh token
+
+当前已使用的 key 包括：
+
+- `baidu_root_path`
+- `cache_limit_bytes`
+- `storage_backend`
+- `baidu_refresh_token`
 
 注意：
 
-- Baidu app key / secret key / sign key 仍然来自环境变量，不进库
+- `BAIDU_APP_KEY`、`BAIDU_SECRET_KEY`、`BAIDU_SIGN_KEY` 仍然来自环境变量，不进库
+- `GET /api/settings` 也不会返回 refresh token 明文
 
 ## 表：import_jobs
 
@@ -131,7 +136,7 @@
 - 探测前后
 - 分片完成后
 - manifest 完成后
-- 上传完成后
+- 远端上传完成后
 - 任务完成
 
 ## 启动时 schema bootstrap
@@ -151,8 +156,8 @@
 
 - 版本化 migration
 - 更细索引设计
-- 远端对象状态字段
+- 远端对象同步状态字段
 - 导入恢复断点字段
 - 分片缓存表
 
-这些等真实百度接入和异步导入阶段再补更合适。
+这些等真实在线验收、异步导入和同步链路继续展开后再补更合适。

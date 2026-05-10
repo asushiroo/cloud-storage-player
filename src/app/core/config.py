@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from functools import cached_property, lru_cache
 from pathlib import Path
 
@@ -34,6 +35,7 @@ class Settings(BaseSettings):
     mock_storage_path: Path = Path("data/mock-remote")
     segment_size_bytes: int = 4 * 1024 * 1024
     storage_backend: str = "mock"
+    baidu_oauth_redirect_uri: str = "oob"
     cors_allowed_origins_raw: str = "http://127.0.0.1:5173,http://localhost:5173"
 
     @cached_property
@@ -75,6 +77,18 @@ class Settings(BaseSettings):
         if self.mock_storage_path.is_absolute():
             return self.mock_storage_path
         return PROJECT_ROOT / self.mock_storage_path
+
+    @property
+    def baidu_app_key(self) -> str | None:
+        return os.environ.get("BAIDU_APP_KEY")
+
+    @property
+    def baidu_secret_key(self) -> str | None:
+        return os.environ.get("BAIDU_SECRET_KEY")
+
+    @property
+    def baidu_sign_key(self) -> str | None:
+        return os.environ.get("BAIDU_SIGN_KEY")
 
     @property
     def cors_allowed_origins(self) -> list[str]:

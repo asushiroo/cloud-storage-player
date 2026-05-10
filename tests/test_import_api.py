@@ -100,7 +100,7 @@ def test_import_video_creates_completed_job_and_video(tmp_path: Path) -> None:
     assert video_payload["source_path"] == str(source_path)
     assert video_payload["cover_path"] is not None
     assert video_payload["segment_count"] >= 1
-    assert video_payload["manifest_path"] == f"/CloudStoragePlayer/videos/{payload['video_id']}/manifest.json"
+    assert video_payload["manifest_path"] == f"/apps/CloudStoragePlayer/videos/{payload['video_id']}/manifest.json"
 
     segments = list_video_segments(settings, video_id=payload["video_id"])
     assert len(segments) == video_payload["segment_count"]

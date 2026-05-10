@@ -16,7 +16,7 @@
 - 前端：Vue 3 + Vite
 - 数据库：SQLite
 - 密钥管理：本地文件
-- 存储后端：默认 `mock`
+- 存储后端：`mock` / `baidu`
 
 ## 2. UV 初始化方式
 
@@ -52,7 +52,7 @@ npm run dev
 
 ## 4. 环境变量
 
-统一使用 `CSP_` 前缀。
+统一使用 `CSP_` 前缀，除非特别说明。
 
 ### 4.1 基础运行配置
 
@@ -104,9 +104,25 @@ npm run dev
   - 默认：`mock`
   - 当前支持值：
     - `mock`
-    - `baidu`（仅占位，尚未实现）
+    - `baidu`
+- `CSP_BAIDU_OAUTH_REDIRECT_URI`
+  - 默认：`oob`
+  - 当前用于授权码回填流程
 
-### 4.6 前后端联调配置
+### 4.6 百度网盘开放平台配置
+
+这些变量**不带 `CSP_` 前缀**：
+
+- `BAIDU_APP_KEY`
+- `BAIDU_SECRET_KEY`
+- `BAIDU_SIGN_KEY`
+
+当前实际代码路径里：
+
+- OAuth 与存储 backend 已经使用 `BAIDU_APP_KEY` / `BAIDU_SECRET_KEY`
+- `BAIDU_SIGN_KEY` 暂时保留给后续更深的开放能力接入
+
+### 4.7 前后端联调配置
 
 - `CSP_CORS_ALLOWED_ORIGINS_RAW`
   - 默认：`http://127.0.0.1:5173,http://localhost:5173`
@@ -144,19 +160,28 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 
 ### 7.1 mock backend
 
-当 `CSP_STORAGE_BACKEND=mock` 时：
+当 `storage_backend=mock` 时：
 
 - 远端对象不会发到真实云
 - 会按“远端路径”映射到 `CSP_MOCK_STORAGE_PATH` 下的本地文件
 
 例如：
 
-- 远端路径：`/CloudStoragePlayer/videos/12/manifest.json`
-- 本地映射：`data/mock-remote/CloudStoragePlayer/videos/12/manifest.json`
+- 远端路径：`/apps/CloudStoragePlayer/videos/12/manifest.json`
+- 本地映射：`data/mock-remote/apps/CloudStoragePlayer/videos/12/manifest.json`
 
 ### 7.2 baidu backend
 
-当前只是预留名称和占位模块，真实实现还没有接入。
+当 `storage_backend=baidu` 时：
+
+- 后端会从本地 SQLite 读取 refresh token
+- 再通过 `BAIDU_APP_KEY` / `BAIDU_SECRET_KEY` 刷新 access token
+- 导入时会调用百度官方上传接口
+- 回放时会调用百度官方查询 / 下载接口
+
+当前默认 `baidu_root_path` 是：
+
+- `/apps/CloudStoragePlayer`
 
 ## 8. 当前播放流模式
 
@@ -167,7 +192,7 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 当前读取优先级：
 
 1. 本地加密分片 staging
-2. mock 远端对象存储
+2. 当前配置的 storage backend
 3. 本地源文件
 
 只要内容密钥可用，后端就会在服务端解密并返回浏览器需要的原始字节。
@@ -181,6 +206,7 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 - `videos`
 - `video_segments`
 - `import_jobs`
+- `settings`
 
 ### 本地文件
 
@@ -189,10 +215,15 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 - `data/covers/<video_id>.jpg`（如果封面抽取成功）
 - `data/keys/content.key`
 
-### mock 远端对象
+### mock 远端对象（当 backend=mock）
 
-- `data/mock-remote/CloudStoragePlayer/videos/<video_id>/manifest.json`
-- `data/mock-remote/CloudStoragePlayer/videos/<video_id>/segments/*.cspseg`
+- `data/mock-remote/apps/CloudStoragePlayer/videos/<video_id>/manifest.json`
+- `data/mock-remote/apps/CloudStoragePlayer/videos/<video_id>/segments/*.cspseg`
+
+### 百度远端对象（当 backend=baidu）
+
+- `/apps/CloudStoragePlayer/videos/<video_id>/manifest.json`
+- `/apps/CloudStoragePlayer/videos/<video_id>/segments/*.cspseg`
 
 ## 10. 推荐验证命令
 

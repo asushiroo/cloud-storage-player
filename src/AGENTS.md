@@ -4,7 +4,7 @@
 
 Build a Python FastAPI backend that runs on a Windows host, exposes LAN JSON APIs for a separate Vue frontend, imports local videos from host paths, splits them into fixed-size byte segments, encrypts each segment, uploads segments and manifests through a storage backend, and later streams the original video bytes back to browsers through HTTP Range responses.
 
-The current default storage backend is a local `mock` implementation for offline development and tests. The long-term production target remains Baidu Netdisk.
+The current default storage backend is a local `mock` implementation for offline development and tests. The long-term production target remains Baidu Netdisk through official open platform APIs.
 
 ## Core Rules
 
@@ -30,11 +30,11 @@ The current default storage backend is a local `mock` implementation for offline
 - `src/app/repositories/`
   Thin database access helpers. No cloud or media logic here.
 - `src/app/storage/`
-  Storage backend contract, mock implementation, backend factory, and future Baidu integration.
+  Storage backend contract, mock implementation, Baidu HTTP client, Baidu backend adapter, and backend factory.
 - `src/app/media/`
   Probe, cover extraction, chunk mapping, encryption, and stream range helpers.
 - `src/app/services/`
-  Import workflow, playback workflow, manifest helpers, and settings management.
+  Import workflow, playback workflow, manifest helpers, public settings, and Baidu OAuth helpers.
 - `src/app/api/`
   Auth, library, import, settings, and stream JSON endpoints.
 - `src/app/web/`
@@ -61,10 +61,11 @@ The current default storage backend is a local `mock` implementation for offline
 
 ### Storage
 
-- `storage/base.py` defines the cloud/object storage contract used by services.
+- `storage/base.py` defines the object storage contract used by services.
 - `storage/mock.py` maps remote object paths into a local directory for tests and offline development.
-- `storage/factory.py` selects the configured backend.
-- `storage/baidu.py` remains a placeholder until the real API integration is implemented.
+- `storage/baidu_api.py` wraps official Baidu OAuth / upload / list / metadata / download calls.
+- `storage/baidu.py` adapts those calls to the local `StorageBackend` contract.
+- `storage/factory.py` selects the configured backend from persisted settings.
 
 ### Media Processing
 
@@ -81,7 +82,9 @@ The current default storage backend is a local `mock` implementation for offline
 - `StreamService`
   Resolves browser Range requests, prefers local encrypted staging files, falls back to remote objects through the storage backend when needed, decrypts only what is needed, and emits the exact original bytes requested.
 - `SettingsService`
-  Reads and updates public runtime settings such as Baidu root path and cache limit.
+  Reads and updates public runtime settings such as Baidu root path, cache limit, and active storage backend.
+- `BaiduOAuthService`
+  Builds the authorization URL and exchanges the returned code for a locally stored refresh token.
 
 ## Data Model
 
@@ -96,14 +99,14 @@ Keep the schema explicit and small.
 - `import_jobs`
   Tracks queued, running, failed, and completed imports.
 - `settings`
-  Stores local configuration such as Baidu root path and cache limit.
+  Stores public local configuration and the persisted Baidu refresh token.
 
 ## Remote Layout
 
 Store each video under its own logical directory.
 
-- `/CloudStoragePlayer/videos/{video_id}/manifest.json`
-- `/CloudStoragePlayer/videos/{video_id}/segments/{index}.cspseg`
+- `/apps/CloudStoragePlayer/videos/{video_id}/manifest.json`
+- `/apps/CloudStoragePlayer/videos/{video_id}/segments/{index}.cspseg`
 
 In the current `mock` backend these remote paths are mapped into a local directory tree.
 
@@ -135,6 +138,7 @@ The manifest must not include:
 - `GET /api/imports/{job_id}`
 - `GET /api/settings`
 - `POST /api/settings`
+- `POST /api/settings/baidu/oauth`
 
 Transitional server-rendered routes like `/login` or `/` may remain temporarily, but they are not the primary product contract.
 
@@ -155,8 +159,9 @@ Transitional server-rendered routes like `/login` or `/` may remain temporarily,
 - Unit-test AES-GCM round trips and checksum stability.
 - Unit-test auth guards and session handling.
 - Integration-test import workflow against the mock storage backend.
+- Unit-test Baidu OAuth code exchange and backend upload/download wiring with fake API adapters.
 - Integration-test playback range requests against locally staged encrypted segments.
-- Integration-test playback fallback against mock remote objects after local staging removal.
+- Integration-test playback fallback against remote objects after local staging removal.
 
 ## Non-Goals For Current Phase
 
@@ -165,4 +170,4 @@ Transitional server-rendered routes like `/login` or `/` may remain temporarily,
 - Browser-side decryption.
 - Re-encoding, HLS generation, or adaptive bitrate streaming.
 - Full Windows service packaging.
-- Final Baidu production integration.
+- Final online-verified Baidu production rollout.

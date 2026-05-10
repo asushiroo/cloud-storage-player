@@ -9,6 +9,8 @@
 - 目录接口
 - 视频详情接口
 - 设置 API
+- 百度 OAuth 服务与授权接口
+- 存储 backend 选择与基础行为
 - 导入接口鉴权与错误分支
 - 导入成功后的任务状态
 - `ffprobe` 集成
@@ -17,10 +19,11 @@
 - AES-GCM round trip
 - `video_segments` 元数据落库
 - mock 存储 backend 上传 / 下载
+- Baidu storage backend 的上传 / 下载核心代码路径（fake API 测试）
 - 播放流整文件返回
 - Range / suffix range / `416`
 - 源文件删除后的本地 staging 回放
-- 源文件 + 本地 staging 删除后的 mock 远端回放
+- 源文件 + 本地 staging 删除后的远端回放
 - 本地 / 远端 / 源文件都缺失时的 `404`
 
 ## 2. 当前推荐的验证命令
@@ -98,19 +101,21 @@ ffmpeg -y -f lavfi -i color=c=black:s=160x90:d=1 -c:v libx264 -pix_fmt yuv420p d
 - 删除原始 MP4
 - 删除 `data/segments/<video_id>/`
 - 再次播放
-- 应从 `data/mock-remote/...` 回退成功
+- 应从当前 storage backend 回退成功
+  - mock：`data/mock-remote/apps/CloudStoragePlayer/...`
+  - baidu：百度网盘远端对象
 
 ### 场景 D：全部删除后播放
 
-- 再删除 `data/mock-remote/CloudStoragePlayer/videos/<video_id>/`
+- 如果当前用 mock backend，再删除 `data/mock-remote/apps/CloudStoragePlayer/videos/<video_id>/`
 - 再次播放
 - 应返回 `404`
 
 ## 6. 当前测试边界
 
-虽然现在已经覆盖到 mock 远端上传与回放，但还**没有**覆盖：
+虽然现在已经覆盖到百度 backend 的核心代码路径，但还**没有**覆盖：
 
-- 真实百度网盘上传/下载
+- 真实百度账号在线上传 / 下载的自动化验收
 - 远端目录扫描与同步
 - 前端单元测试
 - E2E 浏览器播放测试
