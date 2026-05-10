@@ -67,6 +67,7 @@
   - 播放页可捕获当前帧，预览后选择替换 cover / poster
 - 应用成功后会自动收起当前截图预览
   - 导入时默认把首张封面同时写入 cover / poster，便于后续再精修
+- 左上角站点标题已替换为 `frontend/asserts/` 中的 logo
 - `uv run pytest` 自动化测试
 
 ## 当前仍未完成

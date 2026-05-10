@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { PropsWithChildren } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
+import logoImage from "../../asserts/logo.png";
 import { logout } from "../api/client";
 import { sessionQueryKey, useSession } from "../hooks/session";
 
@@ -20,8 +21,8 @@ export function Layout({ children }: PropsWithChildren) {
     <div className="app-shell">
       <header className="app-header">
         <div className="header-left">
-          <Link className="brand" to="/">
-            Cloud Storage Player
+          <Link aria-label="Cloud Storage Player" className="brand brand-logo-link" to="/">
+            <img alt="Cloud Storage Player" className="brand-logo" src={logoImage} />
           </Link>
           <nav className="header-nav">
             <NavLink className="nav-link" to="/">

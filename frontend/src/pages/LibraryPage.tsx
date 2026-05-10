@@ -181,7 +181,6 @@ export function LibraryPage() {
             <div className="video-meta">
               <h2>{video.title}</h2>
               <p className="muted">{formatDuration(video.duration_seconds)} · {formatBytes(video.size)} · {video.segment_count} segments</p>
-              <p className="small-text">{video.source_path ?? "未保留源路径"}</p>
               <div className="chip-row compact">
                 {video.tags.length > 0 ? (
                   video.tags.map((tag) => (
