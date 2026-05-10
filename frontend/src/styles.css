@@ -152,7 +152,7 @@ select {
 }
 
 .page-container {
-  width: min(1600px, 90vw);
+  width: 90vw;
   margin: 0 auto;
   padding: 1rem 0 2.5rem;
 }
@@ -388,6 +388,25 @@ h2 {
   background: rgba(255, 255, 255, 0.06);
   font-size: 0.82rem;
   color: var(--text);
+  white-space: nowrap;
+}
+
+.video-tag-lines {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.video-tag-line {
+  display: flex;
+  gap: 0.5rem;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  mask-image: linear-gradient(90deg, black 82%, transparent);
+}
+
+.video-tag-line .mini-tag {
+  flex: 0 0 auto;
 }
 
 .job-list {
@@ -614,6 +633,7 @@ h2 {
   min-height: 18rem;
   perspective: 1600px;
   overflow: hidden;
+  width: 100%;
 }
 
 .banner-stage {
@@ -627,7 +647,7 @@ h2 {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: min(54vw, 31rem);
+  width: min(50vw, 29rem);
   aspect-ratio: 16 / 9;
   overflow: hidden;
   border-radius: 1.5rem;
@@ -638,7 +658,7 @@ h2 {
 }
 
 .banner-poster-card-left {
-  transform: translate3d(-90%, -50%, -12rem) rotateY(40deg) scale(0.82);
+  transform: translate3d(-86%, -50%, -12rem) rotateY(40deg) scale(0.82);
   opacity: 0.58;
 }
 
@@ -649,7 +669,7 @@ h2 {
 }
 
 .banner-poster-card-right {
-  transform: translate3d(-10%, -50%, -12rem) rotateY(-40deg) scale(0.82);
+  transform: translate3d(-14%, -50%, -12rem) rotateY(-40deg) scale(0.82);
   opacity: 0.58;
 }
 
@@ -675,14 +695,6 @@ h2 {
   line-height: 1.25;
   color: white;
   text-shadow: 0 2px 12px rgba(0, 0, 0, 0.9);
-}
-
-.library-toolbar-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  flex-wrap: wrap;
 }
 
 .management-grid {

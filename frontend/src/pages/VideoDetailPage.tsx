@@ -5,10 +5,8 @@ import { deleteVideo, fetchVideo, updateVideoTags } from "../api/client";
 import { CoverCard } from "../components/CoverCard";
 import { EditableTagList } from "../components/EditableTagList";
 import { Surface } from "../components/Surface";
-import { TagChip } from "../components/TagChip";
 import { useRequireSession } from "../hooks/session";
 import type { ApiError } from "../types/api";
-import { expandTagValue } from "../utils/tagHierarchy";
 import { formatBytes, formatDateTime, formatDuration } from "../utils/format";
 
 export function VideoDetailPage() {
@@ -93,15 +91,7 @@ export function VideoDetailPage() {
               <p className="eyebrow">Video #{video.id}</p>
               <h1>{video.title}</h1>
               <p className="muted">{formatDuration(video.duration_seconds)} · {formatBytes(video.size)} · {video.mime_type}</p>
-              <div className="chip-row compact">
-                {video.tags.length > 0 ? (
-                  video.tags.flatMap(expandTagValue).map((tag, index) => <TagChip key={`${tag.level}-${tag.label}-${index}`} label={tag.label} small />)
-                ) : (
-                  <span className="muted small-text">暂无标签</span>
-                )}
-              </div>
               <div className="detail-info">
-                <p>源文件：{video.source_path ?? "未保留"}</p>
                 <p>Manifest：{video.manifest_path ?? "未生成"}</p>
                 <p>创建时间：{formatDateTime(video.created_at)}</p>
                 <p>分片数量：{video.segment_count}</p>

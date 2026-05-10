@@ -124,6 +124,23 @@ export function LibraryPage() {
       }),
     [activePrimaryTag, activeSecondaryTag, videos],
   );
+  const groupedVideoTags = useMemo(
+    () =>
+      new Map(
+        filteredVideos.map((video) => {
+          const primaryTags = video.tags
+            .flatMap(expandTagValue)
+            .filter((tag) => tag.level === "primary" && tag.label)
+            .map((tag) => tag.label);
+          const secondaryTags = video.tags
+            .flatMap(expandTagValue)
+            .filter((tag) => tag.level === "secondary" && tag.label)
+            .map((tag) => tag.label);
+          return [video.id, { primaryTags, secondaryTags }] as const;
+        }),
+      ),
+    [filteredVideos],
+  );
   const bannerVideos = useMemo(() => pickBannerVideos(bannerSeed, filteredVideos), [bannerSeed, filteredVideos]);
   const activeBannerVideo = getBannerVideoAt(bannerVideos, bannerIndex);
   const bannerSlots = useMemo(
@@ -196,17 +213,18 @@ export function LibraryPage() {
       <div className="section-divider" />
 
       <Surface>
-        <div className="library-toolbar-row">
+        {folders.length > 0 ? (
           <div className="chip-row">
-            <TagChip active={selectedFolderId === undefined} label="全部目录" onClick={() => setSelectedFolderId(undefined)} />
             {folders.map((folder) => (
-              <TagChip key={folder.id} active={selectedFolderId === folder.id} label={folder.name} onClick={() => setSelectedFolderId(folder.id)} />
+              <TagChip
+                key={folder.id}
+                active={selectedFolderId === folder.id}
+                label={folder.name}
+                onClick={() => setSelectedFolderId(selectedFolderId === folder.id ? undefined : folder.id)}
+              />
             ))}
           </div>
-          <Link className="secondary-button link-button" to="/manage">
-            导入 / 任务管理
-          </Link>
-        </div>
+        ) : null}
         {primaryTagGroups.length > 0 ? (
           <div className="chip-row top-gap">
             {primaryTagGroups.map((group) => (
@@ -247,17 +265,28 @@ export function LibraryPage() {
             <div className="video-meta">
               <h2>{video.title}</h2>
               <p className="muted">{formatDuration(video.duration_seconds)} · {formatBytes(video.size)} · {video.segment_count} segments</p>
-              <div className="chip-row compact">
-                {video.tags.length > 0 ? (
-                  video.tags.flatMap(expandTagValue).map((tag, index) => (
-                    <span className="mini-tag" key={`${video.id}-${tag.level}-${tag.label}-${index}`}>
-                      {tag.label}
-                    </span>
-                  ))
-                ) : (
+              {groupedVideoTags.get(video.id)?.primaryTags.length || groupedVideoTags.get(video.id)?.secondaryTags.length ? (
+                <div className="video-tag-lines">
+                  <div className="video-tag-line">
+                    {(groupedVideoTags.get(video.id)?.primaryTags ?? []).map((tag, index) => (
+                      <span className="mini-tag" key={`${video.id}-primary-${tag}-${index}`}>
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="video-tag-line">
+                    {(groupedVideoTags.get(video.id)?.secondaryTags ?? []).map((tag, index) => (
+                      <span className="mini-tag" key={`${video.id}-secondary-${tag}-${index}`}>
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="chip-row compact">
                   <span className="muted small-text">暂无标签</span>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </Link>
         ))}
