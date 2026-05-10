@@ -53,3 +53,8 @@ export interface PublicSettings {
   baidu_authorize_url: string | null;
   baidu_has_refresh_token: boolean;
 }
+
+export interface ApiError {
+  status: number;
+  message: string;
+}
