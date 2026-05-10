@@ -32,6 +32,7 @@ export function PlayerPage() {
         posterDataUrl: replacePoster ? dataUrl : undefined,
       }),
     onSuccess: async () => {
+      setCapturedDataUrl(null);
       setFeedback("封面 / Poster 已更新。首页轮播会优先使用 poster，视频卡片继续使用 cover。");
       setError(null);
       await Promise.all([

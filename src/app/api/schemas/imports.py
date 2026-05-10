@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -24,6 +26,7 @@ class ImportFolderResponse(BaseModel):
 
 class ClearedImportJobsResponse(BaseModel):
     deleted_job_count: int
+    status_group: Literal["completed", "failed"]
 
 
 class CancelAllImportJobsResponse(BaseModel):

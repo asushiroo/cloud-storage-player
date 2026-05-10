@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   cancelAllImportJobs,
@@ -9,14 +9,13 @@ import {
   createImport,
   fetchFolders,
   fetchImportJobs,
-  fetchVideos,
   syncRemoteCatalog,
 } from "../api/client";
 import { Surface } from "../components/Surface";
 import { TagChip } from "../components/TagChip";
 import { useRequireSession } from "../hooks/session";
 import type { ApiError, ImportJob } from "../types/api";
-import { formatBytes, formatDuration, parseTagInput } from "../utils/format";
+import { parseTagInput } from "../utils/format";
 
 const ACTIVE_JOB_STATUSES = new Set(["queued", "running", "cancelling"]);
 
@@ -31,9 +30,6 @@ export function ManagementPage() {
   const session = useRequireSession();
   const queryClient = useQueryClient();
   const location = useLocation();
-  const [searchInput, setSearchInput] = useState("");
-  const [appliedSearch, setAppliedSearch] = useState("");
-  const [activeTag, setActiveTag] = useState<string | undefined>();
   const [selectedFolderId, setSelectedFolderId] = useState<number | undefined>();
   const [sourcePath, setSourcePath] = useState("");
   const [title, setTitle] = useState("");
@@ -56,11 +52,6 @@ export function ManagementPage() {
     queryFn: fetchFolders,
     enabled: session.data?.authenticated === true,
   });
-  const videosQuery = useQuery({
-    queryKey: ["videos", "manage-search", selectedFolderId ?? "all", appliedSearch, activeTag ?? ""],
-    queryFn: () => fetchVideos({ folderId: selectedFolderId, q: appliedSearch, tag: activeTag }),
-    enabled: session.data?.authenticated === true,
-  });
   const importsQuery = useQuery({
     queryKey: ["imports"],
     queryFn: fetchImportJobs,
@@ -72,17 +63,7 @@ export function ManagementPage() {
   });
 
   const folders = foldersQuery.data ?? [];
-  const videos = videosQuery.data ?? [];
   const importJobs = importsQuery.data ?? [];
-  const tagCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const video of videos) {
-      for (const tag of video.tags) {
-        counts.set(tag, (counts.get(tag) ?? 0) + 1);
-      }
-    }
-    return [...counts.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
-  }, [videos]);
 
   const importMutation = useMutation({
     mutationFn: createImport,
@@ -147,10 +128,23 @@ export function ManagementPage() {
     },
   });
 
-  const clearJobsMutation = useMutation({
-    mutationFn: clearFinishedImportJobs,
+  const clearCompletedJobsMutation = useMutation({
+    mutationFn: () => clearFinishedImportJobs("completed"),
     onSuccess: async (result) => {
-      setFeedback(`已清理 ${result.deleted_job_count} 条已完成/失败/已取消任务。`);
+      setFeedback(`已清理 ${result.deleted_job_count} 条已完成任务。`);
+      setError(null);
+      await queryClient.invalidateQueries({ queryKey: ["imports"] });
+    },
+    onError: (exc: ApiError) => {
+      setError(exc.message);
+      setFeedback(null);
+    },
+  });
+
+  const clearFailedJobsMutation = useMutation({
+    mutationFn: () => clearFinishedImportJobs("failed"),
+    onSuccess: async (result) => {
+      setFeedback(`已清理 ${result.deleted_job_count} 条失败 / 已取消任务。`);
       setError(null);
       await queryClient.invalidateQueries({ queryKey: ["imports"] });
     },
@@ -184,8 +178,8 @@ export function ManagementPage() {
     <div className="page-stack">
       <Surface>
         <p className="eyebrow">管理页</p>
-        <h1>搜索、导入与任务管理</h1>
-        <p className="muted">首页现在只保留推荐 Banner 和媒体库，这里承载搜索、单文件导入、文件夹批量导入、同步与任务清理。</p>
+        <h1>导入与任务管理</h1>
+        <p className="muted">搜索媒体库已经移动到首页，这里专注导入、同步和任务控制。</p>
         <div className="action-row">
           <button className="primary-button" disabled={syncMutation.isPending} onClick={() => syncMutation.mutate()} type="button">
             {syncMutation.isPending ? "同步中..." : "同步远端目录"}
@@ -208,63 +202,19 @@ export function ManagementPage() {
       ) : null}
 
       <Surface>
-        <h2>搜索媒体库</h2>
-        <div className="toolbar-row">
-          <input
-            className="text-input grow"
-            onChange={(event) => setSearchInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                setAppliedSearch(searchInput.trim());
-              }
-            }}
-            placeholder="按标题、源路径、标签搜索"
-            value={searchInput}
-          />
-          <button className="secondary-button" onClick={() => setAppliedSearch(searchInput.trim())} type="button">
-            应用搜索
-          </button>
-          <button
-            className="secondary-button"
-            onClick={() => {
-              setSearchInput("");
-              setAppliedSearch("");
-              setActiveTag(undefined);
-              setSelectedFolderId(undefined);
-            }}
-            type="button"
-          >
-            清空
-          </button>
-        </div>
-        <div className="chip-row">
-          <TagChip active={selectedFolderId === undefined} label="全部目录" onClick={() => setSelectedFolderId(undefined)} />
+        <h2>导入目录</h2>
+        <p className="muted">新导入的视频会写入当前选中的目录；不选则为未分类。</p>
+        <div className="chip-row top-gap">
+          <TagChip active={selectedFolderId === undefined} label="未分类" onClick={() => setSelectedFolderId(undefined)} />
           {folders.map((folder) => (
             <TagChip key={folder.id} active={selectedFolderId === folder.id} label={folder.name} onClick={() => setSelectedFolderId(folder.id)} />
           ))}
-        </div>
-        {tagCounts.length > 0 ? (
-          <div className="chip-row">
-            {tagCounts.map(([tag, count]) => (
-              <TagChip key={tag} active={activeTag === tag} label={`${tag} (${count})`} onClick={() => setActiveTag(activeTag === tag ? undefined : tag)} />
-            ))}
-          </div>
-        ) : null}
-        <div className="manage-result-list">
-          {videos.map((video) => (
-            <Link className="manage-result-card" key={video.id} to={`/videos/${video.id}`}>
-              <strong>{video.title}</strong>
-              <span className="muted small-text">{formatDuration(video.duration_seconds)} · {formatBytes(video.size)}</span>
-            </Link>
-          ))}
-          {videos.length === 0 ? <p className="muted">当前搜索条件下没有视频。</p> : null}
         </div>
       </Surface>
 
       <div className="management-grid">
         <Surface>
           <h2>导入单个视频</h2>
-          <p className="muted">单文件导入可自定义标题；后台仍按单任务执行。</p>
           <div className="form-stack">
             <input className="text-input" onChange={(event) => setSourcePath(event.target.value)} placeholder="例如：D:\\Videos\\movie.mp4" value={sourcePath} />
             <input className="text-input" onChange={(event) => setTitle(event.target.value)} placeholder="可选：显示标题" value={title} />
@@ -289,7 +239,6 @@ export function ManagementPage() {
 
         <Surface>
           <h2>导入整个文件夹</h2>
-          <p className="muted">按递归方式扫描常见视频格式；每个视频文件会创建一个独立导入任务。</p>
           <div className="form-stack">
             <input className="text-input" onChange={(event) => setFolderSourcePath(event.target.value)} placeholder="例如：D:\\Anime\\Season1" value={folderSourcePath} />
             <input className="text-input" onChange={(event) => setFolderTagInput(event.target.value)} placeholder="可选：给整个文件夹导入统一打标签" value={folderTagInput} />
@@ -321,8 +270,21 @@ export function ManagementPage() {
             <button className="secondary-button danger-button" disabled={cancelAllMutation.isPending} onClick={() => cancelAllMutation.mutate()} type="button">
               {cancelAllMutation.isPending ? "请求中..." : "取消全部活动任务"}
             </button>
-            <button className="secondary-button" disabled={clearJobsMutation.isPending} onClick={() => clearJobsMutation.mutate()} type="button">
-              {clearJobsMutation.isPending ? "清理中..." : "清理已完成任务"}
+            <button
+              className="secondary-button"
+              disabled={clearCompletedJobsMutation.isPending}
+              onClick={() => clearCompletedJobsMutation.mutate()}
+              type="button"
+            >
+              {clearCompletedJobsMutation.isPending ? "清理中..." : "清理已完成任务"}
+            </button>
+            <button
+              className="secondary-button"
+              disabled={clearFailedJobsMutation.isPending}
+              onClick={() => clearFailedJobsMutation.mutate()}
+              type="button"
+            >
+              {clearFailedJobsMutation.isPending ? "清理中..." : "清理失败/取消任务"}
             </button>
           </div>
         </div>

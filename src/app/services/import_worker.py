@@ -5,6 +5,7 @@ from threading import Event, Lock, Thread
 
 from app.core.config import Settings
 from app.repositories.import_jobs import (
+    get_import_job,
     list_import_job_ids_by_status,
     mark_import_job_failed,
     mark_running_import_jobs_interrupted,
@@ -71,7 +72,8 @@ class ImportWorker:
             try:
                 process_background_job(self.settings, job_id)
             except Exception as exc:
-                mark_import_job_failed(self.settings, job_id, error_message=str(exc))
+                if get_import_job(self.settings, job_id) is not None:
+                    mark_import_job_failed(self.settings, job_id, error_message=str(exc))
             finally:
                 with self._lock:
                     self._processing_job_ids.discard(job_id)

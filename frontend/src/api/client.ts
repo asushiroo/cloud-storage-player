@@ -158,8 +158,8 @@ export const cancelAllImportJobs = (): Promise<CancelAllImportJobsResult> =>
     method: "POST",
   });
 
-export const clearFinishedImportJobs = (): Promise<ClearedImportJobsResult> =>
-  request("/api/imports", {
+export const clearFinishedImportJobs = (statusGroup: "completed" | "failed"): Promise<ClearedImportJobsResult> =>
+  request(`/api/imports?status_group=${statusGroup}`, {
     method: "DELETE",
   });
 

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from app.api.dependencies import require_authenticated
 from app.api.schemas.imports import (
@@ -12,7 +14,8 @@ from app.api.schemas.imports import (
     ImportRequest,
 )
 from app.repositories.import_jobs import (
-    delete_finished_import_jobs,
+    delete_completed_import_jobs,
+    delete_failed_import_jobs,
     get_import_job,
     list_import_jobs,
     request_cancel_all_active_jobs,
@@ -102,11 +105,18 @@ async def cancel_all_import_jobs(
 @router.delete("", response_model=ClearedImportJobsResponse)
 async def clear_finished_import_jobs(
     request: Request,
+    status_group: Literal["completed", "failed"] = Query(default="completed"),
     _: None = Depends(require_authenticated),
 ) -> ClearedImportJobsResponse:
     settings = request.app.state.settings
-    deleted_job_count = delete_finished_import_jobs(settings)
-    return ClearedImportJobsResponse(deleted_job_count=deleted_job_count)
+    if status_group == "failed":
+        deleted_job_count = delete_failed_import_jobs(settings)
+    else:
+        deleted_job_count = delete_completed_import_jobs(settings)
+    return ClearedImportJobsResponse(
+        deleted_job_count=deleted_job_count,
+        status_group=status_group,
+    )
 
 
 @router.get("", response_model=list[ImportJobResponse])

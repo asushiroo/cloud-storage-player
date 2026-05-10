@@ -51,6 +51,7 @@ export interface ImportFolderResult {
 
 export interface ClearedImportJobsResult {
   deleted_job_count: number;
+  status_group: "completed" | "failed";
 }
 
 export interface CancelAllImportJobsResult {

@@ -30,6 +30,12 @@ JOB_SELECT_SQL = """
 
 FINISHED_JOB_STATUSES = ("completed", "failed", "cancelled")
 ACTIVE_JOB_STATUSES = ("queued", "running", "cancelling")
+FAILED_JOB_STATUSES = ("failed", "cancelled")
+COMPLETED_JOB_STATUSES = ("completed",)
+
+
+class ImportJobNotFoundError(LookupError):
+    """Raised when the target background job no longer exists."""
 
 
 def create_import_job(
@@ -279,16 +285,29 @@ def request_cancel_all_active_jobs(settings: Settings) -> int:
     return int(queued_cursor.rowcount) + int(running_cursor.rowcount)
 
 
-def delete_finished_import_jobs(settings: Settings) -> int:
+def delete_import_jobs_by_statuses(settings: Settings, *, statuses: Sequence[str]) -> int:
+    if not statuses:
+        return 0
+
+    placeholders = ", ".join("?" for _ in statuses)
     with connect_database(settings) as connection:
         cursor = connection.execute(
-            """
+            f"""
             DELETE FROM import_jobs
-            WHERE status IN ('completed', 'failed', 'cancelled')
-            """
+            WHERE status IN ({placeholders})
+            """,
+            tuple(statuses),
         )
         connection.commit()
     return int(cursor.rowcount)
+
+
+def delete_completed_import_jobs(settings: Settings) -> int:
+    return delete_import_jobs_by_statuses(settings, statuses=COMPLETED_JOB_STATUSES)
+
+
+def delete_failed_import_jobs(settings: Settings) -> int:
+    return delete_import_jobs_by_statuses(settings, statuses=FAILED_JOB_STATUSES)
 
 
 def find_active_delete_job(settings: Settings, *, target_video_id: int) -> ImportJob | None:
@@ -337,6 +356,8 @@ def _update_import_job(
         connection.commit()
         row = _fetch_job_row(connection, job_id)
 
+    if row is None:
+        raise ImportJobNotFoundError(f"Import job does not exist: {job_id}")
     return _row_to_import_job(row)
 
 

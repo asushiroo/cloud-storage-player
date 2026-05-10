@@ -58,11 +58,13 @@
   - 播放页直接使用后端 `/api/videos/{id}/stream`
 - 导入 / 删除统一任务栏
   - 导入任务显示任务名而不是纯路径
-  - 支持单条取消、全部取消、清理终态任务
+  - 支持单条取消、全部取消
+- 已完成任务与失败/取消任务分开清理
   - 删除视频改为后台删除任务，并出现在同一个任务栏
 - 视频 artwork 管理
   - 后端新增独立 `poster_path`，首页 Banner 优先使用 poster
   - 播放页可捕获当前帧，预览后选择替换 cover / poster
+- 应用成功后会自动收起当前截图预览
   - 导入时默认把首张封面同时写入 cover / poster，便于后续再精修
 - `uv run pytest` 自动化测试
 
@@ -105,7 +107,7 @@ npm run dev
 当前页面结构：
 
 - `/`：首页，仅推荐 Banner + 媒体库
-- `/manage`：搜索、单文件导入、文件夹批量导入、导入任务清理
+- `/manage`：单文件导入、文件夹批量导入、同步与任务管理
 - `/settings`：运行设置与百度授权
 
 如果后端地址不是默认值，可创建 `.env.local`：
@@ -190,7 +192,7 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 - `POST /api/imports/folder`
 - `POST /api/imports/{job_id}/cancel`
 - `POST /api/imports/cancel-all`
-- `DELETE /api/imports`
+- `DELETE /api/imports?status_group=completed|failed`
 - `GET /api/imports`
 - `GET /api/imports/{job_id}`
 
