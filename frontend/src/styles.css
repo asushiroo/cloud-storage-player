@@ -399,6 +399,7 @@ h2 {
 }
 
 .player-surface {
+  position: relative;
   overflow: hidden;
   border-radius: 2rem;
   background: black;
@@ -406,9 +407,74 @@ h2 {
 }
 
 .player-video {
+  display: block;
+  width: 100%;
   aspect-ratio: 16 / 9;
   object-fit: contain;
   background: black;
+}
+
+.player-overlay {
+  position: absolute;
+  inset: 0 0 4.5rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.player-overlay-zone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: white;
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+
+.player-overlay-zone:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.player-overlay-zone:focus-visible {
+  outline: 2px solid rgba(130, 87, 230, 0.85);
+  outline-offset: -2px;
+}
+
+.player-overlay-icon-shell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 4rem;
+  height: 4rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+}
+
+.player-overlay-icon-shell-center {
+  width: 4.5rem;
+  height: 4.5rem;
+}
+
+.material-symbols-rounded {
+  font-family: "Material Symbols Rounded";
+  font-weight: normal;
+  font-style: normal;
+  font-size: 2rem;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+}
+
+.player-overlay-icon {
+  font-size: 2rem;
 }
 
 .top-gap {

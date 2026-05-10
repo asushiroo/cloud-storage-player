@@ -116,6 +116,7 @@ export function PlayerPage() {
   const session = useRequireSession();
   const queryClient = useQueryClient();
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [isPlaying, setIsPlaying] = useState(true);
   const [capturedDataUrl, setCapturedDataUrl] = useState<string | null>(null);
   const [coverPreviewDataUrl, setCoverPreviewDataUrl] = useState<string | null>(null);
   const [posterPreviewDataUrl, setPosterPreviewDataUrl] = useState<string | null>(null);
@@ -192,6 +193,27 @@ export function PlayerPage() {
 
   const video = videoQuery.data;
 
+  const seekBy = (seconds: number) => {
+    const element = videoRef.current;
+    if (!element || !Number.isFinite(element.duration)) {
+      return;
+    }
+    const nextTime = Math.min(Math.max(element.currentTime + seconds, 0), element.duration);
+    element.currentTime = nextTime;
+  };
+
+  const togglePlayback = () => {
+    const element = videoRef.current;
+    if (!element) {
+      return;
+    }
+    if (element.paused) {
+      void element.play();
+      return;
+    }
+    element.pause();
+  };
+
   const captureCurrentFrame = () => {
     const element = videoRef.current;
     if (!element || element.readyState < 2 || element.videoWidth <= 0 || element.videoHeight <= 0) {
@@ -234,7 +256,49 @@ export function PlayerPage() {
         </Surface>
       ) : null}
       <div className="player-surface">
-        <video autoPlay className="player-video" controls ref={videoRef} src={getStreamUrl(videoId)} />
+        <video
+          autoPlay
+          className="player-video"
+          controls
+          onEnded={() => setIsPlaying(false)}
+          onLoadedMetadata={() => setIsPlaying(!(videoRef.current?.paused ?? true))}
+          onPause={() => setIsPlaying(false)}
+          onPlay={() => setIsPlaying(true)}
+          ref={videoRef}
+          src={getStreamUrl(videoId)}
+        />
+        <div className="player-overlay">
+          <button
+            aria-label="后退 10 秒"
+            className="player-overlay-zone player-overlay-zone-left"
+            onClick={() => seekBy(-10)}
+            type="button"
+          >
+            <span className="player-overlay-icon-shell">
+              <span className="material-symbols-rounded player-overlay-icon">replay_10</span>
+            </span>
+          </button>
+          <button
+            aria-label={isPlaying ? "暂停播放" : "开始播放"}
+            className="player-overlay-zone player-overlay-zone-center"
+            onClick={togglePlayback}
+            type="button"
+          >
+            <span className="player-overlay-icon-shell player-overlay-icon-shell-center">
+              <span className="material-symbols-rounded player-overlay-icon">{isPlaying ? "pause" : "play_arrow"}</span>
+            </span>
+          </button>
+          <button
+            aria-label="快进 10 秒"
+            className="player-overlay-zone player-overlay-zone-right"
+            onClick={() => seekBy(10)}
+            type="button"
+          >
+            <span className="player-overlay-icon-shell">
+              <span className="material-symbols-rounded player-overlay-icon">forward_10</span>
+            </span>
+          </button>
+        </div>
       </div>
       <Surface>
         <div className="section-head">
