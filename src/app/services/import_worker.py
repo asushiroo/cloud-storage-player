@@ -9,7 +9,7 @@ from app.repositories.import_jobs import (
     mark_import_job_failed,
     mark_running_import_jobs_interrupted,
 )
-from app.services.imports import process_import_job
+from app.services.background_jobs import process_background_job
 
 
 class ImportWorker:
@@ -69,7 +69,7 @@ class ImportWorker:
                 self._processing_job_ids.add(job_id)
 
             try:
-                process_import_job(self.settings, job_id)
+                process_background_job(self.settings, job_id)
             except Exception as exc:
                 mark_import_job_failed(self.settings, job_id, error_message=str(exc))
             finally:

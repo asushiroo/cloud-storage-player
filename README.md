@@ -26,8 +26,9 @@
 - 导入时把 manifest / 加密分片上传到当前配置的存储后端
 - 后台异步导入任务（API 入队，后台 worker 执行）
 - 视频自定义标签
-  - 导入时可填写标签
-  - 视频详情页可编辑标签
+  - 导入时可填写多个标签
+  - 视频详情页改为多标签小格子编辑
+  - 支持添加 / 删除 / 双击编辑并自动保存
   - 标签持久化到本地数据库
   - 标签写入远端加密 manifest，sync 后可恢复
 - 媒体库标签/关键词过滤
@@ -45,11 +46,24 @@
 - 真实百度链路 smoke CLI（上传 / 远端 sync / 远端回放校验）
 - 已完成一次真实百度链路在线验收（`tmp/rieri.mp4` 上传 / sync / 远端回放通过）
 - 前端已切换到 `frontend/` 中的新实现
+  - 首页只保留推荐 Banner 与媒体库
+  - Banner 每 10 分钟随机抽取 5 个视频轮播，优先使用独立 poster
+  - 媒体库卡片保持使用 cover，修复卡片收缩时封面溢出问题
+  - 搜索、导入视频、导入任务迁移到独立管理页
   - 登录页走 `/api/auth/login`
-  - 媒体库页走 `/api/folders`、`/api/videos`、`/api/imports`
-  - 视频详情页走 `/api/videos/{id}`、`PATCH /api/videos/{id}/tags`
+  - 媒体库页走 `/api/videos`
+  - 管理页走 `/api/folders`、`/api/videos`、`/api/imports`
+  - 视频详情页走 `/api/videos/{id}`、`PATCH /api/videos/{id}/tags`、`POST /api/videos/{id}/artwork`、`DELETE /api/videos/{id}`
   - 设置页走 `/api/settings`、`/api/settings/baidu/oauth`
   - 播放页直接使用后端 `/api/videos/{id}/stream`
+- 导入 / 删除统一任务栏
+  - 导入任务显示任务名而不是纯路径
+  - 支持单条取消、全部取消、清理终态任务
+  - 删除视频改为后台删除任务，并出现在同一个任务栏
+- 视频 artwork 管理
+  - 后端新增独立 `poster_path`，首页 Banner 优先使用 poster
+  - 播放页可捕获当前帧，预览后选择替换 cover / poster
+  - 导入时默认把首张封面同时写入 cover / poster，便于后续再精修
 - `uv run pytest` 自动化测试
 
 ## 当前仍未完成
@@ -59,6 +73,8 @@
 - 更完整的百度错误分类、长时退避与分片并发上传策略
 - 远端封面同步与更完整的 catalog 元数据恢复
 - 当前前端只保证 Web 主链路，移动端不是本阶段目标
+- 目前还没有批量删除/批量清空媒体库，当前仍以单视频删除任务为主
+- 任务取消目前是协作式取消：已排队任务会立刻取消，运行中任务会在阶段边界停止
 
 ## Python 版本
 
@@ -85,6 +101,12 @@ cd frontend
 npm install
 npm run dev
 ```
+
+当前页面结构：
+
+- `/`：首页，仅推荐 Banner + 媒体库
+- `/manage`：搜索、单文件导入、文件夹批量导入、导入任务清理
+- `/settings`：运行设置与百度授权
 
 如果后端地址不是默认值，可创建 `.env.local`：
 
@@ -158,11 +180,17 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 - `GET /api/videos`
 - `GET /api/videos/{video_id}`
 - `PATCH /api/videos/{video_id}/tags`
+- `POST /api/videos/{video_id}/artwork`
+- `DELETE /api/videos/{video_id}`（创建删除任务）
 - `GET /api/videos/{video_id}/stream`
 
 导入：
 
 - `POST /api/imports`
+- `POST /api/imports/folder`
+- `POST /api/imports/{job_id}/cancel`
+- `POST /api/imports/cancel-all`
+- `DELETE /api/imports`
 - `GET /api/imports`
 - `GET /api/imports/{job_id}`
 

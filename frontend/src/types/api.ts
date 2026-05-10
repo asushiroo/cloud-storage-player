@@ -14,6 +14,7 @@ export interface Video {
   folder_id: number | null;
   title: string;
   cover_path: string | null;
+  poster_path: string | null;
   mime_type: string;
   size: number;
   duration_seconds: number | null;
@@ -30,12 +31,30 @@ export interface ImportJob {
   folder_id: number | null;
   requested_title: string | null;
   requested_tags: string[];
+  job_kind: string;
+  task_name: string;
   status: string;
   progress_percent: number;
   error_message: string | null;
   video_id: number | null;
+  target_video_id: number | null;
+  cancel_requested: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface ImportFolderResult {
+  source_path: string;
+  created_job_count: number;
+  created_job_ids: number[];
+}
+
+export interface ClearedImportJobsResult {
+  deleted_job_count: number;
+}
+
+export interface CancelAllImportJobsResult {
+  updated_job_count: number;
 }
 
 export interface CatalogSyncResult {

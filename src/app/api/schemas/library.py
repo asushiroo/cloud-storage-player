@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class FolderResponse(BaseModel):
@@ -19,6 +19,7 @@ class VideoResponse(BaseModel):
     folder_id: int | None
     title: str
     cover_path: str | None
+    poster_path: str | None
     mime_type: str
     size: int
     duration_seconds: float | None
@@ -31,6 +32,17 @@ class VideoResponse(BaseModel):
 
 class VideoTagsUpdateRequest(BaseModel):
     tags: list[str] = Field(default_factory=list)
+
+
+class VideoArtworkUpdateRequest(BaseModel):
+    cover_data_url: str | None = None
+    poster_data_url: str | None = None
+
+    @model_validator(mode="after")
+    def validate_at_least_one_payload(self) -> "VideoArtworkUpdateRequest":
+        if self.cover_data_url is None and self.poster_data_url is None:
+            raise ValueError("At least one artwork image is required.")
+        return self
 
 
 class CatalogSyncResponse(BaseModel):

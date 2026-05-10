@@ -36,6 +36,7 @@ def sample_video() -> Video:
         folder_id=None,
         title="Secret Demo",
         cover_path=None,
+        poster_path=None,
         mime_type="video/mp4",
         size=2048,
         duration_seconds=12.5,

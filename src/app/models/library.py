@@ -17,6 +17,7 @@ class Video:
     folder_id: int | None
     title: str
     cover_path: str | None
+    poster_path: str | None
     mime_type: str
     size: int
     duration_seconds: float | None

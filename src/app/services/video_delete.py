@@ -1,0 +1,132 @@
+from __future__ import annotations
+
+import shutil
+from pathlib import Path
+
+from app.core.config import Settings
+from app.models.imports import ImportJob
+from app.models.library import Video
+from app.repositories.import_jobs import (
+    create_delete_job,
+    find_active_delete_job,
+    get_import_job,
+    mark_import_job_cancelled,
+    mark_import_job_completed,
+    mark_import_job_failed,
+    mark_import_job_running,
+)
+from app.repositories.video_segments import list_video_segments
+from app.repositories.videos import delete_video, get_video
+from app.services.job_control import JobCancelledError, throw_if_cancel_requested
+from app.storage.factory import build_storage_backend
+
+
+class VideoDeleteNotFoundError(RuntimeError):
+    """Raised when the target video does not exist."""
+
+
+def queue_video_delete_job(settings: Settings, *, video_id: int, worker: "ImportWorker") -> ImportJob:
+    video = get_video(settings, video_id)
+    if video is None:
+        raise VideoDeleteNotFoundError(f"Video not found: {video_id}")
+
+    existing_job = find_active_delete_job(settings, target_video_id=video_id)
+    if existing_job is not None:
+        return existing_job
+
+    task_name = f"删除：{video.title}"
+    job = create_delete_job(
+        settings,
+        source_path=video.source_path or f"video:{video.id}",
+        requested_title=video.title,
+        task_name=task_name,
+        target_video_id=video.id,
+    )
+    worker.enqueue(job.id)
+    return job
+
+
+def process_delete_job(settings: Settings, job_id: int) -> ImportJob:
+    job = get_import_job(settings, job_id)
+    if job is None:
+        raise VideoDeleteNotFoundError(f"Delete job not found: {job_id}")
+    if job.status in {"completed", "failed", "cancelled"}:
+        return job
+    if job.target_video_id is None:
+        return mark_import_job_failed(settings, job_id, error_message="Delete job is missing target_video_id.")
+
+    try:
+        throw_if_cancel_requested(settings, job_id)
+        mark_import_job_running(settings, job_id)
+        throw_if_cancel_requested(settings, job_id)
+        delete_library_video(settings, job.target_video_id)
+    except JobCancelledError as exc:
+        return mark_import_job_cancelled(settings, job_id, error_message=str(exc))
+    except VideoDeleteNotFoundError as exc:
+        return mark_import_job_failed(settings, job_id, error_message=str(exc))
+    except Exception as exc:
+        return mark_import_job_failed(settings, job_id, error_message=str(exc))
+
+    return mark_import_job_completed(settings, job_id)
+
+
+def delete_library_video(settings: Settings, video_id: int) -> None:
+    video = get_video(settings, video_id)
+    if video is None:
+        raise VideoDeleteNotFoundError(f"Video not found: {video_id}")
+
+    remote_paths = _collect_remote_paths(settings, video)
+    _delete_remote_paths_best_effort(settings, remote_paths)
+    _delete_local_artifacts(settings, video)
+    delete_video(settings, video_id)
+
+
+def _collect_remote_paths(settings: Settings, video: Video) -> list[str]:
+    segments = list_video_segments(settings, video_id=video.id)
+    paths = {
+        path
+        for path in [video.manifest_path, *(segment.cloud_path for segment in segments)]
+        if path
+    }
+    return sorted(paths)
+
+
+def _delete_remote_paths_best_effort(settings: Settings, remote_paths: list[str]) -> None:
+    if not remote_paths:
+        return
+
+    try:
+        storage = build_storage_backend(settings)
+    except Exception:
+        return
+
+    try:
+        for remote_path in remote_paths:
+            try:
+                storage.delete_path(remote_path)
+            except Exception:
+                continue
+    finally:
+        close = getattr(storage, "close", None)
+        if callable(close):
+            close()
+
+
+def _delete_local_artifacts(settings: Settings, video: Video) -> None:
+    shutil.rmtree(settings.segment_staging_dir / str(video.id), ignore_errors=True)
+    for cover_file in _resolve_artwork_files(settings, video):
+        cover_file.unlink(missing_ok=True)
+
+
+def _resolve_artwork_files(settings: Settings, video: Video) -> list[Path]:
+    resolved: list[Path] = []
+    seen_names: set[str] = set()
+    for artwork_path in [video.cover_path, video.poster_path]:
+        if not artwork_path:
+            continue
+        file_name = Path(artwork_path).name
+        if not file_name or file_name in seen_names:
+            continue
+        seen_names.add(file_name)
+        resolved.append(settings.covers_dir / file_name)
+    return resolved

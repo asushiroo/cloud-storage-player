@@ -1,20 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { fetchVideo, updateVideoTags } from "../api/client";
+import { useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { deleteVideo, fetchVideo, updateVideoTags } from "../api/client";
 import { CoverCard } from "../components/CoverCard";
+import { EditableTagList } from "../components/EditableTagList";
 import { Surface } from "../components/Surface";
 import { TagChip } from "../components/TagChip";
 import { useRequireSession } from "../hooks/session";
 import type { ApiError } from "../types/api";
-import { formatBytes, formatDateTime, formatDuration, parseTagInput } from "../utils/format";
+import { formatBytes, formatDateTime, formatDuration } from "../utils/format";
 
 export function VideoDetailPage() {
   const { videoId: rawVideoId } = useParams();
   const videoId = Number(rawVideoId);
   const session = useRequireSession();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [tagInput, setTagInput] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,18 +25,30 @@ export function VideoDetailPage() {
     enabled: session.data?.authenticated === true && Number.isFinite(videoId),
   });
 
-  useEffect(() => {
-    if (videoQuery.data) {
-      setTagInput(videoQuery.data.tags.join(", "));
-    }
-  }, [videoQuery.data]);
+  const deleteVideoMutation = useMutation({
+    mutationFn: () => deleteVideo(videoId),
+    onSuccess: async (job) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["imports"] }),
+        queryClient.invalidateQueries({ queryKey: ["video", videoId] }),
+        queryClient.invalidateQueries({ queryKey: ["videos"] }),
+      ]);
+      navigate("/manage", {
+        replace: true,
+        state: { feedback: `已创建任务：${job.task_name}` },
+      });
+    },
+    onError: (exc: ApiError) => {
+      setError(exc.message);
+      setFeedback(null);
+    },
+  });
 
   const updateTagsMutation = useMutation({
     mutationFn: (tags: string[]) => updateVideoTags(videoId, tags),
-    onSuccess: async (video) => {
-      setFeedback("标签已更新。新的 manifest 会在下次 sync 时同步。");
+    onSuccess: async () => {
+      setFeedback("标签已自动保存。新的 manifest 会在下次 sync 时同步。");
       setError(null);
-      setTagInput(video.tags.join(", "));
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["video", videoId] }),
         queryClient.invalidateQueries({ queryKey: ["videos"] }),
@@ -87,6 +100,7 @@ export function VideoDetailPage() {
                 <p>Manifest：{video.manifest_path ?? "未生成"}</p>
                 <p>创建时间：{formatDateTime(video.created_at)}</p>
                 <p>分片数量：{video.segment_count}</p>
+                <p>Banner Poster：{video.poster_path ?? video.cover_path ?? "未设置"}</p>
               </div>
               <div className="action-row">
                 <Link className="primary-button link-button" to={`/videos/${video.id}/play`}>
@@ -95,6 +109,19 @@ export function VideoDetailPage() {
                 <Link className="secondary-button link-button" to="/">
                   返回媒体库
                 </Link>
+                <button
+                  className="secondary-button danger-button"
+                  disabled={deleteVideoMutation.isPending}
+                  onClick={() => {
+                    if (!window.confirm(`确认把《${video.title}》加入删除任务队列吗？`)) {
+                      return;
+                    }
+                    deleteVideoMutation.mutate();
+                  }}
+                  type="button"
+                >
+                  {deleteVideoMutation.isPending ? "创建中..." : "加入删除任务"}
+                </button>
               </div>
             </div>
           </div>
@@ -108,12 +135,13 @@ export function VideoDetailPage() {
       {video ? (
         <Surface>
           <h2>标签编辑</h2>
-          <div className="form-stack">
-            <input className="text-input" onChange={(event) => setTagInput(event.target.value)} placeholder="输入标签，逗号分隔" value={tagInput} />
-            <button className="primary-button" disabled={updateTagsMutation.isPending} onClick={() => updateTagsMutation.mutate(parseTagInput(tagInput))} type="button">
-              {updateTagsMutation.isPending ? "保存中..." : "保存标签"}
-            </button>
-          </div>
+          <EditableTagList
+            disabled={updateTagsMutation.isPending}
+            onSave={async (tags) => {
+              await updateTagsMutation.mutateAsync(tags);
+            }}
+            tags={video.tags}
+          />
         </Surface>
       ) : null}
     </div>

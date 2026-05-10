@@ -1,8 +1,11 @@
 import type {
   ApiError,
   AuthSession,
+  CancelAllImportJobsResult,
   CatalogSyncResult,
+  ClearedImportJobsResult,
   Folder,
+  ImportFolderResult,
   ImportJob,
   PublicSettings,
   Video,
@@ -94,11 +97,30 @@ export const fetchVideos = (params?: { folderId?: number; q?: string; tag?: stri
 
 export const fetchVideo = (videoId: number): Promise<Video> => request(`/api/videos/${videoId}`);
 
+export const deleteVideo = (videoId: number): Promise<ImportJob> =>
+  request(`/api/videos/${videoId}`, {
+    method: "DELETE",
+  });
+
 export const updateVideoTags = (videoId: number, tags: string[]): Promise<Video> =>
   request(`/api/videos/${videoId}/tags`, {
     method: "PATCH",
     headers: jsonHeaders,
     body: JSON.stringify({ tags }),
+  });
+
+export const updateVideoArtwork = (payload: {
+  videoId: number;
+  coverDataUrl?: string;
+  posterDataUrl?: string;
+}): Promise<Video> =>
+  request(`/api/videos/${payload.videoId}/artwork`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({
+      cover_data_url: payload.coverDataUrl ?? null,
+      poster_data_url: payload.posterDataUrl ?? null,
+    }),
   });
 
 export const fetchImportJobs = (): Promise<ImportJob[]> => request("/api/imports");
@@ -113,6 +135,32 @@ export const createImport = (payload: {
     method: "POST",
     headers: jsonHeaders,
     body: JSON.stringify(payload),
+  });
+
+export const createFolderImport = (payload: {
+  source_path: string;
+  folder_id?: number | null;
+  tags?: string[];
+}): Promise<ImportFolderResult> =>
+  request("/api/imports/folder", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify(payload),
+  });
+
+export const cancelImportJob = (jobId: number): Promise<ImportJob> =>
+  request(`/api/imports/${jobId}/cancel`, {
+    method: "POST",
+  });
+
+export const cancelAllImportJobs = (): Promise<CancelAllImportJobsResult> =>
+  request("/api/imports/cancel-all", {
+    method: "POST",
+  });
+
+export const clearFinishedImportJobs = (): Promise<ClearedImportJobsResult> =>
+  request("/api/imports", {
+    method: "DELETE",
   });
 
 export const syncRemoteCatalog = (): Promise<CatalogSyncResult> =>

@@ -7,6 +7,24 @@ from app.core.tags import decode_tags, encode_tags
 from app.db.connection import connect_database
 from app.models.library import Video
 
+VIDEO_SELECT_SQL = """
+    SELECT videos.id,
+           videos.folder_id,
+           videos.title,
+           videos.cover_path,
+           videos.poster_path,
+           videos.mime_type,
+           videos.size,
+           videos.duration_seconds,
+           videos.manifest_path,
+           videos.source_path,
+           videos.tags_json,
+           videos.created_at,
+           COUNT(video_segments.id) AS segment_count
+    FROM videos
+    LEFT JOIN video_segments ON video_segments.video_id = videos.id
+"""
+
 
 def list_videos(
     settings: Settings,
@@ -15,22 +33,7 @@ def list_videos(
     q: str | None = None,
     tag: str | None = None,
 ) -> list[Video]:
-    query = """
-        SELECT videos.id,
-               videos.folder_id,
-               videos.title,
-               videos.cover_path,
-               videos.mime_type,
-               videos.size,
-               videos.duration_seconds,
-               videos.manifest_path,
-               videos.source_path,
-               videos.tags_json,
-               videos.created_at,
-               COUNT(video_segments.id) AS segment_count
-        FROM videos
-        LEFT JOIN video_segments ON video_segments.video_id = videos.id
-    """
+    query = VIDEO_SELECT_SQL
     parameters: tuple[object, ...] = ()
     if folder_id is None:
         query += " GROUP BY videos.id ORDER BY videos.title COLLATE NOCASE, videos.id"
@@ -71,6 +74,7 @@ def create_video(
     tags: list[str] | None = None,
     folder_id: int | None = None,
     cover_path: str | None = None,
+    poster_path: str | None = None,
     duration_seconds: float | None = None,
     manifest_path: str | None = None,
     source_path: str | None = None,
@@ -82,6 +86,7 @@ def create_video(
                 folder_id,
                 title,
                 cover_path,
+                poster_path,
                 mime_type,
                 size,
                 duration_seconds,
@@ -89,12 +94,13 @@ def create_video(
                 source_path,
                 tags_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 folder_id,
                 title,
                 cover_path,
+                poster_path,
                 mime_type,
                 size,
                 duration_seconds,
@@ -104,54 +110,14 @@ def create_video(
             ),
         )
         connection.commit()
-        row = connection.execute(
-            """
-            SELECT videos.id,
-                   videos.folder_id,
-                   videos.title,
-                   videos.cover_path,
-                   videos.mime_type,
-                   videos.size,
-                   videos.duration_seconds,
-                   videos.manifest_path,
-                   videos.source_path,
-                   videos.tags_json,
-                   videos.created_at,
-                   COUNT(video_segments.id) AS segment_count
-            FROM videos
-            LEFT JOIN video_segments ON video_segments.video_id = videos.id
-            WHERE videos.id = ?
-            GROUP BY videos.id
-            """,
-            (cursor.lastrowid,),
-        ).fetchone()
+        row = _fetch_video_row(connection, cursor.lastrowid)
 
     return _row_to_video(row)
 
 
 def get_video(settings: Settings, video_id: int) -> Video | None:
     with connect_database(settings) as connection:
-        row = connection.execute(
-            """
-            SELECT videos.id,
-                   videos.folder_id,
-                   videos.title,
-                   videos.cover_path,
-                   videos.mime_type,
-                   videos.size,
-                   videos.duration_seconds,
-                   videos.manifest_path,
-                   videos.source_path,
-                   videos.tags_json,
-                   videos.created_at,
-                   COUNT(video_segments.id) AS segment_count
-            FROM videos
-            LEFT JOIN video_segments ON video_segments.video_id = videos.id
-            WHERE videos.id = ?
-            GROUP BY videos.id
-            """,
-            (video_id,),
-        ).fetchone()
+        row = _fetch_video_row(connection, video_id)
 
     if row is None:
         return None
@@ -161,21 +127,8 @@ def get_video(settings: Settings, video_id: int) -> Video | None:
 def get_video_by_manifest_path(settings: Settings, manifest_path: str) -> Video | None:
     with connect_database(settings) as connection:
         row = connection.execute(
-            """
-            SELECT videos.id,
-                   videos.folder_id,
-                   videos.title,
-                   videos.cover_path,
-                   videos.mime_type,
-                   videos.size,
-                   videos.duration_seconds,
-                   videos.manifest_path,
-                   videos.source_path,
-                   videos.tags_json,
-                   videos.created_at,
-                   COUNT(video_segments.id) AS segment_count
-            FROM videos
-            LEFT JOIN video_segments ON video_segments.video_id = videos.id
+            f"""
+            {VIDEO_SELECT_SQL}
             WHERE videos.manifest_path = ?
             GROUP BY videos.id
             """,
@@ -193,37 +146,53 @@ def update_video_cover_path(
     *,
     cover_path: str | None,
 ) -> Video:
+    return update_video_artwork_paths(
+        settings,
+        video_id,
+        cover_path=cover_path,
+        poster_path=_UNCHANGED,
+    )
+
+
+class _UnchangedValue:
+    pass
+
+
+_UNCHANGED = _UnchangedValue()
+
+
+def update_video_artwork_paths(
+    settings: Settings,
+    video_id: int,
+    *,
+    cover_path: str | None | _UnchangedValue = _UNCHANGED,
+    poster_path: str | None | _UnchangedValue = _UNCHANGED,
+) -> Video:
+    assignments: list[str] = []
+    parameters: list[object] = []
+    if not isinstance(cover_path, _UnchangedValue):
+        assignments.append("cover_path = ?")
+        parameters.append(cover_path)
+    if not isinstance(poster_path, _UnchangedValue):
+        assignments.append("poster_path = ?")
+        parameters.append(poster_path)
+    if not assignments:
+        video = get_video(settings, video_id)
+        if video is None:
+            raise ValueError(f"Video not found: {video_id}")
+        return video
+
     with connect_database(settings) as connection:
         connection.execute(
-            """
+            f"""
             UPDATE videos
-            SET cover_path = ?
+            SET {", ".join(assignments)}
             WHERE id = ?
             """,
-            (cover_path, video_id),
+            (*parameters, video_id),
         )
         connection.commit()
-        row = connection.execute(
-            """
-            SELECT videos.id,
-                   videos.folder_id,
-                   videos.title,
-                   videos.cover_path,
-                   videos.mime_type,
-                   videos.size,
-                   videos.duration_seconds,
-                   videos.manifest_path,
-                   videos.source_path,
-                   videos.tags_json,
-                   videos.created_at,
-                   COUNT(video_segments.id) AS segment_count
-            FROM videos
-            LEFT JOIN video_segments ON video_segments.video_id = videos.id
-            WHERE videos.id = ?
-            GROUP BY videos.id
-            """,
-            (video_id,),
-        ).fetchone()
+        row = _fetch_video_row(connection, video_id)
 
     return _row_to_video(row)
 
@@ -244,27 +213,7 @@ def update_video_manifest_path(
             (manifest_path, video_id),
         )
         connection.commit()
-        row = connection.execute(
-            """
-            SELECT videos.id,
-                   videos.folder_id,
-                   videos.title,
-                   videos.cover_path,
-                   videos.mime_type,
-                   videos.size,
-                   videos.duration_seconds,
-                   videos.manifest_path,
-                   videos.source_path,
-                   videos.tags_json,
-                   videos.created_at,
-                   COUNT(video_segments.id) AS segment_count
-            FROM videos
-            LEFT JOIN video_segments ON video_segments.video_id = videos.id
-            WHERE videos.id = ?
-            GROUP BY videos.id
-            """,
-            (video_id,),
-        ).fetchone()
+        row = _fetch_video_row(connection, video_id)
 
     return _row_to_video(row)
 
@@ -306,29 +255,22 @@ def update_video_sync_metadata(
             ),
         )
         connection.commit()
-        row = connection.execute(
-            """
-            SELECT videos.id,
-                   videos.folder_id,
-                   videos.title,
-                   videos.cover_path,
-                   videos.mime_type,
-                   videos.size,
-                   videos.duration_seconds,
-                   videos.manifest_path,
-                   videos.source_path,
-                   videos.tags_json,
-                   videos.created_at,
-                   COUNT(video_segments.id) AS segment_count
-            FROM videos
-            LEFT JOIN video_segments ON video_segments.video_id = videos.id
-            WHERE videos.id = ?
-            GROUP BY videos.id
-            """,
-            (video_id,),
-        ).fetchone()
+        row = _fetch_video_row(connection, video_id)
 
     return _row_to_video(row)
+
+
+def delete_video(settings: Settings, video_id: int) -> bool:
+    with connect_database(settings) as connection:
+        cursor = connection.execute(
+            """
+            DELETE FROM videos
+            WHERE id = ?
+            """,
+            (video_id,),
+        )
+        connection.commit()
+    return int(cursor.rowcount) > 0
 
 
 def update_video_tags(
@@ -347,29 +289,20 @@ def update_video_tags(
             (encode_tags(tags), video_id),
         )
         connection.commit()
-        row = connection.execute(
-            """
-            SELECT videos.id,
-                   videos.folder_id,
-                   videos.title,
-                   videos.cover_path,
-                   videos.mime_type,
-                   videos.size,
-                   videos.duration_seconds,
-                   videos.manifest_path,
-                   videos.source_path,
-                   videos.tags_json,
-                   videos.created_at,
-                   COUNT(video_segments.id) AS segment_count
-            FROM videos
-            LEFT JOIN video_segments ON video_segments.video_id = videos.id
-            WHERE videos.id = ?
-            GROUP BY videos.id
-            """,
-            (video_id,),
-        ).fetchone()
+        row = _fetch_video_row(connection, video_id)
 
     return _row_to_video(row)
+
+
+def _fetch_video_row(connection: sqlite3.Connection, video_id: int) -> sqlite3.Row | None:
+    return connection.execute(
+        f"""
+        {VIDEO_SELECT_SQL}
+        WHERE videos.id = ?
+        GROUP BY videos.id
+        """,
+        (video_id,),
+    ).fetchone()
 
 
 def _row_to_video(row: sqlite3.Row) -> Video:
@@ -378,6 +311,7 @@ def _row_to_video(row: sqlite3.Row) -> Video:
         folder_id=row["folder_id"],
         title=row["title"],
         cover_path=row["cover_path"],
+        poster_path=row["poster_path"],
         mime_type=row["mime_type"],
         size=row["size"],
         duration_seconds=row["duration_seconds"],

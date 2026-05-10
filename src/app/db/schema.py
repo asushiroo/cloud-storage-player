@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS videos (
     folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
     title TEXT NOT NULL,
     cover_path TEXT,
+    poster_path TEXT,
     mime_type TEXT NOT NULL,
     size INTEGER NOT NULL DEFAULT 0,
     duration_seconds REAL,
@@ -39,10 +40,14 @@ CREATE TABLE IF NOT EXISTS import_jobs (
     folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
     requested_title TEXT,
     requested_tags_json TEXT NOT NULL DEFAULT '[]',
+    job_kind TEXT NOT NULL DEFAULT 'import',
+    task_name TEXT,
     status TEXT NOT NULL,
     progress_percent INTEGER NOT NULL DEFAULT 0,
     error_message TEXT,
     video_id INTEGER REFERENCES videos(id) ON DELETE SET NULL,
+    target_video_id INTEGER REFERENCES videos(id) ON DELETE SET NULL,
+    cancel_requested INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -69,7 +74,19 @@ def initialize_database(settings: Settings) -> None:
         connection.executescript(SCHEMA_SQL)
         _ensure_column(connection, "videos", "source_path", "TEXT")
         _ensure_column(connection, "videos", "tags_json", "TEXT NOT NULL DEFAULT '[]'")
+        _ensure_column(connection, "videos", "poster_path", "TEXT")
         _ensure_column(connection, "import_jobs", "requested_tags_json", "TEXT NOT NULL DEFAULT '[]'")
+        _ensure_column(connection, "import_jobs", "job_kind", "TEXT NOT NULL DEFAULT 'import'")
+        _ensure_column(connection, "import_jobs", "task_name", "TEXT")
+        _ensure_column(connection, "import_jobs", "target_video_id", "INTEGER REFERENCES videos(id) ON DELETE SET NULL")
+        _ensure_column(connection, "import_jobs", "cancel_requested", "INTEGER NOT NULL DEFAULT 0")
+        connection.execute(
+            """
+            UPDATE import_jobs
+            SET task_name = COALESCE(NULLIF(requested_title, ''), source_path)
+            WHERE task_name IS NULL OR task_name = ''
+            """
+        )
         connection.commit()
 
 
