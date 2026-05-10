@@ -96,6 +96,18 @@ def list_video_segments(settings: Settings, *, video_id: int) -> list[VideoSegme
     return [_row_to_video_segment(row) for row in rows]
 
 
+def delete_video_segments(settings: Settings, *, video_id: int) -> None:
+    with connect_database(settings) as connection:
+        connection.execute(
+            """
+            DELETE FROM video_segments
+            WHERE video_id = ?
+            """,
+            (video_id,),
+        )
+        connection.commit()
+
+
 def _row_to_video_segment(row: sqlite3.Row) -> VideoSegment:
     return VideoSegment(
         id=row["id"],

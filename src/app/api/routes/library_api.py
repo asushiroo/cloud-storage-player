@@ -4,9 +4,12 @@ from fastapi import APIRouter, Depends, Request
 from fastapi import HTTPException, status
 
 from app.api.dependencies import require_authenticated
-from app.api.schemas.library import FolderResponse, VideoResponse
+from app.api.schemas.library import CatalogSyncResponse, FolderResponse, VideoResponse
 from app.repositories.folders import list_folders
 from app.repositories.videos import get_video, list_videos
+from app.services.baidu_oauth import BaiduOAuthConfigurationError
+from app.services.catalog_sync import sync_remote_catalog
+from app.storage.baidu_api import BaiduApiError
 
 router = APIRouter(prefix="/api", tags=["library"])
 
@@ -45,3 +48,25 @@ async def get_video_detail(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found.")
 
     return VideoResponse.model_validate(video)
+
+
+@router.post("/videos/sync", response_model=CatalogSyncResponse)
+async def sync_videos(
+    request: Request,
+    _: None = Depends(require_authenticated),
+) -> CatalogSyncResponse:
+    settings = request.app.state.settings
+    try:
+        result = sync_remote_catalog(settings)
+    except BaiduOAuthConfigurationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except (BaiduApiError, RuntimeError) as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    return CatalogSyncResponse(
+        discovered_manifest_count=result.discovered_manifest_count,
+        created_video_count=result.created_video_count,
+        updated_video_count=result.updated_video_count,
+        failed_manifest_count=result.failed_manifest_count,
+        errors=result.errors,
+    )

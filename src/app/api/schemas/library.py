@@ -26,3 +26,11 @@ class VideoResponse(BaseModel):
     source_path: str | None
     created_at: str
     segment_count: int = 0
+
+
+class CatalogSyncResponse(BaseModel):
+    discovered_manifest_count: int
+    created_video_count: int
+    updated_video_count: int
+    failed_manifest_count: int
+    errors: list[str]

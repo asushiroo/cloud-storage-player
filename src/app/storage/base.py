@@ -1,7 +1,14 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from pathlib import Path
+
+
+@dataclass(slots=True)
+class StorageEntry:
+    path: str
+    is_dir: bool
 
 
 class StorageBackend(ABC):
@@ -20,3 +27,7 @@ class StorageBackend(ABC):
     @abstractmethod
     def exists(self, remote_path: str) -> bool:
         """Return whether a remote object exists."""
+
+    @abstractmethod
+    def list_directory(self, remote_path: str) -> list[StorageEntry]:
+        """List direct children under a remote directory."""

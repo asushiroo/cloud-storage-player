@@ -36,6 +36,14 @@ export interface ImportJob {
   updated_at: string;
 }
 
+export interface CatalogSyncResult {
+  discovered_manifest_count: number;
+  created_video_count: number;
+  updated_video_count: number;
+  failed_manifest_count: number;
+  errors: string[];
+}
+
 export interface PublicSettings {
   baidu_root_path: string;
   cache_limit_bytes: number;

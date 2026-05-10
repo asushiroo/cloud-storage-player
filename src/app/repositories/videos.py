@@ -131,6 +131,34 @@ def get_video(settings: Settings, video_id: int) -> Video | None:
     return _row_to_video(row)
 
 
+def get_video_by_manifest_path(settings: Settings, manifest_path: str) -> Video | None:
+    with connect_database(settings) as connection:
+        row = connection.execute(
+            """
+            SELECT videos.id,
+                   videos.folder_id,
+                   videos.title,
+                   videos.cover_path,
+                   videos.mime_type,
+                   videos.size,
+                   videos.duration_seconds,
+                   videos.manifest_path,
+                   videos.source_path,
+                   videos.created_at,
+                   COUNT(video_segments.id) AS segment_count
+            FROM videos
+            LEFT JOIN video_segments ON video_segments.video_id = videos.id
+            WHERE videos.manifest_path = ?
+            GROUP BY videos.id
+            """,
+            (manifest_path,),
+        ).fetchone()
+
+    if row is None:
+        return None
+    return _row_to_video(row)
+
+
 def update_video_cover_path(
     settings: Settings,
     video_id: int,
@@ -185,6 +213,64 @@ def update_video_manifest_path(
             WHERE id = ?
             """,
             (manifest_path, video_id),
+        )
+        connection.commit()
+        row = connection.execute(
+            """
+            SELECT videos.id,
+                   videos.folder_id,
+                   videos.title,
+                   videos.cover_path,
+                   videos.mime_type,
+                   videos.size,
+                   videos.duration_seconds,
+                   videos.manifest_path,
+                   videos.source_path,
+                   videos.created_at,
+                   COUNT(video_segments.id) AS segment_count
+            FROM videos
+            LEFT JOIN video_segments ON video_segments.video_id = videos.id
+            WHERE videos.id = ?
+            GROUP BY videos.id
+            """,
+            (video_id,),
+        ).fetchone()
+
+    return _row_to_video(row)
+
+
+def update_video_sync_metadata(
+    settings: Settings,
+    video_id: int,
+    *,
+    title: str,
+    mime_type: str,
+    size: int,
+    duration_seconds: float | None,
+    manifest_path: str,
+    source_path: str | None,
+) -> Video:
+    with connect_database(settings) as connection:
+        connection.execute(
+            """
+            UPDATE videos
+            SET title = ?,
+                mime_type = ?,
+                size = ?,
+                duration_seconds = ?,
+                manifest_path = ?,
+                source_path = ?
+            WHERE id = ?
+            """,
+            (
+                title,
+                mime_type,
+                size,
+                duration_seconds,
+                manifest_path,
+                source_path,
+                video_id,
+            ),
         )
         connection.commit()
         row = connection.execute(

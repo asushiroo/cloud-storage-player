@@ -16,6 +16,8 @@ const sourcePath = ref("");
 const title = ref("");
 const loading = ref(false);
 const importLoading = ref(false);
+const syncLoading = ref(false);
+const message = ref("");
 const error = ref("");
 
 const filteredVideos = computed(() => videos.value);
@@ -43,6 +45,7 @@ async function load(): Promise<void> {
 async function submitImport(): Promise<void> {
   importLoading.value = true;
   error.value = "";
+  message.value = "";
   try {
     await importsApi.createImport({
       source_path: sourcePath.value,
@@ -63,6 +66,33 @@ async function submitImport(): Promise<void> {
   }
 }
 
+async function syncCatalog(): Promise<void> {
+  syncLoading.value = true;
+  error.value = "";
+  message.value = "";
+  try {
+    const result = await libraryApi.syncRemoteCatalog();
+    await load();
+    message.value = [
+      `发现 ${result.discovered_manifest_count} 个 manifest`,
+      `新建 ${result.created_video_count} 个视频`,
+      `更新 ${result.updated_video_count} 个视频`,
+      `失败 ${result.failed_manifest_count} 个`,
+    ].join("，");
+    if (result.errors.length > 0) {
+      error.value = result.errors.join("；");
+    }
+  } catch (exc) {
+    if (axios.isAxiosError(exc)) {
+      error.value = exc.response?.data?.detail ?? "同步远端目录失败。";
+    } else {
+      error.value = "同步远端目录失败。";
+    }
+  } finally {
+    syncLoading.value = false;
+  }
+}
+
 onMounted(load);
 </script>
 
@@ -76,6 +106,7 @@ onMounted(load);
         </div>
 
         <p v-if="error" class="error">{{ error }}</p>
+        <p v-if="message">{{ message }}</p>
 
         <div class="grid two">
           <div class="field">
@@ -87,6 +118,12 @@ onMounted(load);
               </option>
             </select>
           </div>
+        </div>
+
+        <div class="button-row">
+          <button class="button secondary" type="button" :disabled="syncLoading" @click="syncCatalog">
+            {{ syncLoading ? "同步中..." : "同步远端目录" }}
+          </button>
         </div>
       </section>
 

@@ -26,3 +26,16 @@ def test_mock_storage_backend_rejects_parent_path_escape(tmp_path: Path) -> None
         assert str(exc) == "remote_path must not escape the storage root."
     else:
         raise AssertionError("Expected ValueError for invalid remote path.")
+
+
+def test_mock_storage_backend_can_list_directory_entries(tmp_path: Path) -> None:
+    backend = MockStorageBackend(tmp_path / "mock-remote")
+    backend.upload_bytes(b"{}", "/apps/CloudStoragePlayer/videos/1/manifest.json")
+    backend.upload_bytes(b"segment", "/apps/CloudStoragePlayer/videos/1/segments/000000.cspseg")
+
+    entries = backend.list_directory("/apps/CloudStoragePlayer/videos/1")
+
+    assert [(entry.path, entry.is_dir) for entry in entries] == [
+        ("/apps/CloudStoragePlayer/videos/1/manifest.json", False),
+        ("/apps/CloudStoragePlayer/videos/1/segments", True),
+    ]

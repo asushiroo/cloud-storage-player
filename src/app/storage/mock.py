@@ -3,7 +3,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path, PurePosixPath
 
-from app.storage.base import StorageBackend
+from app.storage.base import StorageBackend, StorageEntry
 
 
 class MockStorageBackend(StorageBackend):
@@ -30,6 +30,20 @@ class MockStorageBackend(StorageBackend):
         path = self.local_path_for(remote_path)
         return path.exists() and path.is_file()
 
+    def list_directory(self, remote_path: str) -> list[StorageEntry]:
+        directory = self.local_path_for(remote_path)
+        if not directory.exists() or not directory.is_dir():
+            return []
+
+        base_path = _normalized_remote_string(remote_path)
+        return [
+            StorageEntry(
+                path=_join_remote_path(base_path, child.name),
+                is_dir=child.is_dir(),
+            )
+            for child in sorted(directory.iterdir(), key=lambda child: child.name)
+        ]
+
     def local_path_for(self, remote_path: str) -> Path:
         relative_path = _normalize_remote_path(remote_path)
         return self.root_dir / Path(*relative_path.parts)
@@ -42,3 +56,11 @@ def _normalize_remote_path(remote_path: str) -> PurePosixPath:
     if any(part == ".." for part in normalized.parts):
         raise ValueError("remote_path must not escape the storage root.")
     return normalized
+
+
+def _normalized_remote_string(remote_path: str) -> str:
+    return "/" + "/".join(_normalize_remote_path(remote_path).parts)
+
+
+def _join_remote_path(remote_path: str, child_name: str) -> str:
+    return str(PurePosixPath(remote_path) / child_name)

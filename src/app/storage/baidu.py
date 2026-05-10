@@ -10,7 +10,7 @@ from app.services.baidu_oauth import (
     set_baidu_refresh_token,
 )
 from app.storage.baidu_api import BaiduApiError, BaiduOpenApi
-from app.storage.base import StorageBackend
+from app.storage.base import StorageBackend, StorageEntry
 
 SLICE_MD5_WINDOW_BYTES = 256 * 1024
 
@@ -80,6 +80,21 @@ class BaiduStorageBackend(StorageBackend):
         except (FileNotFoundError, BaiduApiError, BaiduOAuthConfigurationError, ValueError):
             return False
         return True
+
+    def list_directory(self, remote_path: str) -> list[StorageEntry]:
+        access_token = self._load_access_token()
+        entries = self.api.list_directory(
+            access_token=access_token,
+            dir_path=normalize_baidu_path(remote_path),
+        )
+        return [
+            StorageEntry(
+                path=str(entry.get("path") or ""),
+                is_dir=bool(int(entry.get("isdir", 0))),
+            )
+            for entry in entries
+            if entry.get("path")
+        ]
 
     def _resolve_metadata(self, access_token: str, remote_path: str) -> dict:
         parent_path = PurePosixPath(remote_path).parent.as_posix() or "/"

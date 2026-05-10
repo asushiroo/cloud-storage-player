@@ -24,6 +24,7 @@
   - `baidu`：基于百度网盘官方 open platform 的最小可用 backend
 - 百度 OAuth 授权码换取 refresh token
 - 导入时把 manifest / 加密分片上传到当前配置的存储后端
+- 远端 manifest 扫描 / catalog sync
 - 播放流优先读取本地加密分片，其次回退到远端对象，最后回退到源文件
 - `ffmpeg` 封面抽取与 `/covers/*` 静态访问
 - `uv run pytest` 自动化测试
@@ -32,9 +33,9 @@
 ## 当前仍未完成
 
 - 真实百度网盘链路的端到端在线验收脚本
-- 远端 manifest 扫描 / catalog sync
 - 后台异步导入、断点续传、LRU 分片缓存
 - 更完善的百度错误重试与分片并发上传策略
+- 远端封面同步与更完整的 catalog 元数据恢复
 
 ## Python 版本
 
@@ -133,6 +134,10 @@ npm run dev
 - `POST /api/imports`
 - `GET /api/imports`
 - `GET /api/imports/{job_id}`
+
+同步：
+
+- `POST /api/videos/sync`
 
 设置：
 

@@ -47,6 +47,14 @@ class FakeBaiduStorageApi:
 
     def list_directory(self, **kwargs):
         self.list_calls.append(kwargs)
+        if kwargs["dir_path"] == "/apps/CloudStoragePlayer/videos":
+            return [
+                {
+                    "path": "/apps/CloudStoragePlayer/videos/1",
+                    "server_filename": "1",
+                    "isdir": 1,
+                }
+            ]
         return [
             {
                 "fs_id": 123456,
@@ -115,3 +123,15 @@ def test_baidu_storage_backend_downloads_bytes(monkeypatch, tmp_path: Path) -> N
         "dlink": "https://d.pcs.baidu.com/file/demo",
         "access_token": "access-token",
     }
+
+
+def test_baidu_storage_backend_lists_directory_entries(monkeypatch, tmp_path: Path) -> None:
+    settings = build_settings(tmp_path, monkeypatch)
+    api = FakeBaiduStorageApi()
+    backend = BaiduStorageBackend(settings, api=api)
+
+    entries = backend.list_directory("/CloudStoragePlayer/videos")
+
+    assert [(entry.path, entry.is_dir) for entry in entries] == [
+        ("/apps/CloudStoragePlayer/videos/1", True)
+    ]
