@@ -93,13 +93,10 @@ export function LibraryPage() {
         <Link className="banner-link" to={`/videos/${activeBannerVideo.id}`}>
           <section
             className="banner-surface"
-            style={{ backgroundImage: `linear-gradient(120deg, rgba(12,16,32,0.7), rgba(12,16,32,0.12)), url(${buildAssetUrl(activeBannerVideo.poster_path ?? activeBannerVideo.cover_path) ?? ""})` }}
+            style={{ backgroundImage: `linear-gradient(120deg, rgba(12,16,32,0.45), rgba(12,16,32,0.05)), url(${buildAssetUrl(activeBannerVideo.poster_path ?? activeBannerVideo.cover_path) ?? ""})` }}
           >
-            <div className="banner-simple-head">
+            <div className="banner-title-corner">
               <h1 className="banner-title-simple">{activeBannerVideo.title}</h1>
-            </div>
-            <div className="banner-footer-note">
-              {formatDuration(activeBannerVideo.duration_seconds)} · {formatBytes(activeBannerVideo.size)}
             </div>
             <div className="banner-dots">
               {bannerVideos.map((video, index) => (
@@ -181,6 +178,22 @@ export function LibraryPage() {
         {videos.map((video) => (
           <Link className="video-card" key={video.id} to={`/videos/${video.id}`}>
             <CoverCard coverPath={video.cover_path} title={video.title} />
+            <div className="video-meta">
+              <h2>{video.title}</h2>
+              <p className="muted">{formatDuration(video.duration_seconds)} · {formatBytes(video.size)} · {video.segment_count} segments</p>
+              <p className="small-text">{video.source_path ?? "未保留源路径"}</p>
+              <div className="chip-row compact">
+                {video.tags.length > 0 ? (
+                  video.tags.map((tag) => (
+                    <span className="mini-tag" key={tag}>
+                      {tag}
+                    </span>
+                  ))
+                ) : (
+                  <span className="muted small-text">暂无标签</span>
+                )}
+              </div>
+            </div>
           </Link>
         ))}
       </div>

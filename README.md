@@ -48,8 +48,9 @@
 - 前端已切换到 `frontend/` 中的新实现
   - 首页只保留推荐 Banner 与媒体库
   - Banner 每 10 分钟随机抽取 5 个视频轮播，优先使用独立 poster
-  - 媒体库卡片保持使用 cover，修复卡片收缩时封面溢出问题
-  - 搜索、导入视频、导入任务迁移到独立管理页
+  - Banner poster 只保留右下角标题
+  - 媒体库卡片保持原来的 cover + 元信息布局，修复卡片收缩时封面溢出问题
+  - 搜索与标签过滤在首页媒体库完成；管理页专注导入、同步与任务管理
   - 登录页走 `/api/auth/login`
   - 媒体库页走 `/api/videos`
   - 管理页走 `/api/folders`、`/api/videos`、`/api/imports`
