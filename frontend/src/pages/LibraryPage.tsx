@@ -57,6 +57,7 @@ export function LibraryPage() {
 
   const folders = foldersQuery.data ?? [];
   const videos = videosQuery.data ?? [];
+  const artworkVersionToken = videosQuery.dataUpdatedAt;
   const tagCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const video of videos) {
@@ -93,7 +94,12 @@ export function LibraryPage() {
         <Link className="banner-link" to={`/videos/${activeBannerVideo.id}`}>
           <section
             className="banner-surface"
-            style={{ backgroundImage: `linear-gradient(120deg, rgba(12,16,32,0.45), rgba(12,16,32,0.05)), url(${buildAssetUrl(activeBannerVideo.poster_path ?? activeBannerVideo.cover_path) ?? ""})` }}
+            style={{
+              backgroundImage: `linear-gradient(120deg, rgba(12,16,32,0.45), rgba(12,16,32,0.05)), url(${buildAssetUrl(
+                activeBannerVideo.poster_path ?? activeBannerVideo.cover_path,
+                artworkVersionToken,
+              ) ?? ""})`,
+            }}
           >
             <div className="banner-title-corner">
               <h1 className="banner-title-simple">{activeBannerVideo.title}</h1>
@@ -177,7 +183,7 @@ export function LibraryPage() {
       <div className="video-grid">
         {videos.map((video) => (
           <Link className="video-card" key={video.id} to={`/videos/${video.id}`}>
-            <CoverCard coverPath={video.cover_path} title={video.title} />
+            <CoverCard coverPath={video.cover_path} title={video.title} versionToken={artworkVersionToken} />
             <div className="video-meta">
               <h2>{video.title}</h2>
               <p className="muted">{formatDuration(video.duration_seconds)} · {formatBytes(video.size)} · {video.segment_count} segments</p>

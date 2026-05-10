@@ -86,7 +86,7 @@ export function VideoDetailPage() {
         <Surface>
           <div className="detail-layout">
             <div className="detail-cover">
-              <CoverCard coverPath={video.cover_path} title={video.title} />
+              <CoverCard coverPath={video.cover_path} title={video.title} versionToken={videoQuery.dataUpdatedAt} />
             </div>
             <div className="detail-main">
               <p className="eyebrow">Video #{video.id}</p>

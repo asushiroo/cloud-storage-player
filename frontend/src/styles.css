@@ -419,6 +419,18 @@ h2 {
   inset: 0 0 4.5rem;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.player-overlay-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.player-overlay-hidden {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .player-overlay-zone {

@@ -4,12 +4,13 @@ import { Link, useParams } from "react-router-dom";
 import { fetchVideo, getStreamUrl, updateVideoArtwork } from "../api/client";
 import { Surface } from "../components/Surface";
 import { useRequireSession } from "../hooks/session";
-import type { ApiError } from "../types/api";
+import type { ApiError, Video } from "../types/api";
 import { formatBytes, formatDuration } from "../utils/format";
 
 const COVER_TARGET = { width: 540, height: 810 };
 const POSTER_TARGET = { width: 1280, height: 720 };
 const DEFAULT_CROP = { zoom: 1, offsetX: 0, offsetY: 0 };
+const OVERLAY_HIDE_DELAY_MS = 2600;
 
 type CropConfig = typeof DEFAULT_CROP;
 
@@ -116,7 +117,9 @@ export function PlayerPage() {
   const session = useRequireSession();
   const queryClient = useQueryClient();
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const overlayHideTimerRef = useRef<number | null>(null);
   const [isPlaying, setIsPlaying] = useState(true);
+  const [showOverlay, setShowOverlay] = useState(true);
   const [capturedDataUrl, setCapturedDataUrl] = useState<string | null>(null);
   const [coverPreviewDataUrl, setCoverPreviewDataUrl] = useState<string | null>(null);
   const [posterPreviewDataUrl, setPosterPreviewDataUrl] = useState<string | null>(null);
@@ -131,6 +134,44 @@ export function PlayerPage() {
     queryFn: () => fetchVideo(videoId),
     enabled: session.data?.authenticated === true && Number.isFinite(videoId),
   });
+
+  useEffect(() => {
+    return () => {
+      if (overlayHideTimerRef.current !== null) {
+        window.clearTimeout(overlayHideTimerRef.current);
+      }
+    };
+  }, []);
+
+  const refreshVideoCaches = (updatedVideo: Video) => {
+    queryClient.setQueryData(["video", videoId], updatedVideo);
+    queryClient.setQueriesData({ queryKey: ["videos"] }, (current: Video[] | undefined) => {
+      if (!Array.isArray(current)) {
+        return current;
+      }
+      return current.map((item) => (item.id === updatedVideo.id ? { ...item, ...updatedVideo } : item));
+    });
+  };
+
+  const armOverlayHideTimer = () => {
+    if (overlayHideTimerRef.current !== null) {
+      window.clearTimeout(overlayHideTimerRef.current);
+    }
+    overlayHideTimerRef.current = window.setTimeout(() => {
+      setShowOverlay(false);
+      overlayHideTimerRef.current = null;
+    }, OVERLAY_HIDE_DELAY_MS);
+  };
+
+  const revealOverlay = () => {
+    setShowOverlay(true);
+    armOverlayHideTimer();
+  };
+
+  useEffect(() => {
+    setShowOverlay(true);
+    armOverlayHideTimer();
+  }, []);
 
   useEffect(() => {
     if (!capturedDataUrl) {
@@ -168,7 +209,8 @@ export function PlayerPage() {
         coverDataUrl: replaceCover ? coverPreviewDataUrl ?? undefined : undefined,
         posterDataUrl: replacePoster ? posterPreviewDataUrl ?? undefined : undefined,
       }),
-    onSuccess: async () => {
+    onSuccess: async (updatedVideo) => {
+      refreshVideoCaches(updatedVideo);
       setCapturedDataUrl(null);
       setFeedback("封面 / Poster 已更新。现在 cover 会固定输出竖版比例，poster 固定输出横版比例。");
       setError(null);
@@ -198,6 +240,7 @@ export function PlayerPage() {
     if (!element || !Number.isFinite(element.duration)) {
       return;
     }
+    revealOverlay();
     const nextTime = Math.min(Math.max(element.currentTime + seconds, 0), element.duration);
     element.currentTime = nextTime;
   };
@@ -207,6 +250,7 @@ export function PlayerPage() {
     if (!element) {
       return;
     }
+    revealOverlay();
     if (element.paused) {
       void element.play();
       return;
@@ -255,19 +299,35 @@ export function PlayerPage() {
           <p>{feedback}</p>
         </Surface>
       ) : null}
-      <div className="player-surface">
+      <div
+        className="player-surface"
+        onMouseMove={revealOverlay}
+        onTouchStart={revealOverlay}
+      >
         <video
           autoPlay
           className="player-video"
           controls
-          onEnded={() => setIsPlaying(false)}
-          onLoadedMetadata={() => setIsPlaying(!(videoRef.current?.paused ?? true))}
-          onPause={() => setIsPlaying(false)}
-          onPlay={() => setIsPlaying(true)}
+          onEnded={() => {
+            setIsPlaying(false);
+            revealOverlay();
+          }}
+          onLoadedMetadata={() => {
+            setIsPlaying(!(videoRef.current?.paused ?? true));
+            revealOverlay();
+          }}
+          onPause={() => {
+            setIsPlaying(false);
+            revealOverlay();
+          }}
+          onPlay={() => {
+            setIsPlaying(true);
+            revealOverlay();
+          }}
           ref={videoRef}
           src={getStreamUrl(videoId)}
         />
-        <div className="player-overlay">
+        <div className={`player-overlay ${showOverlay ? "player-overlay-visible" : "player-overlay-hidden"}`}>
           <button
             aria-label="后退 10 秒"
             className="player-overlay-zone player-overlay-zone-left"

@@ -61,7 +61,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-export const buildAssetUrl = (path: string | null): string | null => (path ? buildUrl(path) : null);
+export const buildAssetUrl = (path: string | null, versionToken?: string | number): string | null => {
+  if (!path) {
+    return null;
+  }
+  const url = buildUrl(path);
+  if (versionToken === undefined || versionToken === null || versionToken === "") {
+    return url;
+  }
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}v=${encodeURIComponent(String(versionToken))}`;
+};
 export const getStreamUrl = (videoId: number): string => buildUrl(`/api/videos/${videoId}/stream`);
 
 export const fetchSession = (): Promise<AuthSession> => request("/api/auth/session");
