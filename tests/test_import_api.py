@@ -160,7 +160,10 @@ def test_import_video_creates_queued_job_and_completes_in_background(tmp_path: P
     assert video_payload["duration_seconds"] is not None
     assert video_payload["source_path"] == str(source_path)
     assert video_payload["cover_path"] is not None
-    assert video_payload["poster_path"] == video_payload["cover_path"]
+    assert video_payload["cover_path"].endswith("-cover.jpg")
+    assert video_payload["poster_path"] is not None
+    assert video_payload["poster_path"].endswith("-poster.jpg")
+    assert video_payload["poster_path"] != video_payload["cover_path"]
     assert video_payload["segment_count"] >= 1
     assert video_payload["tags"] == ["动画", "治愈"]
     assert video_payload["manifest_path"] is not None

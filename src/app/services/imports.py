@@ -6,7 +6,7 @@ from app.core.config import Settings
 from app.core.keys import load_content_key, load_or_create_content_key
 from app.core.tags import normalize_tags
 from app.media.chunker import iter_file_chunks
-from app.media.covers import CoverExtractionError, extract_cover
+from app.media.covers import CoverExtractionError, extract_cover, extract_poster
 from app.media.crypto import encrypt_segment
 from app.media.probe import MediaProbeError, probe_video
 from app.models.imports import ImportJob
@@ -293,12 +293,19 @@ def _create_video_from_probe(
 
 
 def _maybe_extract_cover(settings: Settings, *, source: Path, video: Video) -> Video:
-    cover_output_path = settings.covers_dir / f"{video.id}.jpg"
-    cover_web_path = f"/covers/{video.id}.jpg"
+    cover_output_path = settings.covers_dir / f"{video.id}-cover.jpg"
+    poster_output_path = settings.covers_dir / f"{video.id}-poster.jpg"
+    cover_web_path = f"/covers/{video.id}-cover.jpg"
+    poster_web_path = f"/covers/{video.id}-poster.jpg"
     try:
         extract_cover(
             source,
             cover_output_path,
+            ffmpeg_binary=settings.ffmpeg_binary,
+        )
+        extract_poster(
+            source,
+            poster_output_path,
             ffmpeg_binary=settings.ffmpeg_binary,
         )
     except CoverExtractionError:
@@ -308,7 +315,7 @@ def _maybe_extract_cover(settings: Settings, *, source: Path, video: Video) -> V
         settings,
         video.id,
         cover_path=cover_web_path,
-        poster_path=cover_web_path,
+        poster_path=poster_web_path,
     )
 
 
