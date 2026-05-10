@@ -9,7 +9,7 @@ import { formatBytes, formatDuration } from "../utils/format";
 
 const POSTER_TARGET = { width: 1280, height: 720 };
 const DEFAULT_CROP = { zoom: 1, offsetX: 0, offsetY: 0 };
-const OVERLAY_HIDE_DELAY_MS = 2600;
+const OVERLAY_HIDE_DELAY_MS = 500;
 
 type CropConfig = typeof DEFAULT_CROP;
 
@@ -118,7 +118,7 @@ export function PlayerPage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const overlayHideTimerRef = useRef<number | null>(null);
   const [isPlaying, setIsPlaying] = useState(true);
-  const [showOverlay, setShowOverlay] = useState(true);
+  const [showOverlay, setShowOverlay] = useState(false);
   const [capturedDataUrl, setCapturedDataUrl] = useState<string | null>(null);
   const [posterPreviewDataUrl, setPosterPreviewDataUrl] = useState<string | null>(null);
   const [posterCrop, setPosterCrop] = useState<CropConfig>(DEFAULT_CROP);
@@ -162,11 +162,6 @@ export function PlayerPage() {
     setShowOverlay(true);
     armOverlayHideTimer();
   };
-
-  useEffect(() => {
-    setShowOverlay(true);
-    armOverlayHideTimer();
-  }, []);
 
   useEffect(() => {
     if (!capturedDataUrl) {
@@ -287,26 +282,30 @@ export function PlayerPage() {
           <p>{feedback}</p>
         </Surface>
       ) : null}
-      <div className="player-surface" onMouseMove={revealOverlay} onTouchStart={revealOverlay}>
+      <div
+        className="player-surface"
+        onClick={(event) => {
+          if (event.target instanceof HTMLButtonElement) {
+            return;
+          }
+          revealOverlay();
+        }}
+      >
         <video
           autoPlay
           className="player-video"
           controls
           onEnded={() => {
             setIsPlaying(false);
-            revealOverlay();
           }}
           onLoadedMetadata={() => {
             setIsPlaying(!(videoRef.current?.paused ?? true));
-            revealOverlay();
           }}
           onPause={() => {
             setIsPlaying(false);
-            revealOverlay();
           }}
           onPlay={() => {
             setIsPlaying(true);
-            revealOverlay();
           }}
           ref={videoRef}
           src={getStreamUrl(videoId)}

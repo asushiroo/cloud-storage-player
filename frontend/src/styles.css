@@ -486,11 +486,6 @@ h2 {
   background: transparent;
   color: white;
   cursor: pointer;
-  transition: background 160ms ease;
-}
-
-.player-overlay-zone:hover {
-  background: rgba(255, 255, 255, 0.06);
 }
 
 .player-overlay-zone:focus-visible {
@@ -507,11 +502,18 @@ h2 {
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(8px);
+  transition: transform 160ms ease, background 160ms ease;
 }
 
 .player-overlay-icon-shell-center {
   width: 4.5rem;
   height: 4.5rem;
+}
+
+.player-overlay-zone:hover .player-overlay-icon-shell,
+.player-overlay-zone:focus-visible .player-overlay-icon-shell {
+  transform: scale(1.06);
+  background: rgba(0, 0, 0, 0.58);
 }
 
 .material-symbols-rounded {
