@@ -3,7 +3,7 @@ from pathlib import Path
 
 from app.core.config import Settings
 from app.main import create_app
-from app.services.baidu_oauth import set_baidu_refresh_token
+from app.services.baidu_oauth import set_baidu_access_token, set_baidu_refresh_token
 from app.storage.baidu import BaiduStorageBackend, normalize_baidu_path
 from app.storage.baidu_api import BaiduToken
 
@@ -17,6 +17,7 @@ class FakeBaiduStorageApi:
         self.list_calls: list[dict] = []
         self.filemetas_calls: list[dict] = []
         self.download_calls: list[dict] = []
+        self.download_file_calls: list[dict] = []
 
     def refresh_access_token(
         self,
@@ -71,6 +72,10 @@ class FakeBaiduStorageApi:
         self.download_calls.append(kwargs)
         return b"remote-bytes"
 
+    def download_file(self, **kwargs):
+        self.download_file_calls.append(kwargs)
+        return b"remote-bytes"
+
 
 def build_settings(tmp_path: Path, monkeypatch) -> Settings:
     monkeypatch.setenv("BAIDU_APP_KEY", "demo-app-key")
@@ -109,6 +114,18 @@ def test_baidu_storage_backend_uploads_bytes(monkeypatch, tmp_path: Path) -> Non
     assert api.create_calls[0]["block_list"] == ["uploaded-md5"]
 
 
+def test_baidu_storage_backend_prefers_persisted_access_token(monkeypatch, tmp_path: Path) -> None:
+    settings = build_settings(tmp_path, monkeypatch)
+    set_baidu_access_token(settings, "persisted-access-token", expires_in=3600)
+    api = FakeBaiduStorageApi()
+    backend = BaiduStorageBackend(settings, api=api)
+
+    backend.upload_bytes(b"hello", "/CloudStoragePlayer/videos/1/manifest.json")
+
+    assert api.refresh_calls == []
+    assert api.precreate_calls[0]["access_token"] == "persisted-access-token"
+
+
 def test_baidu_storage_backend_downloads_bytes(monkeypatch, tmp_path: Path) -> None:
     settings = build_settings(tmp_path, monkeypatch)
     api = FakeBaiduStorageApi()
@@ -117,11 +134,9 @@ def test_baidu_storage_backend_downloads_bytes(monkeypatch, tmp_path: Path) -> N
     payload = backend.download_bytes("/CloudStoragePlayer/videos/1/segments/000000.cspseg")
 
     assert payload == b"remote-bytes"
-    assert api.list_calls[0]["dir_path"] == "/apps/CloudStoragePlayer/videos/1/segments"
-    assert api.filemetas_calls[0]["fsids"] == [123456]
-    assert api.download_calls[0] == {
-        "dlink": "https://d.pcs.baidu.com/file/demo",
+    assert api.download_file_calls[0] == {
         "access_token": "access-token",
+        "remote_path": "/apps/CloudStoragePlayer/videos/1/segments/000000.cspseg",
     }
 
 

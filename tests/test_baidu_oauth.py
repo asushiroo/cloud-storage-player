@@ -4,9 +4,11 @@ from app.core.config import Settings
 from app.main import create_app
 from app.repositories.settings import get_setting
 from app.services.baidu_oauth import (
+    BAIDU_ACCESS_TOKEN_KEY,
     BAIDU_REFRESH_TOKEN_KEY,
     authorize_baidu_with_code,
     build_baidu_authorize_url,
+    get_baidu_access_token,
 )
 from app.storage.baidu_api import BaiduToken
 
@@ -53,17 +55,22 @@ def test_build_baidu_authorize_url_uses_configured_app_key(monkeypatch, tmp_path
     assert "redirect_uri=oob" in authorize_url
 
 
-def test_authorize_baidu_with_code_persists_refresh_token(monkeypatch, tmp_path: Path) -> None:
+def test_authorize_baidu_with_code_persists_refresh_and_access_tokens(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("BAIDU_APP_KEY", "demo-app-key")
     monkeypatch.setenv("BAIDU_SECRET_KEY", "demo-secret-key")
     settings = build_settings(tmp_path)
     api = FakeBaiduApi()
 
-    authorize_baidu_with_code(settings, code="demo-code", api=api)
+    token = authorize_baidu_with_code(settings, code="demo-code", api=api)
 
-    stored = get_setting(settings, BAIDU_REFRESH_TOKEN_KEY)
-    assert stored is not None
-    assert stored.value == "refresh-token"
+    stored_refresh = get_setting(settings, BAIDU_REFRESH_TOKEN_KEY)
+    stored_access = get_setting(settings, BAIDU_ACCESS_TOKEN_KEY)
+    assert stored_refresh is not None
+    assert stored_refresh.value == "refresh-token"
+    assert stored_access is not None
+    assert stored_access.value == "access-token"
+    assert get_baidu_access_token(settings) == "access-token"
+    assert token.access_token == "access-token"
     assert api.calls == [
         ("demo-app-key", "demo-secret-key", "demo-code", settings.baidu_oauth_redirect_uri)
     ]

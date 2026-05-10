@@ -6,7 +6,9 @@ from pathlib import Path, PurePosixPath
 from app.core.config import Settings
 from app.services.baidu_oauth import (
     BaiduOAuthConfigurationError,
+    get_baidu_access_token,
     get_baidu_refresh_token,
+    persist_baidu_token,
     set_baidu_refresh_token,
 )
 from app.storage.baidu_api import BaiduApiError, BaiduOpenApi
@@ -67,11 +69,7 @@ class BaiduStorageBackend(StorageBackend):
     def download_bytes(self, remote_path: str) -> bytes:
         baidu_path = normalize_baidu_path(remote_path)
         access_token = self._load_access_token()
-        metadata = self._resolve_metadata(access_token, baidu_path)
-        dlink = metadata.get("dlink")
-        if not dlink:
-            raise FileNotFoundError(f"Baidu dlink is missing for: {remote_path}")
-        return self.api.download_dlink(dlink=str(dlink), access_token=access_token)
+        return self.api.download_file(access_token=access_token, remote_path=baidu_path)
 
     def exists(self, remote_path: str) -> bool:
         try:
@@ -117,6 +115,10 @@ class BaiduStorageBackend(StorageBackend):
     def _load_access_token(self) -> str:
         if self._access_token:
             return self._access_token
+        stored_access_token = get_baidu_access_token(self.settings)
+        if stored_access_token:
+            self._access_token = stored_access_token
+            return self._access_token
         refresh_token = get_baidu_refresh_token(self.settings)
         if not refresh_token:
             raise BaiduOAuthConfigurationError("Baidu refresh token is not configured.")
@@ -132,6 +134,7 @@ class BaiduStorageBackend(StorageBackend):
         )
         if token.refresh_token != refresh_token:
             set_baidu_refresh_token(self.settings, token.refresh_token)
+        persist_baidu_token(self.settings, token)
         self._access_token = token.access_token
         return self._access_token
 

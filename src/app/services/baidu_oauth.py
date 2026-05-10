@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
 from app.core.config import Settings
 from app.repositories.settings import get_setting, set_setting
-from app.storage.baidu_api import BaiduAuthorizationError, BaiduOpenApi
+from app.storage.baidu_api import BaiduAuthorizationError, BaiduOpenApi, BaiduToken
 
+BAIDU_ACCESS_TOKEN_KEY = "baidu_access_token"
+BAIDU_ACCESS_TOKEN_EXPIRES_AT_KEY = "baidu_access_token_expires_at"
 BAIDU_REFRESH_TOKEN_KEY = "baidu_refresh_token"
 BAIDU_SCOPE = "basic,netdisk"
 BAIDU_AUTHORIZE_URL = "https://openapi.baidu.com/oauth/2.0/authorize"
@@ -49,12 +52,60 @@ def set_baidu_refresh_token(settings: Settings, refresh_token: str) -> None:
     set_setting(settings, key=BAIDU_REFRESH_TOKEN_KEY, value=normalized)
 
 
+def get_baidu_access_token(settings: Settings) -> str | None:
+    token = get_setting(settings, BAIDU_ACCESS_TOKEN_KEY)
+    expires_at = get_setting(settings, BAIDU_ACCESS_TOKEN_EXPIRES_AT_KEY)
+    if token is None or expires_at is None:
+        return None
+
+    normalized_token = token.value.strip()
+    if not normalized_token:
+        return None
+
+    try:
+        expires_at_value = datetime.fromisoformat(expires_at.value)
+    except ValueError:
+        return None
+
+    if expires_at_value.tzinfo is None:
+        expires_at_value = expires_at_value.replace(tzinfo=timezone.utc)
+    if expires_at_value <= datetime.now(timezone.utc):
+        return None
+    return normalized_token
+
+
+def set_baidu_access_token(
+    settings: Settings,
+    access_token: str,
+    *,
+    expires_in: int,
+) -> None:
+    normalized_token = access_token.strip()
+    if not normalized_token:
+        raise ValueError("Baidu access token must not be empty.")
+    if expires_in <= 0:
+        raise ValueError("Baidu access token expires_in must be greater than 0.")
+
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=max(expires_in - 60, 1))
+    set_setting(settings, key=BAIDU_ACCESS_TOKEN_KEY, value=normalized_token)
+    set_setting(
+        settings,
+        key=BAIDU_ACCESS_TOKEN_EXPIRES_AT_KEY,
+        value=expires_at.isoformat(),
+    )
+
+
+def persist_baidu_token(settings: Settings, token: BaiduToken) -> None:
+    set_baidu_refresh_token(settings, token.refresh_token)
+    set_baidu_access_token(settings, token.access_token, expires_in=token.expires_in)
+
+
 def authorize_baidu_with_code(
     settings: Settings,
     *,
     code: str,
     api: BaiduOpenApi | None = None,
-) -> None:
+) -> BaiduToken:
     normalized_code = code.strip()
     if not normalized_code:
         raise ValueError("Baidu authorization code must not be empty.")
@@ -78,4 +129,5 @@ def authorize_baidu_with_code(
         if owns_client:
             client.close()
 
-    set_baidu_refresh_token(settings, token.refresh_token)
+    persist_baidu_token(settings, token)
+    return token

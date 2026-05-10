@@ -20,9 +20,9 @@
 - `video_segments` 元数据落库
 - 本地 manifest 生成
 - 存储后端抽象
-  - `mock`：本地目录模拟远端对象存储
+- `mock`：本地目录模拟远端对象存储
   - `baidu`：基于百度网盘官方 open platform 的最小可用 backend
-- 百度 OAuth 授权码换取 refresh token
+- 百度 OAuth 授权码换取 refresh token，并缓存 access token
 - 导入时把 manifest / 加密分片上传到当前配置的存储后端
 - 远端 manifest 扫描 / catalog sync
 - 播放流优先读取本地加密分片，其次回退到远端对象，最后回退到源文件

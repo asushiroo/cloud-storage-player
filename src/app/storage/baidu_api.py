@@ -203,6 +203,22 @@ class BaiduOpenApi:
         response.raise_for_status()
         return response.content
 
+    def download_file(self, *, access_token: str, remote_path: str) -> bytes:
+        response = self._client.get(
+            f"{PCS_BASE_URL}/rest/2.0/pcs/file",
+            params={
+                "method": "download",
+                "access_token": access_token,
+                "path": remote_path,
+            },
+            headers={"User-Agent": DEFAULT_USER_AGENT},
+        )
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise BaiduApiError(str(exc)) from exc
+        return response.content
+
     def _get_json(self, url: str, *, params: dict[str, Any]) -> dict[str, Any]:
         response = self._client.get(url, params=params)
         try:

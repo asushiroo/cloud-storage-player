@@ -3,7 +3,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from app.core.config import Settings
@@ -13,7 +13,9 @@ from app.services.baidu_oauth import (
     BaiduOAuthConfigurationError,
     authorize_baidu_with_code,
     build_baidu_authorize_url,
+    get_baidu_access_token,
     get_baidu_refresh_token,
+    set_baidu_access_token,
     set_baidu_refresh_token,
 )
 from app.services.catalog_sync import sync_remote_catalog
@@ -62,58 +64,64 @@ def run_baidu_smoke(
         oauth_code=oauth_code,
         remote_root=remote_root,
     )
-    smoke_source_path = _prepare_smoke_source(base_settings, runtime.workspace_dir, source_path)
-    expected_bytes = _read_expected_range(smoke_source_path, range_end=range_end)
+    try:
+        smoke_source_path = _prepare_smoke_source(base_settings, runtime.workspace_dir, source_path)
+        expected_bytes = _read_expected_range(smoke_source_path, range_end=range_end)
 
-    import_job = import_local_video(
-        runtime.writer_settings,
-        source_path=str(smoke_source_path),
-        title=f"baidu-smoke-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
-    )
-    if import_job.video_id is None:
-        raise RuntimeError(f"Smoke import did not create a video: {import_job.error_message}")
+        import_job = import_local_video(
+            runtime.writer_settings,
+            source_path=str(smoke_source_path),
+            title=f"baidu-smoke-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
+        )
+        if import_job.video_id is None:
+            raise RuntimeError(f"Smoke import did not create a video: {import_job.error_message}")
 
-    writer_videos = list_videos(runtime.writer_settings)
-    if len(writer_videos) != 1:
-        raise RuntimeError(f"Expected exactly 1 writer video, got {len(writer_videos)}.")
-    writer_video = writer_videos[0]
-    if not writer_video.manifest_path:
-        raise RuntimeError("Smoke import did not persist a manifest path.")
+        writer_videos = list_videos(runtime.writer_settings)
+        if len(writer_videos) != 1:
+            raise RuntimeError(f"Expected exactly 1 writer video, got {len(writer_videos)}.")
+        writer_video = writer_videos[0]
+        if not writer_video.manifest_path:
+            raise RuntimeError("Smoke import did not persist a manifest path.")
 
-    storage = build_storage_backend(runtime.writer_settings)
-    if not storage.exists(writer_video.manifest_path):
-        raise RuntimeError(f"Remote manifest was not uploaded: {writer_video.manifest_path}")
+        storage = build_storage_backend(runtime.writer_settings)
+        if not storage.exists(writer_video.manifest_path):
+            raise RuntimeError(f"Remote manifest was not uploaded: {writer_video.manifest_path}")
 
-    smoke_source_path.unlink(missing_ok=True)
-    shutil.rmtree(runtime.writer_settings.segment_staging_dir / str(writer_video.id), ignore_errors=True)
+        smoke_source_path.unlink(missing_ok=True)
+        shutil.rmtree(runtime.writer_settings.segment_staging_dir / str(writer_video.id), ignore_errors=True)
 
-    sync_result = sync_remote_catalog(runtime.reader_settings)
-    reader_videos = list_videos(runtime.reader_settings)
-    if len(reader_videos) != 1:
-        raise RuntimeError(f"Expected exactly 1 reader video after sync, got {len(reader_videos)}.")
-    reader_video = reader_videos[0]
+        sync_result = sync_remote_catalog(runtime.reader_settings)
+        reader_videos = list_videos(runtime.reader_settings)
+        if len(reader_videos) != 1:
+            raise RuntimeError(f"Expected exactly 1 reader video after sync, got {len(reader_videos)}.")
+        reader_video = reader_videos[0]
 
-    payload = prepare_video_stream(
-        runtime.reader_settings,
-        video_id=reader_video.id,
-        range_header=f"bytes=0-{range_end}",
-    )
-    remote_bytes = b"".join(iter_video_stream(payload))
-    if remote_bytes != expected_bytes:
-        raise RuntimeError("Remote playback bytes did not match the original source range.")
+        payload = prepare_video_stream(
+            runtime.reader_settings,
+            video_id=reader_video.id,
+            range_header=f"bytes=0-{range_end}",
+        )
+        remote_bytes = b"".join(iter_video_stream(payload))
+        if remote_bytes != expected_bytes:
+            raise RuntimeError("Remote playback bytes did not match the original source range.")
 
-    return BaiduSmokeResult(
-        remote_root=runtime.remote_root,
-        manifest_path=writer_video.manifest_path,
-        writer_video_id=writer_video.id,
-        reader_video_id=reader_video.id,
-        segment_count=writer_video.segment_count,
-        discovered_manifest_count=sync_result.discovered_manifest_count,
-        created_video_count=sync_result.created_video_count,
-        updated_video_count=sync_result.updated_video_count,
-        verified_range_end=range_end,
-        workspace_dir=runtime.workspace_dir,
-    )
+        return BaiduSmokeResult(
+            remote_root=runtime.remote_root,
+            manifest_path=writer_video.manifest_path,
+            writer_video_id=writer_video.id,
+            reader_video_id=reader_video.id,
+            segment_count=writer_video.segment_count,
+            discovered_manifest_count=sync_result.discovered_manifest_count,
+            created_video_count=sync_result.created_video_count,
+            updated_video_count=sync_result.updated_video_count,
+            verified_range_end=range_end,
+            workspace_dir=runtime.workspace_dir,
+        )
+    finally:
+        persist_latest_refresh_token(
+            base_settings,
+            candidates=[runtime.reader_settings, runtime.writer_settings],
+        )
 
 
 def prepare_smoke_runtime(
@@ -190,6 +198,9 @@ def copy_baidu_refresh_token(
 
     for settings in targets:
         set_baidu_refresh_token(settings, refresh_token)
+        access_token = get_baidu_access_token(base_settings)
+        if access_token:
+            _copy_baidu_access_token(base_settings, settings)
     return refresh_token
 
 
@@ -229,6 +240,52 @@ def prepare_runtime_settings(settings: Settings) -> None:
     settings.segment_staging_dir.mkdir(parents=True, exist_ok=True)
     settings.mock_storage_dir.mkdir(parents=True, exist_ok=True)
     settings.content_key_file.parent.mkdir(parents=True, exist_ok=True)
+
+
+def persist_latest_refresh_token(base_settings: Settings, *, candidates: list[Settings]) -> None:
+    for settings in candidates:
+        refresh_token = get_baidu_refresh_token(settings)
+        if refresh_token:
+            set_baidu_refresh_token(base_settings, refresh_token)
+            _copy_baidu_access_token(settings, base_settings)
+            return
+
+
+def _copy_baidu_access_token(source_settings: Settings, target_settings: Settings) -> None:
+    access_token = get_baidu_access_token(source_settings)
+    if not access_token:
+        return
+
+    expires_at_value = _load_baidu_access_token_expires_at(source_settings)
+    if expires_at_value is None:
+        return
+
+    now = datetime.now(timezone.utc)
+    remaining_seconds = int((expires_at_value - now).total_seconds())
+    if remaining_seconds <= 0:
+        return
+
+    set_baidu_access_token(
+        target_settings,
+        access_token,
+        expires_in=remaining_seconds,
+    )
+
+
+def _load_baidu_access_token_expires_at(settings: Settings) -> datetime | None:
+    from app.repositories.settings import get_setting
+    from app.services.baidu_oauth import BAIDU_ACCESS_TOKEN_EXPIRES_AT_KEY
+
+    expires_at = get_setting(settings, BAIDU_ACCESS_TOKEN_EXPIRES_AT_KEY)
+    if expires_at is None:
+        return None
+    try:
+        value = datetime.fromisoformat(expires_at.value)
+    except ValueError:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
 
 
 def build_smoke_workspace_dir() -> Path:
