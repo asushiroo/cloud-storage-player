@@ -10,7 +10,6 @@ export function CoverCard({ coverPath, title }: CoverCardProps) {
   return (
     <div className="cover-card">
       {url ? <img alt={title} className="cover-image" src={url} /> : <div className="cover-placeholder">No Cover</div>}
-      <div className="cover-title">{title}</div>
     </div>
   );
 }
