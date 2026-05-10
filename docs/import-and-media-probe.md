@@ -11,36 +11,39 @@
 5. AES-256-GCM 加密
 6. 写入本地 staging 分片
 7. 生成本地 manifest
-8. 上传 manifest / 分片到当前 storage backend
+8. 上传远端加密 manifest / 远端加密分片到当前 storage backend
 9. 尽力抽取一张封面
 
-## 2. 为什么当前仍保留同步导入
+## 2. 为什么同时保留同步与异步导入入口
 
-虽然最终形态更适合后台任务，但当前同步实现有两个优势：
+当前已经有两条导入入口：
 
-1. 可以先稳定接口契约和状态流转
-2. 自动化测试更容易覆盖整个导入闭环
+- 面向 API / 前端的 `queue_import_job()`：入队后由后台 worker 异步执行
+- 面向测试 / smoke 的 `import_local_video()`：直接在当前线程里跑完整导入闭环
 
-因此当前 `POST /api/imports` 返回时，任务通常已经完成或失败。
+之所以两条都保留，是因为：
+
+1. 产品接口需要后台任务模式，避免 HTTP 请求长时间阻塞
+2. 自动化测试和 CLI smoke 仍然需要一个可直接调用的同步路径
 
 ## 3. 当前导入服务流程
 
-`import_local_video()` 当前主要执行下面这些步骤：
+实际导入处理函数 `process_import_job()` 当前主要执行下面这些步骤：
 
 1. 校验 `source_path` 存在且是文件
 2. 如果传了 `folder_id`，校验目录存在
-3. 创建 `queued` 导入任务
-4. 标记为 `running`
-5. 调用 `probe_video()` 获取媒体元数据
-6. 写入 `videos`
-7. 读取或生成本地主机内容密钥
-8. 以固定大小遍历源文件
-9. 对每个分片执行 AES-256-GCM 加密
-10. 将密文写入本地 staging 目录
-11. 将分片元数据写入 `video_segments`
-12. 生成本地 `manifest.json`
+3. 标记任务为 `running`
+4. 调用 `probe_video()` 获取媒体元数据
+5. 写入 `videos`
+6. 读取或生成本地主机内容密钥
+7. 以固定大小遍历源文件
+8. 对每个分片执行 AES-256-GCM 加密
+9. 将密文写入本地 staging 目录
+10. 将分片元数据写入 `video_segments`
+11. 生成本地 `manifest.json`
+12. 基于同一份 manifest 数据生成“远端加密版 manifest”
 13. 更新 `videos.manifest_path`
-14. 通过当前 storage backend 上传 manifest 与所有加密分片
+14. 通过当前 storage backend 上传远端 manifest 与所有加密分片
 15. 尝试执行封面抽取
 16. 标记任务为 `completed`
 17. 任一关键步骤异常时标记为 `failed`
@@ -105,6 +108,8 @@ ffprobe -v error -show_entries format=duration,format_name:stream=codec_type -of
 
 - `data/segments/<video_id>/manifest.json`
 
+它是**可信主机本地**的调试/恢复产物，仍然保持可读 JSON。
+
 manifest 里包含：
 
 - 视频标题
@@ -121,26 +126,57 @@ manifest 不包含：
 - Session 凭据
 - 登录密码材料
 
+## 7.1 远端 manifest 不是明文 JSON
+
+上传到远端的 manifest 不再直接使用本地 `manifest.json` 文件，而是：
+
+1. 先基于同样的结构构建 JSON payload
+2. 再使用 AES-256-GCM 加密
+3. 最终写成二进制 `.bin` 文件上传
+
+因此远端对象侧：
+
+- 看不到视频标题
+- 看不到源文件路径
+- 看不到明文 `remote_path`
+- 看不到 `manifest.json` 字样
+
 ## 8. 当前上传行为
 
 当前导入服务会把以下对象上传到配置的 storage backend：
 
-- `manifest.json`
-- `segments/*.cspseg`
+- 一个“远端加密 manifest”二进制对象
+- 多个“远端混淆命名分片”二进制对象
+
+### 8.1 远端命名规则
+
+当前远端对象名不再直接暴露业务含义。
+
+大致规则：
+
+- 视频目录名：`HMAC-SHA256(content_key, "video-dir:{video_id}")[:32]`
+- manifest 文件名：`HMAC-SHA256(content_key, "manifest-file")[:32] + ".bin"`
+- 分片文件名：`HMAC-SHA256(content_key, "segment-file:{video_id}:{segment_index}")[:32] + ".bin"`
+
+这样可保证：
+
+- 同一台可信主机可稳定推导名字
+- 远端存储侧看不到业务明文
+- sync 流程仍能重新定位 manifest
 
 ### 当 backend=mock
 
 会映射到本地目录：
 
-- `data/mock-remote/apps/CloudStoragePlayer/videos/<video_id>/manifest.json`
-- `data/mock-remote/apps/CloudStoragePlayer/videos/<video_id>/segments/*.cspseg`
+- `data/mock-remote/apps/CloudStoragePlayer/<opaque_video_dir>/<opaque_manifest>.bin`
+- `data/mock-remote/apps/CloudStoragePlayer/<opaque_video_dir>/<opaque_segment>.bin`
 
 ### 当 backend=baidu
 
 会上传到百度网盘应用目录，例如：
 
-- `/apps/CloudStoragePlayer/videos/<video_id>/manifest.json`
-- `/apps/CloudStoragePlayer/videos/<video_id>/segments/*.cspseg`
+- `/apps/CloudStoragePlayer/<opaque_video_dir>/<opaque_manifest>.bin`
+- `/apps/CloudStoragePlayer/<opaque_video_dir>/<opaque_segment>.bin`
 
 ## 9. 封面抽取
 
@@ -194,12 +230,19 @@ ffmpeg -y -ss 0 -i <path> -frames:v 1 <output>.jpg
 - manifest 结构
 - storage backend 抽象
 
-当前已经有百度 backend 的最小实现，下一步更大的工作会转向：
+当前已经具备：
 
-- 在线验收
-- 错误重试
-- 远端同步
-- 异步导入任务化
+- 真实百度 backend 最小可用链路
+- 远端 manifest 扫描 / sync
+- 基础重试与退避
+- 后台异步导入任务
+
+下一步更大的工作会转向：
+
+- 导入断点续传
+- LRU 分片缓存
+- 远端封面同步
+- 更完整的错误分类与并发上传
 
 ## 12. 关于 `tmp/` 测试视频
 

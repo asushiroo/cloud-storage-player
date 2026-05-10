@@ -1,24 +1,46 @@
 from __future__ import annotations
 
+import hmac
 import json
+from hashlib import sha256
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from app.core.config import Settings
+from app.media.crypto import TAG_SIZE_BYTES, decrypt_segment, encrypt_segment
 from app.models.library import Video
 from app.models.segments import VideoSegment
 from app.services.settings import get_public_settings
 
+ENCRYPTED_MANIFEST_MAGIC = b"CSPMETA1"
+VIDEO_DIR_LABEL_PREFIX = "video-dir"
+SEGMENT_FILE_LABEL_PREFIX = "segment-file"
+MANIFEST_FILE_LABEL = "manifest-file"
 
-def build_remote_manifest_path(settings: Settings, *, video_id: int) -> str:
+
+def build_remote_manifest_path(settings: Settings, *, video_id: int, key: bytes) -> str:
+    remote_video_dir = build_remote_video_dir_path(settings, video_id=video_id, key=key)
+    return str(PurePosixPath(remote_video_dir) / build_encrypted_manifest_filename(key))
+
+
+def build_remote_video_dir_path(settings: Settings, *, video_id: int, key: bytes) -> str:
     root_path = get_public_settings(settings).baidu_root_path.rstrip("/")
-    return f"{root_path}/videos/{video_id}/manifest.json"
+    return f"{root_path}/{build_encrypted_video_dirname(video_id=video_id, key=key)}"
 
 
-def build_remote_segment_path(settings: Settings, *, video_id: int, segment_index: int) -> str:
-    root_path = get_public_settings(settings).baidu_root_path.rstrip("/")
-    return f"{root_path}/videos/{video_id}/segments/{segment_index:06d}.cspseg"
+def build_remote_segment_path(
+    settings: Settings,
+    *,
+    video_id: int,
+    segment_index: int,
+    key: bytes,
+) -> str:
+    remote_video_dir = build_remote_video_dir_path(settings, video_id=video_id, key=key)
+    return str(
+        PurePosixPath(remote_video_dir)
+        / build_encrypted_segment_filename(video_id=video_id, segment_index=segment_index, key=key)
+    )
 
 
 def write_local_manifest(
@@ -37,8 +59,26 @@ def write_local_manifest(
     return manifest_path
 
 
+def write_encrypted_remote_manifest(
+    settings: Settings,
+    *,
+    video: Video,
+    segments: list[VideoSegment],
+    key: bytes,
+) -> Path:
+    manifest_path = encrypted_remote_manifest_upload_path(settings, video_id=video.id)
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = build_manifest_payload(settings, video=video, segments=segments)
+    manifest_path.write_bytes(encrypt_manifest_payload(payload, key=key))
+    return manifest_path
+
+
 def local_manifest_path(settings: Settings, *, video_id: int) -> Path:
     return settings.segment_staging_dir / str(video_id) / "manifest.json"
+
+
+def encrypted_remote_manifest_upload_path(settings: Settings, *, video_id: int) -> Path:
+    return settings.segment_staging_dir / str(video_id) / "manifest.remote.bin"
 
 
 def build_manifest_payload(
@@ -80,3 +120,45 @@ def build_manifest_payload(
             for segment in segments
         ],
     }
+
+
+def encrypt_manifest_payload(payload: dict[str, Any], *, key: bytes) -> bytes:
+    plaintext = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    encrypted = encrypt_segment(plaintext, key)
+    return ENCRYPTED_MANIFEST_MAGIC + encrypted.nonce + encrypted.tag + encrypted.ciphertext
+
+
+def decrypt_manifest_payload(payload: bytes, *, key: bytes | None = None) -> dict[str, Any]:
+    normalized = payload.lstrip()
+    if normalized.startswith(b"{"):
+        return json.loads(payload.decode("utf-8"))
+    if not payload.startswith(ENCRYPTED_MANIFEST_MAGIC):
+        raise ValueError("Unsupported manifest payload format.")
+    if key is None:
+        raise ValueError("Content key is required to decrypt remote manifest metadata.")
+
+    raw = payload[len(ENCRYPTED_MANIFEST_MAGIC) :]
+    if len(raw) < 12 + TAG_SIZE_BYTES:
+        raise ValueError("Encrypted manifest payload is incomplete.")
+    nonce = raw[:12]
+    tag = raw[12 : 12 + TAG_SIZE_BYTES]
+    ciphertext = raw[12 + TAG_SIZE_BYTES :]
+    plaintext = decrypt_segment(ciphertext, key, nonce=nonce, tag=tag)
+    return json.loads(plaintext.decode("utf-8"))
+
+
+def build_encrypted_video_dirname(*, video_id: int, key: bytes) -> str:
+    return _build_obfuscated_name(key, f"{VIDEO_DIR_LABEL_PREFIX}:{video_id}")
+
+
+def build_encrypted_segment_filename(*, video_id: int, segment_index: int, key: bytes) -> str:
+    return _build_obfuscated_name(key, f"{SEGMENT_FILE_LABEL_PREFIX}:{video_id}:{segment_index}") + ".bin"
+
+
+def build_encrypted_manifest_filename(key: bytes) -> str:
+    return _build_obfuscated_name(key, MANIFEST_FILE_LABEL) + ".bin"
+
+
+def _build_obfuscated_name(key: bytes, label: str) -> str:
+    digest = hmac.new(key, label.encode("utf-8"), sha256).hexdigest()
+    return digest[:32]

@@ -103,12 +103,22 @@ Keep the schema explicit and small.
 
 ## Remote Layout
 
-Store each video under its own logical directory.
+Store each video under its own logical directory, but keep remote metadata opaque.
 
-- `/apps/CloudStoragePlayer/videos/{video_id}/manifest.json`
-- `/apps/CloudStoragePlayer/videos/{video_id}/segments/{index}.cspseg`
+- `/{baidu_root}/{opaque_video_dir}/{opaque_manifest_file}.bin`
+- `/{baidu_root}/{opaque_video_dir}/{opaque_segment_file}.bin`
+
+Recommended naming rule:
+
+- `opaque_video_dir = HMAC-SHA256(content_key, "video-dir:{video_id}")[:32]`
+- `opaque_manifest_file = HMAC-SHA256(content_key, "manifest-file")[:32]`
+- `opaque_segment_file = HMAC-SHA256(content_key, "segment-file:{video_id}:{segment_index}")[:32]`
 
 In the current `mock` backend these remote paths are mapped into a local directory tree.
+On the trusted Windows host, local staging paths may remain readable for debugging and recovery, for example:
+
+- `data/segments/{video_id}/manifest.json`
+- `data/segments/{video_id}/segments/{index}.cspseg`
 
 The manifest must include:
 
@@ -117,6 +127,8 @@ The manifest must include:
 - Original size and mime type.
 - Per-segment original offset, original length, checksum, and remote path.
 - Encryption algorithm version and creation time.
+
+The remote manifest payload itself must be encrypted before upload. Catalog sync must be able to decrypt it with the same local content key.
 
 The manifest must not include:
 

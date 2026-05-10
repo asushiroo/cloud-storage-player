@@ -7,6 +7,7 @@ from app.core.config import Settings
 from app.core.security import hash_password
 from app.main import create_app
 from app.services.imports import import_local_video
+from app.storage.mock import MockStorageBackend
 
 
 def build_client(
@@ -87,7 +88,7 @@ def test_catalog_sync_rebuilds_videos_and_segments_from_remote_manifest(tmp_path
         segment_staging_path=tmp_path / "writer-segments",
         covers_path=tmp_path / "writer-covers",
     )
-    import_job = import_local_video(writer_settings, source_path=str(source_path), title="Remote Demo")
+    import_local_video(writer_settings, source_path=str(source_path), title="Remote Demo")
     source_path.unlink()
 
     client, _, password = build_client(
@@ -116,10 +117,13 @@ def test_catalog_sync_rebuilds_videos_and_segments_from_remote_manifest(tmp_path
     videos_payload = videos_response.json()
     assert len(videos_payload) == 1
     assert videos_payload[0]["title"] == "Remote Demo"
-    assert videos_payload[0]["manifest_path"] == (
-        f"/apps/CloudStoragePlayer/videos/{import_job.video_id}/manifest.json"
-    )
+    assert videos_payload[0]["manifest_path"].startswith("/apps/CloudStoragePlayer/")
+    assert "/videos/" not in videos_payload[0]["manifest_path"]
+    assert "manifest.json" not in videos_payload[0]["manifest_path"]
     assert videos_payload[0]["segment_count"] >= 1
+
+    storage = MockStorageBackend(shared_remote)
+    assert storage.local_path_for(videos_payload[0]["manifest_path"]).exists()
 
     stream_response = client.get(f"/api/videos/{videos_payload[0]['id']}/stream")
     assert stream_response.status_code == 200

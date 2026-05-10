@@ -49,7 +49,8 @@
 
 - `manifest_path`
   - 保存远端 manifest 的逻辑路径
-  - 当前默认会写成 `/apps/CloudStoragePlayer/videos/<id>/manifest.json`
+  - 当前默认会写成 `/apps/CloudStoragePlayer/<opaque_video_dir>/<opaque_manifest>.bin`
+  - 这里的 `<opaque_*>` 基于内容密钥稳定推导，不直接暴露 `video_id` 或 `manifest.json`
 - `source_path`
   - 保存最初导入时的主机本地源文件路径
   - 当前阶段仍用于最后一层播放回退
@@ -77,7 +78,8 @@
 
 - `cloud_path`
   - 远端分片逻辑路径
-  - 当前默认格式：`/apps/CloudStoragePlayer/videos/<id>/segments/000000.cspseg`
+  - 当前默认格式：`/apps/CloudStoragePlayer/<opaque_video_dir>/<opaque_segment>.bin`
+  - 远端路径名已混淆，不直接暴露分片序号
 - `local_staging_path`
   - 本地已加密分片暂存文件路径
   - 播放时会优先读取这里

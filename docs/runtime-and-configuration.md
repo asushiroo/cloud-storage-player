@@ -167,8 +167,13 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 
 例如：
 
-- 远端路径：`/apps/CloudStoragePlayer/videos/12/manifest.json`
-- 本地映射：`data/mock-remote/apps/CloudStoragePlayer/videos/12/manifest.json`
+- 远端路径：`/apps/CloudStoragePlayer/<opaque_video_dir>/<opaque_manifest>.bin`
+- 本地映射：`data/mock-remote/apps/CloudStoragePlayer/<opaque_video_dir>/<opaque_manifest>.bin`
+
+说明：
+
+- `<opaque_video_dir>`、`<opaque_manifest>`、`<opaque_segment>` 都是基于内容密钥稳定推导的混淆名
+- 因此 mock backend 目录现在也不会直接出现 `videos/12/manifest.json` 这种明文元信息
 
 ### 7.2 baidu backend
 
@@ -178,6 +183,7 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 - 再通过 `BAIDU_APP_KEY` / `BAIDU_SECRET_KEY` 刷新 access token
 - 导入时会调用百度官方上传接口
 - 回放时会调用百度官方查询 / 下载接口
+- 远端 sync 时需要同一份 `content.key` 才能发现并解密新格式 manifest
 
 当前默认 `baidu_root_path` 是：
 
@@ -212,18 +218,19 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 
 - `data/segments/<video_id>/segments/*.cspseg`
 - `data/segments/<video_id>/manifest.json`
+- `data/segments/<video_id>/manifest.remote.bin`
 - `data/covers/<video_id>.jpg`（如果封面抽取成功）
 - `data/keys/content.key`
 
 ### mock 远端对象（当 backend=mock）
 
-- `data/mock-remote/apps/CloudStoragePlayer/videos/<video_id>/manifest.json`
-- `data/mock-remote/apps/CloudStoragePlayer/videos/<video_id>/segments/*.cspseg`
+- `data/mock-remote/apps/CloudStoragePlayer/<opaque_video_dir>/<opaque_manifest>.bin`
+- `data/mock-remote/apps/CloudStoragePlayer/<opaque_video_dir>/<opaque_segment>.bin`
 
 ### 百度远端对象（当 backend=baidu）
 
-- `/apps/CloudStoragePlayer/videos/<video_id>/manifest.json`
-- `/apps/CloudStoragePlayer/videos/<video_id>/segments/*.cspseg`
+- `/apps/CloudStoragePlayer/<opaque_video_dir>/<opaque_manifest>.bin`
+- `/apps/CloudStoragePlayer/<opaque_video_dir>/<opaque_segment>.bin`
 
 ## 10. 推荐验证命令
 

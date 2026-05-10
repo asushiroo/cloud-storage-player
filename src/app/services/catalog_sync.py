@@ -7,12 +7,14 @@ from pathlib import PurePosixPath
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from app.core.config import Settings
+from app.core.keys import load_content_key
 from app.repositories.video_segments import NewVideoSegment, create_video_segments, delete_video_segments
 from app.repositories.videos import (
     create_video,
     get_video_by_manifest_path,
     update_video_sync_metadata,
 )
+from app.services.manifests import build_encrypted_manifest_filename, decrypt_manifest_payload
 from app.services.settings import get_public_settings
 from app.storage.factory import build_storage_backend
 
@@ -68,13 +70,20 @@ class ManifestPayload(BaseModel):
 def sync_remote_catalog(settings: Settings) -> CatalogSyncResult:
     storage = build_storage_backend(settings)
     root_path = get_public_settings(settings).baidu_root_path.rstrip("/")
-    video_root_path = f"{root_path}/videos"
-    manifest_paths = _discover_manifest_paths(storage, video_root_path)
+    try:
+        content_key = load_content_key(settings)
+    except (FileNotFoundError, ValueError):
+        content_key = None
+    manifest_paths = _discover_manifest_paths(
+        storage,
+        root_path=root_path,
+        content_key=content_key,
+    )
 
     result = CatalogSyncResult(discovered_manifest_count=len(manifest_paths))
     for manifest_path in manifest_paths:
         try:
-            manifest = _load_manifest(storage, manifest_path)
+            manifest = _load_manifest(storage, manifest_path, content_key=content_key)
             existing_video = get_video_by_manifest_path(settings, manifest_path)
             if existing_video is None:
                 video = create_video(
@@ -119,24 +128,46 @@ def sync_remote_catalog(settings: Settings) -> CatalogSyncResult:
                     for segment in manifest.segments
                 ],
             )
-        except (OSError, ValueError, ValidationError, json.JSONDecodeError) as exc:
+        except (OSError, ValueError, ValidationError) as exc:
             result.failed_manifest_count += 1
             result.errors.append(f"{manifest_path}: {exc}")
 
     return result
 
 
-def _discover_manifest_paths(storage, video_root_path: str) -> list[str]:
-    manifest_paths: list[str] = []
-    for entry in storage.list_directory(video_root_path):
+def _discover_manifest_paths(storage, *, root_path: str, content_key: bytes | None) -> list[str]:
+    manifest_paths: set[str] = set()
+    for entry in storage.list_directory(root_path):
         if not entry.is_dir:
             continue
         manifest_path = str(PurePosixPath(entry.path.rstrip("/")) / "manifest.json")
         if storage.exists(manifest_path):
-            manifest_paths.append(manifest_path)
+            manifest_paths.add(manifest_path)
+
+    legacy_video_root_path = f"{root_path}/videos"
+    for entry in storage.list_directory(legacy_video_root_path):
+        if not entry.is_dir:
+            continue
+        manifest_path = str(PurePosixPath(entry.path.rstrip("/")) / "manifest.json")
+        if storage.exists(manifest_path):
+            manifest_paths.add(manifest_path)
+
+    if content_key is not None:
+        encrypted_manifest_filename = build_encrypted_manifest_filename(content_key)
+        for entry in storage.list_directory(root_path):
+            if not entry.is_dir:
+                continue
+            manifest_path = str(PurePosixPath(entry.path.rstrip("/")) / encrypted_manifest_filename)
+            if storage.exists(manifest_path):
+                manifest_paths.add(manifest_path)
+
     return sorted(manifest_paths)
 
 
-def _load_manifest(storage, manifest_path: str) -> ManifestPayload:
-    payload = json.loads(storage.download_bytes(manifest_path).decode("utf-8"))
+def _load_manifest(storage, manifest_path: str, *, content_key: bytes | None) -> ManifestPayload:
+    payload_bytes = storage.download_bytes(manifest_path)
+    if payload_bytes.lstrip().startswith(b"{"):
+        payload = json.loads(payload_bytes.decode("utf-8"))
+    else:
+        payload = decrypt_manifest_payload(payload_bytes, key=content_key)
     return ManifestPayload.model_validate(payload)

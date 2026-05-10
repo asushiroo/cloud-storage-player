@@ -6,15 +6,17 @@
 
 1. Vue 前端发起登录、导入、列表、播放请求
 2. FastAPI 后端负责认证、接口鉴权和业务编排
-3. 导入服务读取 Windows 主机本地视频路径
-4. 使用 `ffprobe` 读取媒体元数据
-5. 创建 `videos` / `import_jobs` / `video_segments` 记录
-6. 按固定大小切片并用 AES-256-GCM 加密
-7. 分片先落到本地 staging 目录
-8. 生成本地 `manifest.json`
-9. 把 manifest 与加密分片上传到当前配置的存储后端
-10. 浏览器播放时通过 `/api/videos/{id}/stream` 请求原始字节流
-11. 后端优先读本地 staging；缺失时回退到远端对象；仍不可用时再回退到源文件
+3. `POST /api/imports` 先创建 `queued` 任务，再由后台 worker 异步处理
+4. 导入服务读取 Windows 主机本地视频路径
+5. 使用 `ffprobe` 读取媒体元数据
+6. 创建 `videos` / `import_jobs` / `video_segments` 记录
+7. 按固定大小切片并用 AES-256-GCM 加密
+8. 分片先落到本地 staging 目录
+9. 在可信主机本地生成可读的 `manifest.json`
+10. 上传远端对象时，对目录名、分片文件名和 manifest 内容再做一层远端元信息保护
+11. 前端轮询导入任务进度，拿到完成后的 `video_id`
+12. 浏览器播放时通过 `/api/videos/{id}/stream` 请求原始字节流
+13. 后端优先读本地 staging；缺失时回退到远端对象；仍不可用时再回退到源文件
 
 ## 2. 当前技术栈
 
@@ -113,10 +115,11 @@
 ### `src/app/services/`
 
 - `imports.py`：导入、切片、加密、manifest、上传
+- `import_worker.py`：后台导入队列与线程 worker
 - `streaming.py`：Range 解析、分片读取、解密拼装、回退
 - `settings.py`：公开设置读取和更新
 - `baidu_oauth.py`：授权链接生成、授权码换 refresh token
-- `manifests.py`：manifest 组装与路径约定
+- `manifests.py`：manifest 组装、远端路径混淆、远端 manifest 加解密
 
 ## 6. 当前百度接入方式
 
@@ -127,13 +130,38 @@
 - 用 refresh token 刷 access token
 - `precreate` + `superfile2` + `create` 上传对象
 - `list` + `filemetas` + `dlink` 下载对象
+- 基础重试与退避
+- 真实百度 smoke CLI 与一次在线验收
 
 这保证了：
 
 - 导入上传链路可以切到真实百度 backend
 - 播放回退链路可以切到真实百度 backend
+- 远端 sync 可以在另一套本地数据库里重建 catalog
 
-## 7. 当前阶段为什么仍保留源文件回退
+## 7. 当前远端元信息保护策略
+
+为了避免百度网盘侧直接暴露业务含义，当前远端对象不再使用明文名字：
+
+- 不再出现明文 `videos/`
+- 不再出现明文 `segments/`
+- 不再出现明文 `manifest.json`
+- 不再出现明文 `000000.cspseg`
+
+当前做法：
+
+1. 使用内容密钥对 `video_id` / `segment_index` / 角色标签做 HMAC-SHA256
+2. 截取十六进制摘要前缀，生成稳定但不可读的目录名和文件名
+3. 把 manifest JSON 本体再用 AES-256-GCM 加密，上传成二进制 payload
+
+这样另一台可信主机只要拥有相同内容密钥，就仍然可以：
+
+- 推导远端 manifest 文件名
+- 扫描远端目录
+- 下载并解密 manifest
+- 重建 `videos` 与 `video_segments`
+
+## 8. 当前阶段为什么仍保留源文件回退
 
 虽然现在已经有：
 
@@ -147,11 +175,11 @@
 
 这只是当前阶段的过渡策略，不代表最终上线形态。
 
-## 8. 当前未完成部分
+## 9. 当前未完成部分
 
-- 真实百度链路的自动化在线验收
-- 远端 manifest 扫描与 catalog sync
-- 导入后台任务化
 - 本地加密分片缓存 LRU
-- 上传 / 下载重试与限流退避
+- 导入断点续传 / 恢复
+- 更细粒度的百度错误分类与长时退避
+- 分片并发上传策略
+- 远端封面同步
 - 前端单元测试和 E2E

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.core.config import Settings
-from app.core.keys import load_or_create_content_key
+from app.core.keys import load_content_key, load_or_create_content_key
 from app.media.chunker import iter_file_chunks
 from app.media.covers import CoverExtractionError, extract_cover
 from app.media.crypto import encrypt_segment
@@ -29,6 +29,7 @@ from app.repositories.videos import (
 from app.services.manifests import (
     build_remote_manifest_path,
     build_remote_segment_path,
+    write_encrypted_remote_manifest,
     write_local_manifest,
 )
 from app.storage.factory import build_storage_backend
@@ -117,13 +118,13 @@ def process_import_job(settings: Settings, job_id: int) -> ImportJob:
         update_import_job_progress(settings, job.id, progress_percent=40)
         segments = _materialize_encrypted_segments(settings, source=source, video=video)
         update_import_job_progress(settings, job.id, progress_percent=70)
-        video, local_manifest = _write_manifest(settings, video=video, segments=segments)
+        video, remote_manifest_upload_path = _write_manifest(settings, video=video, segments=segments)
         update_import_job_progress(settings, job.id, progress_percent=85)
         _upload_remote_artifacts(
             settings,
             video=video,
             segments=segments,
-            manifest_path=local_manifest,
+            manifest_path=remote_manifest_upload_path,
         )
         update_import_job_progress(settings, job.id, progress_percent=95)
         video = _maybe_extract_cover(settings, source=source, video=video)
@@ -223,6 +224,7 @@ def _materialize_encrypted_segments(
                     settings,
                     video_id=video.id,
                     segment_index=chunk.index,
+                    key=content_key,
                 ),
                 local_staging_path=str(segment_path),
             )
@@ -241,18 +243,25 @@ def _write_manifest(
     video: Video,
     segments: list[VideoSegment],
 ) -> tuple[Video, Path]:
-    remote_manifest_path = build_remote_manifest_path(settings, video_id=video.id)
-    local_manifest_path = write_local_manifest(
+    content_key = load_content_key(settings)
+    remote_manifest_path = build_remote_manifest_path(settings, video_id=video.id, key=content_key)
+    write_local_manifest(
         settings,
         video=video,
         segments=segments,
+    )
+    remote_manifest_upload_path = write_encrypted_remote_manifest(
+        settings,
+        video=video,
+        segments=segments,
+        key=content_key,
     )
     updated_video = update_video_manifest_path(
         settings,
         video.id,
         manifest_path=remote_manifest_path,
     )
-    return updated_video, local_manifest_path
+    return updated_video, remote_manifest_upload_path
 
 
 def _upload_remote_artifacts(

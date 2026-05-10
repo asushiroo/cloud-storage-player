@@ -176,20 +176,22 @@
 
 当前处理行为：
 
-1. 创建并推进 `import_jobs`
-2. 探测媒体元数据
-3. 创建 `videos`
-4. 切片并加密
-5. 写入 `video_segments`
-6. 生成本地 manifest
-7. 上传 manifest / 分片到当前 storage backend
-8. 尝试抽取封面
+1. 创建 `queued` 状态的 `import_jobs`
+2. 把任务交给后台 worker 异步执行
+3. worker 探测媒体元数据
+4. 创建 `videos`
+5. 切片并加密
+6. 写入 `video_segments`
+7. 生成本地 manifest
+8. 上传远端加密 manifest / 远端加密分片到当前 storage backend
+9. 尝试抽取封面
 
 成功时：
 
 - 状态码 `201`
 - 返回任务详情
-- 当前同步实现下，通常已经是 `completed` 或 `failed`
+- 初始通常是 `queued`
+- 前端应继续轮询 `GET /api/imports/{job_id}` 获取 `running` / `completed` / `failed` 状态
 
 ### `GET /api/imports`
 

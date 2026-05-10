@@ -1,4 +1,3 @@
-import json
 import subprocess
 import time
 from pathlib import Path
@@ -6,11 +5,13 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
+from app.core.keys import load_content_key
 from app.core.security import hash_password
 from app.main import create_app
 from app.repositories.folders import create_folder
 from app.repositories.import_jobs import create_import_job
 from app.repositories.video_segments import list_video_segments
+from app.services.manifests import decrypt_manifest_payload
 from app.storage.mock import MockStorageBackend
 
 
@@ -131,9 +132,10 @@ def test_import_video_creates_queued_job_and_completes_in_background(tmp_path: P
     assert video_payload["source_path"] == str(source_path)
     assert video_payload["cover_path"] is not None
     assert video_payload["segment_count"] >= 1
-    assert video_payload["manifest_path"] == (
-        f"/apps/CloudStoragePlayer/videos/{completed_payload['video_id']}/manifest.json"
-    )
+    assert video_payload["manifest_path"] is not None
+    assert video_payload["manifest_path"].startswith("/apps/CloudStoragePlayer/")
+    assert "manifest.json" not in video_payload["manifest_path"]
+    assert "/videos/" not in video_payload["manifest_path"]
 
     segments = list_video_segments(settings, video_id=completed_payload["video_id"])
     assert len(segments) == video_payload["segment_count"]
@@ -144,12 +146,22 @@ def test_import_video_creates_queued_job_and_completes_in_background(tmp_path: P
     storage = MockStorageBackend(settings.mock_storage_dir)
     remote_manifest_path = storage.local_path_for(video_payload["manifest_path"])
     assert remote_manifest_path.exists()
-    remote_manifest = json.loads(remote_manifest_path.read_text(encoding="utf-8"))
+    remote_manifest_bytes = remote_manifest_path.read_bytes()
+    assert b"Imported Demo" not in remote_manifest_bytes
+    assert b"manifest.json" not in remote_manifest_bytes
+    assert str(source_path).encode("utf-8") not in remote_manifest_bytes
+    remote_manifest = decrypt_manifest_payload(
+        remote_manifest_bytes,
+        key=load_content_key(settings),
+    )
     assert remote_manifest["video_id"] == completed_payload["video_id"]
     assert remote_manifest["segment_count"] == len(segments)
+    assert remote_manifest["title"] == "Imported Demo"
     for segment in segments:
         assert segment.cloud_path is not None
         assert storage.local_path_for(segment.cloud_path).exists()
+        assert "segments" not in segment.cloud_path
+        assert segment.cloud_path.endswith(".bin")
 
     cover_response = client.get(video_payload["cover_path"])
     assert cover_response.status_code == 200

@@ -27,12 +27,14 @@
 - `upload_bytes(payload, remote_path)`
 - `download_bytes(remote_path)`
 - `exists(remote_path)`
+- `list_directory(remote_path)`
 
 这足够覆盖当前阶段：
 
 - 导入上传 manifest / 分片
 - 播放时按 remote path 下载加密分片
 - 回退前先判断远端对象是否存在
+- sync 时扫描远端目录并发现 manifest
 
 ## 4. 当前支持的 backend
 
@@ -46,8 +48,10 @@
 
 例如：
 
-- 远端：`/apps/CloudStoragePlayer/videos/3/manifest.json`
-- 映射后：`<mock_root>/apps/CloudStoragePlayer/videos/3/manifest.json`
+- 远端：`/apps/CloudStoragePlayer/<opaque_video_dir>/<opaque_manifest>.bin`
+- 映射后：`<mock_root>/apps/CloudStoragePlayer/<opaque_video_dir>/<opaque_manifest>.bin`
+
+这里的 `<opaque_*>` 不是随机字符串，而是基于内容密钥稳定推导出的混淆名。
 
 ### 4.2 baidu
 
@@ -64,13 +68,28 @@
 1. 视频元数据落库之后
 2. 本地 staging 分片写完之后
 3. 本地 manifest 生成之后
+4. 远端加密 manifest 生成之后
 4. 封面抽取之前
 
 顺序上大致是：
 
 - 先保证本地加密分片存在
-- 再把这些分片与 manifest 上传到 storage backend
+- 再把这些分片与“远端加密 manifest”上传到 storage backend
 - 再做非关键的封面抽取
+
+## 5.1 远端元信息加密
+
+当前不仅视频分片本体是加密的，远端元信息也做了保护：
+
+- 远端目录名不再暴露 `video_id`
+- 远端分片文件名不再暴露 `segment_index`
+- 远端 manifest 文件名不再暴露 `manifest.json`
+- 远端 manifest 内容不再是明文 JSON
+
+实现上分两层：
+
+1. 名字层：使用内容密钥做 HMAC-SHA256，得到稳定混淆名
+2. 内容层：对 manifest JSON 再执行 AES-256-GCM，加密后上传 `.bin`
 
 ## 6. 回放时的读取优先级
 
@@ -132,13 +151,15 @@
 ## 9. 当前限制
 
 - `mock` backend 仍然是默认开发 backend
-- `baidu` backend 还没有在线自动化验收
-- 还没有重试、退避、并发上传优化
-- 还没有远端目录扫描 / catalog sync
+- 虽然已有真实百度 smoke CLI 与一次在线验收，但还没有接入真实账号 CI
+- 当前只有基础重试、退避；还没有更细的限流分类与长时恢复策略
+- 当前还没有分片并发上传优化
+- 当前还没有远端封面同步
+- 远端 catalog sync 依赖同一份本地内容密钥才能解密 manifest
 
 ## 10. 下一阶段最自然的演进方向
 
-1. 增加真实百度账号 smoke 验证脚本
-2. 增加远端 manifest 扫描与目录同步
-3. 加入上传 / 下载重试与限流退避
-4. 把导入任务升级为后台异步任务
+1. 增加导入断点续传
+2. 增加本地分片缓存 LRU
+3. 继续细化百度错误重试 / 限流恢复
+4. 增加远端封面同步

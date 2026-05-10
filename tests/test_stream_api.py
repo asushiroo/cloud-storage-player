@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings
 from app.core.security import hash_password
 from app.main import create_app
+from app.repositories.videos import get_video
 from app.services.imports import import_local_video
 from app.storage.mock import MockStorageBackend
 
@@ -177,8 +178,11 @@ def test_stream_returns_404_when_source_local_and_remote_segments_are_all_missin
     source_path.unlink()
     remove_tree(settings.segment_staging_dir / str(job.video_id))
 
+    video = get_video(settings, job.video_id)
+    assert video is not None
+    assert video.manifest_path is not None
     storage = MockStorageBackend(settings.mock_storage_dir)
-    remove_tree(storage.local_path_for(f"/apps/CloudStoragePlayer/videos/{job.video_id}"))
+    remove_tree(storage.local_path_for(video.manifest_path).parent)
     login(client, password)
 
     response = client.get(f"/api/videos/{job.video_id}/stream")

@@ -20,6 +20,8 @@
 - `video_segments` 元数据落库
 - mock 存储 backend 上传 / 下载
 - Baidu storage backend 的上传 / 下载核心代码路径（fake API 测试）
+- 远端元信息加密（远端名字混淆 + 远端 manifest 加解密）
+- 远端 manifest 扫描 / catalog sync
 - 播放流整文件返回
 - Range / suffix range / `416`
 - 源文件删除后的本地 staging 回放
@@ -102,12 +104,14 @@ ffmpeg -y -f lavfi -i color=c=black:s=160x90:d=1 -c:v libx264 -pix_fmt yuv420p d
 - 删除 `data/segments/<video_id>/`
 - 再次播放
 - 应从当前 storage backend 回退成功
-  - mock：`data/mock-remote/apps/CloudStoragePlayer/...`
+  - mock：`data/mock-remote/apps/CloudStoragePlayer/<opaque_video_dir>/...`
   - baidu：百度网盘远端对象
 
 ### 场景 D：全部删除后播放
 
-- 如果当前用 mock backend，再删除 `data/mock-remote/apps/CloudStoragePlayer/videos/<video_id>/`
+- 如果当前用 mock backend，再删除实际对应的远端混淆目录
+  - 最简单的方法是先查看数据库里的 `videos.manifest_path`
+  - 再删除 `data/mock-remote` 下该 manifest 所在目录
 - 再次播放
 - 应返回 `404`
 
@@ -116,7 +120,6 @@ ffmpeg -y -f lavfi -i color=c=black:s=160x90:d=1 -c:v libx264 -pix_fmt yuv420p d
 虽然现在已经覆盖到百度 backend 的核心代码路径，但还**没有**覆盖：
 
 - 真实百度账号在线上传 / 下载的自动化验收
-- 远端目录扫描与同步
 - 前端单元测试
 - E2E 浏览器播放测试
-- 异步后台导入任务
+- 导入断点续传 / 恢复
