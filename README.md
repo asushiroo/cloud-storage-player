@@ -25,6 +25,7 @@
 - 百度 OAuth 授权码换取 refresh token，并缓存 access token
 - 导入时把 manifest / 加密分片上传到当前配置的存储后端
 - 远端 manifest 扫描 / catalog sync
+- 百度 OpenAPI / PCS 的基础重试与退避
 - 播放流优先读取本地加密分片，其次回退到远端对象，最后回退到源文件
 - 真实百度链路 smoke CLI（上传 / 远端 sync / 远端回放校验）
 - 已完成一次真实百度链路在线验收（`tmp/rieri.mp4` 上传 / sync / 远端回放通过）
@@ -36,7 +37,7 @@
 
 - 真实百度网盘链路的首次 OAuth 手工授权仍需要拿到 authorization code
 - 后台异步导入、断点续传、LRU 分片缓存
-- 更完善的百度错误重试与分片并发上传策略
+- 更完整的百度错误分类、长时退避与分片并发上传策略
 - 远端封面同步与更完整的 catalog 元数据恢复
 
 ## Python 版本
