@@ -182,10 +182,9 @@ def copy_baidu_refresh_token(
     oauth_code: str | None = None,
 ) -> str:
     initialize_database(base_settings)
-    refresh_token = get_baidu_refresh_token(base_settings)
-    if refresh_token is None and oauth_code is not None:
+    if oauth_code is not None:
         authorize_baidu_with_code(base_settings, code=oauth_code)
-        refresh_token = get_baidu_refresh_token(base_settings)
+    refresh_token = get_baidu_refresh_token(base_settings)
 
     if refresh_token is None:
         authorize_url = build_baidu_authorize_url(base_settings)

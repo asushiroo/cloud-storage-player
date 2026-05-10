@@ -27,6 +27,7 @@
 - 远端 manifest 扫描 / catalog sync
 - 播放流优先读取本地加密分片，其次回退到远端对象，最后回退到源文件
 - 真实百度链路 smoke CLI（上传 / 远端 sync / 远端回放校验）
+- 已完成一次真实百度链路在线验收（`tmp/rieri.mp4` 上传 / sync / 远端回放通过）
 - `ffmpeg` 封面抽取与 `/covers/*` 静态访问
 - `uv run pytest` 自动化测试
 - `frontend` 构建通过
