@@ -90,6 +90,7 @@ def build_manifest_payload(
     return {
         "video_id": video.id,
         "title": video.title,
+        "tags": video.tags,
         "source": {
             "path": video.source_path,
             "size": video.size,

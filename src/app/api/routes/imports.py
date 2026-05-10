@@ -24,6 +24,7 @@ async def create_import(
             source_path=payload.source_path,
             folder_id=payload.folder_id,
             title=payload.title,
+            tags=payload.tags,
             worker=worker,
         )
     except ImportValidationError as exc:

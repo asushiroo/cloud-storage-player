@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 
 from app.core.config import Settings
+from app.core.tags import decode_tags, encode_tags
 from app.db.connection import connect_database
 from app.models.library import Video
 
@@ -18,6 +19,7 @@ def list_videos(settings: Settings, *, folder_id: int | None = None) -> list[Vid
                videos.duration_seconds,
                videos.manifest_path,
                videos.source_path,
+               videos.tags_json,
                videos.created_at,
                COUNT(video_segments.id) AS segment_count
         FROM videos
@@ -46,6 +48,7 @@ def create_video(
     title: str,
     mime_type: str,
     size: int,
+    tags: list[str] | None = None,
     folder_id: int | None = None,
     cover_path: str | None = None,
     duration_seconds: float | None = None,
@@ -63,9 +66,10 @@ def create_video(
                 size,
                 duration_seconds,
                 manifest_path,
-                source_path
+                source_path,
+                tags_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 folder_id,
@@ -76,6 +80,7 @@ def create_video(
                 duration_seconds,
                 manifest_path,
                 source_path,
+                encode_tags(tags),
             ),
         )
         connection.commit()
@@ -90,6 +95,7 @@ def create_video(
                    videos.duration_seconds,
                    videos.manifest_path,
                    videos.source_path,
+                   videos.tags_json,
                    videos.created_at,
                    COUNT(video_segments.id) AS segment_count
             FROM videos
@@ -116,6 +122,7 @@ def get_video(settings: Settings, video_id: int) -> Video | None:
                    videos.duration_seconds,
                    videos.manifest_path,
                    videos.source_path,
+                   videos.tags_json,
                    videos.created_at,
                    COUNT(video_segments.id) AS segment_count
             FROM videos
@@ -144,6 +151,7 @@ def get_video_by_manifest_path(settings: Settings, manifest_path: str) -> Video 
                    videos.duration_seconds,
                    videos.manifest_path,
                    videos.source_path,
+                   videos.tags_json,
                    videos.created_at,
                    COUNT(video_segments.id) AS segment_count
             FROM videos
@@ -186,6 +194,7 @@ def update_video_cover_path(
                    videos.duration_seconds,
                    videos.manifest_path,
                    videos.source_path,
+                   videos.tags_json,
                    videos.created_at,
                    COUNT(video_segments.id) AS segment_count
             FROM videos
@@ -226,6 +235,7 @@ def update_video_manifest_path(
                    videos.duration_seconds,
                    videos.manifest_path,
                    videos.source_path,
+                   videos.tags_json,
                    videos.created_at,
                    COUNT(video_segments.id) AS segment_count
             FROM videos
@@ -249,6 +259,7 @@ def update_video_sync_metadata(
     duration_seconds: float | None,
     manifest_path: str,
     source_path: str | None,
+    tags: list[str] | None,
 ) -> Video:
     with connect_database(settings) as connection:
         connection.execute(
@@ -259,7 +270,8 @@ def update_video_sync_metadata(
                 size = ?,
                 duration_seconds = ?,
                 manifest_path = ?,
-                source_path = ?
+                source_path = ?,
+                tags_json = ?
             WHERE id = ?
             """,
             (
@@ -269,6 +281,7 @@ def update_video_sync_metadata(
                 duration_seconds,
                 manifest_path,
                 source_path,
+                encode_tags(tags),
                 video_id,
             ),
         )
@@ -284,6 +297,48 @@ def update_video_sync_metadata(
                    videos.duration_seconds,
                    videos.manifest_path,
                    videos.source_path,
+                   videos.tags_json,
+                   videos.created_at,
+                   COUNT(video_segments.id) AS segment_count
+            FROM videos
+            LEFT JOIN video_segments ON video_segments.video_id = videos.id
+            WHERE videos.id = ?
+            GROUP BY videos.id
+            """,
+            (video_id,),
+        ).fetchone()
+
+    return _row_to_video(row)
+
+
+def update_video_tags(
+    settings: Settings,
+    video_id: int,
+    *,
+    tags: list[str] | None,
+) -> Video:
+    with connect_database(settings) as connection:
+        connection.execute(
+            """
+            UPDATE videos
+            SET tags_json = ?
+            WHERE id = ?
+            """,
+            (encode_tags(tags), video_id),
+        )
+        connection.commit()
+        row = connection.execute(
+            """
+            SELECT videos.id,
+                   videos.folder_id,
+                   videos.title,
+                   videos.cover_path,
+                   videos.mime_type,
+                   videos.size,
+                   videos.duration_seconds,
+                   videos.manifest_path,
+                   videos.source_path,
+                   videos.tags_json,
                    videos.created_at,
                    COUNT(video_segments.id) AS segment_count
             FROM videos
@@ -310,4 +365,5 @@ def _row_to_video(row: sqlite3.Row) -> Video:
         source_path=row["source_path"],
         created_at=row["created_at"],
         segment_count=row["segment_count"],
+        tags=decode_tags(row["tags_json"]),
     )

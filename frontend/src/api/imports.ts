@@ -5,6 +5,7 @@ export interface CreateImportPayload {
   source_path: string;
   folder_id?: number | null;
   title?: string | null;
+  tags?: string[];
 }
 
 export async function fetchImportJobs(): Promise<ImportJob[]> {

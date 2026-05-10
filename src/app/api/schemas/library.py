@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class FolderResponse(BaseModel):
@@ -26,6 +26,11 @@ class VideoResponse(BaseModel):
     source_path: str | None
     created_at: str
     segment_count: int = 0
+    tags: list[str] = Field(default_factory=list)
+
+
+class VideoTagsUpdateRequest(BaseModel):
+    tags: list[str] = Field(default_factory=list)
 
 
 class CatalogSyncResponse(BaseModel):

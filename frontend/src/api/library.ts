@@ -18,6 +18,11 @@ export async function fetchVideo(videoId: number): Promise<Video> {
   return response.data;
 }
 
+export async function updateVideoTags(videoId: number, tags: string[]): Promise<Video> {
+  const response = await http.patch<Video>(`/api/videos/${videoId}/tags`, { tags });
+  return response.data;
+}
+
 export async function syncRemoteCatalog(): Promise<CatalogSyncResult> {
   const response = await http.post<CatalogSyncResult>("/api/videos/sync");
   return response.data;

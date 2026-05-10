@@ -43,6 +43,7 @@ def sample_video() -> Video:
         source_path="/root/cloud-storage-player/tmp/rieri.mp4",
         created_at="2026-05-10T00:00:00+00:00",
         segment_count=1,
+        tags=["secret-tag"],
     )
 
 
@@ -104,11 +105,13 @@ def test_remote_manifest_payload_is_encrypted_and_can_round_trip(tmp_path: Path)
 
     assert b"Secret Demo" not in encrypted
     assert b"rieri.mp4" not in encrypted
+    assert b"secret-tag" not in encrypted
     assert b"manifest.json" not in encrypted
     assert b"segments" not in encrypted
 
     decrypted = decrypt_manifest_payload(encrypted, key=load_content_key(settings))
     assert decrypted["video_id"] == video.id
     assert decrypted["title"] == video.title
+    assert decrypted["tags"] == ["secret-tag"]
     assert decrypted["source"]["path"] == video.source_path
     assert decrypted["segments"][0]["remote_path"] == segments[0].cloud_path

@@ -62,6 +62,7 @@ def test_catalog_endpoints_return_inserted_rows(tmp_path: Path) -> None:
         size=1024,
         duration_seconds=12.5,
         manifest_path="/apps/CloudStoragePlayer/videos/1/manifest.json",
+        tags=["收藏", "示例"],
     )
     login(client, password)
 
@@ -76,6 +77,7 @@ def test_catalog_endpoints_return_inserted_rows(tmp_path: Path) -> None:
     assert videos_response.json()[0]["title"] == "Demo Video"
     assert videos_response.json()[0]["folder_id"] == folder.id
     assert videos_response.json()[0]["mime_type"] == "video/mp4"
+    assert videos_response.json()[0]["tags"] == ["收藏", "示例"]
 
 
 def test_videos_endpoint_can_filter_by_folder(tmp_path: Path) -> None:
@@ -102,6 +104,29 @@ def test_videos_endpoint_can_filter_by_folder(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert [item["title"] for item in response.json()] == ["Anime B"]
+
+
+def test_video_tags_endpoint_updates_saved_tags(tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    video = create_video(
+        settings,
+        title="Tagged Video",
+        mime_type="video/mp4",
+        size=100,
+    )
+    login(client, password)
+
+    response = client.patch(
+        f"/api/videos/{video.id}/tags",
+        json={"tags": ["家庭", "周末", "家庭", " "]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["tags"] == ["家庭", "周末"]
+
+    detail_response = client.get(f"/api/videos/{video.id}")
+    assert detail_response.status_code == 200
+    assert detail_response.json()["tags"] == ["家庭", "周末"]
 
 
 def test_settings_repository_round_trip(tmp_path: Path) -> None:

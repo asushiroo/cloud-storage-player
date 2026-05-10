@@ -4,9 +4,15 @@ from fastapi import APIRouter, Depends, Request
 from fastapi import HTTPException, status
 
 from app.api.dependencies import require_authenticated
-from app.api.schemas.library import CatalogSyncResponse, FolderResponse, VideoResponse
+from app.api.schemas.library import (
+    CatalogSyncResponse,
+    FolderResponse,
+    VideoResponse,
+    VideoTagsUpdateRequest,
+)
+from app.core.tags import normalize_tags
 from app.repositories.folders import list_folders
-from app.repositories.videos import get_video, list_videos
+from app.repositories.videos import get_video, list_videos, update_video_tags
 from app.services.baidu_oauth import BaiduOAuthConfigurationError
 from app.services.catalog_sync import sync_remote_catalog
 from app.storage.baidu_api import BaiduApiError
@@ -48,6 +54,26 @@ async def get_video_detail(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found.")
 
     return VideoResponse.model_validate(video)
+
+
+@router.patch("/videos/{video_id}/tags", response_model=VideoResponse)
+async def patch_video_tags(
+    video_id: int,
+    payload: VideoTagsUpdateRequest,
+    request: Request,
+    _: None = Depends(require_authenticated),
+) -> VideoResponse:
+    settings = request.app.state.settings
+    video = get_video(settings, video_id)
+    if video is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found.")
+
+    updated_video = update_video_tags(
+        settings,
+        video_id,
+        tags=normalize_tags(payload.tags),
+    )
+    return VideoResponse.model_validate(updated_video)
 
 
 @router.post("/videos/sync", response_model=CatalogSyncResponse)

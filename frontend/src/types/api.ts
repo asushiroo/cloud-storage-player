@@ -21,6 +21,7 @@ export interface Video {
   source_path: string | null;
   created_at: string;
   segment_count: number;
+  tags: string[];
 }
 
 export interface ImportJob {
@@ -28,6 +29,7 @@ export interface ImportJob {
   source_path: string;
   folder_id: number | null;
   requested_title: string | null;
+  requested_tags: string[];
   status: string;
   progress_percent: number;
   error_message: string | null;

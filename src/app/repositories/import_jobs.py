@@ -4,6 +4,7 @@ import sqlite3
 from collections.abc import Sequence
 
 from app.core.config import Settings
+from app.core.tags import decode_tags, encode_tags
 from app.db.connection import connect_database
 from app.models.imports import ImportJob
 
@@ -14,6 +15,7 @@ def create_import_job(
     source_path: str,
     folder_id: int | None = None,
     requested_title: str | None = None,
+    requested_tags: list[str] | None = None,
 ) -> ImportJob:
     with connect_database(settings) as connection:
         cursor = connection.execute(
@@ -22,17 +24,18 @@ def create_import_job(
                 source_path,
                 folder_id,
                 requested_title,
+                requested_tags_json,
                 status,
                 progress_percent
             )
-            VALUES (?, ?, ?, 'queued', 0)
+            VALUES (?, ?, ?, ?, 'queued', 0)
             """,
-            (source_path, folder_id, requested_title),
+            (source_path, folder_id, requested_title, encode_tags(requested_tags)),
         )
         connection.commit()
         row = connection.execute(
             """
-            SELECT id, source_path, folder_id, requested_title, status, progress_percent,
+            SELECT id, source_path, folder_id, requested_title, requested_tags_json, status, progress_percent,
                    error_message, video_id, created_at, updated_at
             FROM import_jobs
             WHERE id = ?
@@ -47,7 +50,7 @@ def get_import_job(settings: Settings, job_id: int) -> ImportJob | None:
     with connect_database(settings) as connection:
         row = connection.execute(
             """
-            SELECT id, source_path, folder_id, requested_title, status, progress_percent,
+            SELECT id, source_path, folder_id, requested_title, requested_tags_json, status, progress_percent,
                    error_message, video_id, created_at, updated_at
             FROM import_jobs
             WHERE id = ?
@@ -64,7 +67,7 @@ def list_import_jobs(settings: Settings) -> list[ImportJob]:
     with connect_database(settings) as connection:
         rows = connection.execute(
             """
-            SELECT id, source_path, folder_id, requested_title, status, progress_percent,
+            SELECT id, source_path, folder_id, requested_title, requested_tags_json, status, progress_percent,
                    error_message, video_id, created_at, updated_at
             FROM import_jobs
             ORDER BY id DESC
@@ -183,7 +186,7 @@ def _update_import_job(
         connection.commit()
         row = connection.execute(
             """
-            SELECT id, source_path, folder_id, requested_title, status, progress_percent,
+            SELECT id, source_path, folder_id, requested_title, requested_tags_json, status, progress_percent,
                    error_message, video_id, created_at, updated_at
             FROM import_jobs
             WHERE id = ?
@@ -200,6 +203,7 @@ def _row_to_import_job(row: sqlite3.Row) -> ImportJob:
         source_path=row["source_path"],
         folder_id=row["folder_id"],
         requested_title=row["requested_title"],
+        requested_tags=decode_tags(row["requested_tags_json"]),
         status=row["status"],
         progress_percent=row["progress_percent"],
         error_message=row["error_message"],

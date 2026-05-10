@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS videos (
     duration_seconds REAL,
     manifest_path TEXT,
     source_path TEXT,
+    tags_json TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -37,6 +38,7 @@ CREATE TABLE IF NOT EXISTS import_jobs (
     source_path TEXT NOT NULL,
     folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
     requested_title TEXT,
+    requested_tags_json TEXT NOT NULL DEFAULT '[]',
     status TEXT NOT NULL,
     progress_percent INTEGER NOT NULL DEFAULT 0,
     error_message TEXT,
@@ -66,6 +68,8 @@ def initialize_database(settings: Settings) -> None:
     with connect_database(settings) as connection:
         connection.executescript(SCHEMA_SQL)
         _ensure_column(connection, "videos", "source_path", "TEXT")
+        _ensure_column(connection, "videos", "tags_json", "TEXT NOT NULL DEFAULT '[]'")
+        _ensure_column(connection, "import_jobs", "requested_tags_json", "TEXT NOT NULL DEFAULT '[]'")
         connection.commit()
 
 

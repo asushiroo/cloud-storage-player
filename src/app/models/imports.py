@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(slots=True)
@@ -15,3 +15,4 @@ class ImportJob:
     video_id: int | None
     created_at: str
     updated_at: str
+    requested_tags: list[str] = field(default_factory=list)

@@ -88,7 +88,12 @@ def test_catalog_sync_rebuilds_videos_and_segments_from_remote_manifest(tmp_path
         segment_staging_path=tmp_path / "writer-segments",
         covers_path=tmp_path / "writer-covers",
     )
-    import_local_video(writer_settings, source_path=str(source_path), title="Remote Demo")
+    import_local_video(
+        writer_settings,
+        source_path=str(source_path),
+        title="Remote Demo",
+        tags=["远端", "演示"],
+    )
     source_path.unlink()
 
     client, _, password = build_client(
@@ -117,6 +122,7 @@ def test_catalog_sync_rebuilds_videos_and_segments_from_remote_manifest(tmp_path
     videos_payload = videos_response.json()
     assert len(videos_payload) == 1
     assert videos_payload[0]["title"] == "Remote Demo"
+    assert videos_payload[0]["tags"] == ["远端", "演示"]
     assert videos_payload[0]["manifest_path"].startswith("/apps/CloudStoragePlayer/")
     assert "/videos/" not in videos_payload[0]["manifest_path"]
     assert "manifest.json" not in videos_payload[0]["manifest_path"]

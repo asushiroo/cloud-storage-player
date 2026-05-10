@@ -13,21 +13,33 @@ async function handleLogout(): Promise<void> {
 
 <template>
   <div class="app-shell">
-    <aside class="sidebar">
-      <h1>Cloud Storage Player</h1>
-      <p class="muted">前后端分离 / Vue 前端</p>
-      <nav>
-        <RouterLink to="/library">媒体库</RouterLink>
-        <RouterLink to="/settings">设置</RouterLink>
-      </nav>
-      <div class="button-row" style="margin-top: 1.5rem;">
-        <button class="button secondary" type="button" @click="handleLogout">
-          退出登录
-        </button>
-      </div>
-    </aside>
+    <div class="app-backdrop">
+      <div class="backdrop-orb orb-one" />
+      <div class="backdrop-orb orb-two" />
+      <div class="backdrop-orb orb-three" />
+    </div>
 
-    <main class="main">
+    <header class="topbar">
+      <RouterLink to="/library" class="brand-lockup">
+        <div class="brand-mark">CSP</div>
+        <div>
+          <strong>Cloud Storage Player</strong>
+          <p>Kyoo 风格重构 · Vue 前端</p>
+        </div>
+      </RouterLink>
+
+      <nav class="nav-links">
+        <RouterLink to="/library" class="nav-link">媒体库</RouterLink>
+        <RouterLink to="/settings" class="nav-link">设置</RouterLink>
+      </nav>
+
+      <div class="topbar-actions">
+        <span class="session-indicator">LAN Session</span>
+        <button class="button ghost" type="button" @click="handleLogout">退出</button>
+      </div>
+    </header>
+
+    <main class="page-container">
       <slot />
     </main>
   </div>

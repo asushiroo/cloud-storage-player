@@ -4,6 +4,7 @@ from pathlib import Path
 
 from app.core.config import Settings
 from app.core.keys import load_content_key, load_or_create_content_key
+from app.core.tags import normalize_tags
 from app.media.chunker import iter_file_chunks
 from app.media.covers import CoverExtractionError, extract_cover
 from app.media.crypto import encrypt_segment
@@ -45,19 +46,22 @@ def queue_import_job(
     source_path: str,
     folder_id: int | None = None,
     title: str | None = None,
+    tags: list[str] | None = None,
     worker: "ImportWorker",
 ) -> ImportJob:
-    source, requested_title = validate_import_request(
+    source, requested_title, normalized_tags = validate_import_request(
         settings,
         source_path=source_path,
         folder_id=folder_id,
         title=title,
+        tags=tags,
     )
     job = create_import_job(
         settings,
         source_path=str(source),
         folder_id=folder_id,
         requested_title=requested_title,
+        requested_tags=normalized_tags,
     )
     worker.enqueue(job.id)
     return job
@@ -69,18 +73,21 @@ def import_local_video(
     source_path: str,
     folder_id: int | None = None,
     title: str | None = None,
+    tags: list[str] | None = None,
 ) -> ImportJob:
-    source, requested_title = validate_import_request(
+    source, requested_title, normalized_tags = validate_import_request(
         settings,
         source_path=source_path,
         folder_id=folder_id,
         title=title,
+        tags=tags,
     )
     job = create_import_job(
         settings,
         source_path=str(source),
         folder_id=folder_id,
         requested_title=requested_title,
+        requested_tags=normalized_tags,
     )
     return process_import_job(settings, job.id)
 
@@ -93,11 +100,12 @@ def process_import_job(settings: Settings, job_id: int) -> ImportJob:
         return job
 
     try:
-        source, requested_title = validate_import_request(
+        source, requested_title, requested_tags = validate_import_request(
             settings,
             source_path=job.source_path,
             folder_id=job.folder_id,
             title=job.requested_title,
+            tags=job.requested_tags,
         )
     except ImportValidationError as exc:
         return mark_import_job_failed(settings, job.id, error_message=str(exc))
@@ -114,6 +122,7 @@ def process_import_job(settings: Settings, job_id: int) -> ImportJob:
             mime_type=metadata.mime_type,
             size=metadata.size,
             duration_seconds=metadata.duration_seconds,
+            tags=requested_tags,
         )
         update_import_job_progress(settings, job.id, progress_percent=40)
         segments = _materialize_encrypted_segments(settings, source=source, video=video)
@@ -142,7 +151,8 @@ def validate_import_request(
     source_path: str,
     folder_id: int | None = None,
     title: str | None = None,
-) -> tuple[Path, str | None]:
+    tags: list[str] | None = None,
+) -> tuple[Path, str | None, list[str]]:
     source = Path(source_path)
     if not source.exists() or not source.is_file():
         raise ImportValidationError(f"Source file does not exist: {source_path}")
@@ -151,7 +161,7 @@ def validate_import_request(
         raise ImportValidationError(f"Folder does not exist: {folder_id}")
 
     requested_title = title.strip() if title else None
-    return source, requested_title
+    return source, requested_title, normalize_tags(tags)
 
 
 def _create_video_from_probe(
@@ -163,6 +173,7 @@ def _create_video_from_probe(
     mime_type: str,
     size: int,
     duration_seconds: float | None,
+    tags: list[str],
 ) -> Video:
     return create_video(
         settings,
@@ -173,6 +184,7 @@ def _create_video_from_probe(
         duration_seconds=duration_seconds,
         manifest_path=None,
         source_path=source_path,
+        tags=tags,
     )
 
 

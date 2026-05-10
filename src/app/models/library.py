@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(slots=True)
@@ -24,3 +24,4 @@ class Video:
     source_path: str | None
     created_at: str
     segment_count: int = 0
+    tags: list[str] = field(default_factory=list)

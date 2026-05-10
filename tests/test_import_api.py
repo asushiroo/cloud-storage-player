@@ -104,6 +104,7 @@ def test_import_video_creates_queued_job_and_completes_in_background(tmp_path: P
             "source_path": str(source_path),
             "folder_id": folder.id,
             "title": "Imported Demo",
+            "tags": ["动画", "治愈", "动画"],
         },
     )
 
@@ -112,6 +113,7 @@ def test_import_video_creates_queued_job_and_completes_in_background(tmp_path: P
     assert payload["status"] == "queued"
     assert payload["progress_percent"] == 0
     assert payload["video_id"] is None
+    assert payload["requested_tags"] == ["动画", "治愈"]
 
     completed_payload = wait_for_job_status(
         client,
@@ -132,6 +134,7 @@ def test_import_video_creates_queued_job_and_completes_in_background(tmp_path: P
     assert video_payload["source_path"] == str(source_path)
     assert video_payload["cover_path"] is not None
     assert video_payload["segment_count"] >= 1
+    assert video_payload["tags"] == ["动画", "治愈"]
     assert video_payload["manifest_path"] is not None
     assert video_payload["manifest_path"].startswith("/apps/CloudStoragePlayer/")
     assert "manifest.json" not in video_payload["manifest_path"]
@@ -150,6 +153,7 @@ def test_import_video_creates_queued_job_and_completes_in_background(tmp_path: P
     assert b"Imported Demo" not in remote_manifest_bytes
     assert b"manifest.json" not in remote_manifest_bytes
     assert str(source_path).encode("utf-8") not in remote_manifest_bytes
+    assert "动画".encode("utf-8") not in remote_manifest_bytes
     remote_manifest = decrypt_manifest_payload(
         remote_manifest_bytes,
         key=load_content_key(settings),
@@ -157,6 +161,7 @@ def test_import_video_creates_queued_job_and_completes_in_background(tmp_path: P
     assert remote_manifest["video_id"] == completed_payload["video_id"]
     assert remote_manifest["segment_count"] == len(segments)
     assert remote_manifest["title"] == "Imported Demo"
+    assert remote_manifest["tags"] == ["动画", "治愈"]
     for segment in segments:
         assert segment.cloud_path is not None
         assert storage.local_path_for(segment.cloud_path).exists()

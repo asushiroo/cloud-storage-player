@@ -31,19 +31,27 @@ async function submit(): Promise<void> {
 
 <template>
   <div class="login-page">
-    <section class="panel login-card stack">
-      <div>
-        <h1>Cloud Storage Player</h1>
-        <p class="muted">使用共享密码登录局域网视频服务。</p>
-      </div>
+    <div class="app-backdrop">
+      <div class="backdrop-orb orb-one" />
+      <div class="backdrop-orb orb-two" />
+      <div class="backdrop-orb orb-three" />
+    </div>
+
+    <section class="login-card surface">
+      <div class="eyebrow">Cloud Storage Player</div>
+      <h1>进入你的私人影库</h1>
+      <p class="muted">
+        参考 third/Kyoo 的视觉风格，重新整理了登录页、媒体库、播放详情和标签体验。
+      </p>
 
       <div class="field">
-        <label for="password">密码</label>
+        <label for="password">共享密码</label>
         <input
           id="password"
           v-model="password"
           type="password"
           autocomplete="current-password"
+          placeholder="输入共享密码"
           @keyup.enter="submit"
         />
       </div>
@@ -52,7 +60,7 @@ async function submit(): Promise<void> {
 
       <div class="button-row">
         <button class="button" type="button" :disabled="loading" @click="submit">
-          {{ loading ? "登录中..." : "登录" }}
+          {{ loading ? "登录中..." : "进入媒体库" }}
         </button>
       </div>
     </section>

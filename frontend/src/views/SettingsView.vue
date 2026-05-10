@@ -99,51 +99,71 @@ onMounted(load);
 
 <template>
   <AppShell>
-    <section class="panel stack">
-      <h2>设置</h2>
-      <p class="muted">当前只暴露非敏感配置，敏感 Baidu 凭据仍由后端环境变量管理。</p>
+    <div class="page-stack">
+      <section class="surface section-card">
+        <div class="section-heading">
+          <div>
+            <div class="eyebrow">Runtime</div>
+            <h1>系统设置</h1>
+          </div>
+        </div>
 
-      <p v-if="loading" class="muted">加载中...</p>
-      <p v-if="error" class="error">{{ error }}</p>
-      <p v-if="message">{{ message }}</p>
-
-      <div class="field">
-        <label for="storage-backend">Storage Backend</label>
-        <select id="storage-backend" v-model="storageBackend">
-          <option value="mock">mock</option>
-          <option value="baidu">baidu</option>
-        </select>
-      </div>
-
-      <div class="field">
-        <label for="baidu-root-path">Baidu Root Path</label>
-        <input id="baidu-root-path" v-model="baiduRootPath" />
-      </div>
-
-      <div class="field">
-        <label for="cache-limit-bytes">Cache Limit Bytes</label>
-        <input id="cache-limit-bytes" v-model.number="cacheLimitBytes" type="number" min="1" />
-      </div>
-
-      <div class="button-row">
-        <button class="button" type="button" :disabled="saving" @click="submit">
-          {{ saving ? "保存中..." : "保存设置" }}
-        </button>
-      </div>
-
-      <section class="panel stack nested-panel">
-        <h3>百度授权</h3>
         <p class="muted">
-          当前刷新令牌状态：
-          <strong>{{ baiduHasRefreshToken ? "已配置" : "未配置" }}</strong>
+          敏感 Baidu 凭据仍由后端环境变量管理；这里仅编辑公开运行参数与授权状态。
         </p>
+
+        <p v-if="loading" class="muted">加载中...</p>
+        <p v-if="error" class="error banner-message">{{ error }}</p>
+        <p v-if="message" class="banner-message success">{{ message }}</p>
+
+        <div class="settings-grid">
+          <div class="field">
+            <label for="storage-backend">Storage Backend</label>
+            <select id="storage-backend" v-model="storageBackend">
+              <option value="mock">mock</option>
+              <option value="baidu">baidu</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="baidu-root-path">Baidu Root Path</label>
+            <input id="baidu-root-path" v-model="baiduRootPath" />
+          </div>
+
+          <div class="field">
+            <label for="cache-limit-bytes">Cache Limit Bytes</label>
+            <input id="cache-limit-bytes" v-model.number="cacheLimitBytes" type="number" min="1" />
+          </div>
+        </div>
+
+        <div class="button-row">
+          <button class="button" type="button" :disabled="saving" @click="submit">
+            {{ saving ? "保存中..." : "保存设置" }}
+          </button>
+        </div>
+      </section>
+
+      <section class="surface section-card">
+        <div class="section-heading">
+          <div>
+            <div class="eyebrow">OAuth</div>
+            <h2>百度授权</h2>
+          </div>
+          <span class="status-badge" :class="baiduHasRefreshToken ? 'completed' : 'queued'">
+            {{ baiduHasRefreshToken ? "已配置" : "未配置" }}
+          </span>
+        </div>
+
         <p v-if="baiduAuthorizeUrl" class="muted">
-          先打开下面的授权链接完成授权，再把返回的 code 粘贴到输入框中：
+          打开授权页，复制返回的 code，再粘贴到下面输入框中保存。
         </p>
-        <p v-if="baiduAuthorizeUrl">
-          <a :href="baiduAuthorizeUrl" target="_blank" rel="noreferrer">打开百度授权页</a>
-        </p>
-        <p v-else class="muted">当前环境未配置 BAIDU_APP_KEY，暂时无法生成授权链接。</p>
+        <p v-else class="muted">当前环境未配置 BAIDU_APP_KEY，无法生成授权链接。</p>
+
+        <div class="button-row">
+          <a v-if="baiduAuthorizeUrl" :href="baiduAuthorizeUrl" target="_blank" rel="noreferrer" class="button ghost">
+            打开百度授权页
+          </a>
+        </div>
 
         <div class="field">
           <label for="baidu-code">Authorization Code</label>
@@ -161,12 +181,6 @@ onMounted(load);
           </button>
         </div>
       </section>
-    </section>
+    </div>
   </AppShell>
 </template>
-
-<style scoped>
-.nested-panel {
-  margin-top: 1rem;
-}
-</style>

@@ -7,6 +7,7 @@ class ImportRequest(BaseModel):
     source_path: str = Field(min_length=1)
     folder_id: int | None = None
     title: str | None = None
+    tags: list[str] = Field(default_factory=list)
 
 
 class ImportJobResponse(BaseModel):
@@ -16,6 +17,7 @@ class ImportJobResponse(BaseModel):
     source_path: str
     folder_id: int | None
     requested_title: str | None
+    requested_tags: list[str] = Field(default_factory=list)
     status: str
     progress_percent: int
     error_message: str | None
