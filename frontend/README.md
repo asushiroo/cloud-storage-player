@@ -1,15 +1,14 @@
 # Frontend
 
-这是 Cloud Storage Player 的独立前端目录。
+这是 Cloud Storage Player 当前主线前端。
 
 ## 技术栈
 
-- Vue 3
+- React
 - TypeScript
 - Vite
-- Pinia
-- Vue Router
-- Axios
+- React Router
+- TanStack Query
 
 ## 启动
 
@@ -30,7 +29,8 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 npm run build
 ```
 
-更详细的架构说明见：
+## 说明
 
-- `frontend/AGENTS.md`
-- `docs/frontend-vue-architecture.md`
+- `third/` 只做参考，不参与这里的运行时。
+- 当前前端不兼容原 Vue 版本，已直接切换到新的 React 实现。
+- 更详细的约束见 `frontend/AGENTS.md`。

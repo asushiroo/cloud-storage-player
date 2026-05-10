@@ -5,13 +5,13 @@
 当前仓库采用**前后端分离**：
 
 - 后端：FastAPI + SQLite + 服务层 / 仓储层 / 存储抽象
-- 前端：Vue 3 + TypeScript + Vite
+- 前端：`frontend/` 下的 React + TypeScript + Vite
+- `third/`：参考代码，不参与当前运行时
 
 ## 当前已实现
 
 - UV 管理 Python 项目与依赖
 - FastAPI 应用入口与 SQLite bootstrap
-- Vue 3 + TypeScript + Vite 前端工程
 - 基于 Cookie Session 的单密码认证
 - `/api/auth/*`、目录、视频详情、设置、导入接口
 - 本地主机路径导入
@@ -20,13 +20,11 @@
 - `video_segments` 元数据落库
 - 本地 manifest 生成
 - 存储后端抽象
-- `mock`：本地目录模拟远端对象存储
+  - `mock`：本地目录模拟远端对象存储
   - `baidu`：基于百度网盘官方 open platform 的最小可用 backend
 - 百度 OAuth 授权码换取 refresh token，并缓存 access token
 - 导入时把 manifest / 加密分片上传到当前配置的存储后端
 - 后台异步导入任务（API 入队，后台 worker 执行）
-- 前端导入任务自动轮询与进度展示
-- 前端视觉重构（参考 `third/Kyoo` 的卡片 / Hero / 胶囊标签风格，保留 Vue 技术栈）
 - 视频自定义标签
   - 导入时可填写标签
   - 视频详情页可编辑标签
@@ -43,11 +41,16 @@
   - sync 兼容历史明文 manifest 与新加密 manifest
 - 百度 OpenAPI / PCS 的基础重试与退避
 - 播放流优先读取本地加密分片，其次回退到远端对象，最后回退到源文件
+- `ffmpeg` 封面抽取与 `/covers/*` 静态访问
 - 真实百度链路 smoke CLI（上传 / 远端 sync / 远端回放校验）
 - 已完成一次真实百度链路在线验收（`tmp/rieri.mp4` 上传 / sync / 远端回放通过）
-- `ffmpeg` 封面抽取与 `/covers/*` 静态访问
+- 前端已切换到 `frontend/` 中的新实现
+  - 登录页走 `/api/auth/login`
+  - 媒体库页走 `/api/folders`、`/api/videos`、`/api/imports`
+  - 视频详情页走 `/api/videos/{id}`、`PATCH /api/videos/{id}/tags`
+  - 设置页走 `/api/settings`、`/api/settings/baidu/oauth`
+  - 播放页直接使用后端 `/api/videos/{id}/stream`
 - `uv run pytest` 自动化测试
-- `frontend` 构建通过
 
 ## 当前仍未完成
 
@@ -55,6 +58,7 @@
 - 导入断点续传、LRU 分片缓存
 - 更完整的百度错误分类、长时退避与分片并发上传策略
 - 远端封面同步与更完整的 catalog 元数据恢复
+- 当前前端只保证 Web 主链路，移动端不是本阶段目标
 
 ## Python 版本
 
@@ -80,6 +84,12 @@ uv run cloud-storage-player
 cd frontend
 npm install
 npm run dev
+```
+
+如果后端地址不是默认值，可创建 `.env.local`：
+
+```bash
+VITE_API_BASE_URL=http://127.0.0.1:8000
 ```
 
 ## 环境变量
@@ -119,6 +129,7 @@ npm run dev
 ### 前后端联调
 
 - `CSP_CORS_ALLOWED_ORIGINS_RAW`
+- `VITE_API_BASE_URL`
 
 ### 百度网盘开放平台凭据
 
@@ -146,6 +157,7 @@ npm run dev
 - `GET /api/folders`
 - `GET /api/videos`
 - `GET /api/videos/{video_id}`
+- `PATCH /api/videos/{video_id}/tags`
 - `GET /api/videos/{video_id}/stream`
 
 导入：

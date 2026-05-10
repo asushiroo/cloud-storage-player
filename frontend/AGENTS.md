@@ -2,39 +2,40 @@
 
 ## Summary
 
-This directory contains the separated web frontend for Cloud Storage Player.
+This directory is the primary tracked web frontend for Cloud Storage Player.
 
-- Use `Vue 3` + `TypeScript` + `Vite`.
+- Use `React` + `TypeScript` + `Vite`.
 - Treat the backend as a JSON API server.
-- Do not add server-rendered feature work here.
+- `third/` is reference-only; copy/adapt what is needed here.
 - Keep frontend concerns in the frontend; do not duplicate backend import, storage, crypto, or stream logic in the browser.
 
 ## Core Rules
 
-- Prefer small focused components over large mixed views.
+- Prefer small focused components over large mixed files.
 - Keep API access in `src/api/`.
-- Keep route-level screens in `src/views/`.
-- Keep shared state in `src/stores/`.
+- Keep route-level screens in `src/pages/`.
 - Keep browser-only presentational state out of backend models.
 - Do not implement browser-side decryption.
-- Use backend session cookies with `withCredentials`.
+- Use backend session cookies with `credentials: include`.
 
 ## Layout
 
-- `frontend/src/main.ts`
-  Vue app bootstrap.
-- `frontend/src/router/`
-  Vue Router setup and route guards.
-- `frontend/src/stores/`
-  Pinia stores such as auth/session state.
+- `frontend/src/main.tsx`
+  App bootstrap.
+- `frontend/src/App.tsx`
+  Router definition.
 - `frontend/src/api/`
-  Axios client and API wrappers.
-- `frontend/src/views/`
+  Fetch wrappers for backend APIs.
+- `frontend/src/pages/`
   Route-level pages.
 - `frontend/src/components/`
   Reusable presentational components.
+- `frontend/src/hooks/`
+  Shared auth/session hooks.
 - `frontend/src/types/`
   Shared TypeScript API types.
+- `frontend/src/utils/`
+  Pure helpers.
 
 ## API Usage
 
@@ -42,7 +43,7 @@ This directory contains the separated web frontend for Cloud Storage Player.
 - Library data uses `/api/folders`, `/api/videos`, `/api/videos/{id}`.
 - Import jobs use `/api/imports`.
 - Settings use `/api/settings`.
-- Future playback should use backend stream URLs directly.
+- Playback uses backend stream URLs directly.
 
 ## Non-Goals
 
