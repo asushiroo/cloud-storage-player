@@ -31,3 +31,7 @@ class StorageBackend(ABC):
     @abstractmethod
     def list_directory(self, remote_path: str) -> list[StorageEntry]:
         """List direct children under a remote directory."""
+
+    @abstractmethod
+    def delete_path(self, remote_path: str) -> None:
+        """Delete a remote object or directory path if the backend supports it."""

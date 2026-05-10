@@ -39,3 +39,16 @@ def test_mock_storage_backend_can_list_directory_entries(tmp_path: Path) -> None
         ("/apps/CloudStoragePlayer/videos/1/manifest.json", False),
         ("/apps/CloudStoragePlayer/videos/1/segments", True),
     ]
+
+
+def test_mock_storage_backend_delete_path_removes_uploaded_file(tmp_path: Path) -> None:
+    backend = MockStorageBackend(tmp_path / "mock-remote")
+    local_file = tmp_path / "payload.bin"
+    local_file.write_bytes(b"payload")
+
+    backend.upload_file(local_file, "/videos/demo/payload.bin")
+    assert backend.exists("/videos/demo/payload.bin") is True
+
+    backend.delete_path("/videos/demo/payload.bin")
+
+    assert backend.exists("/videos/demo/payload.bin") is False

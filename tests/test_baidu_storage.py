@@ -18,6 +18,7 @@ class FakeBaiduStorageApi:
         self.filemetas_calls: list[dict] = []
         self.download_calls: list[dict] = []
         self.download_file_calls: list[dict] = []
+        self.delete_calls: list[dict] = []
 
     def refresh_access_token(
         self,
@@ -75,6 +76,10 @@ class FakeBaiduStorageApi:
     def download_file(self, **kwargs):
         self.download_file_calls.append(kwargs)
         return b"remote-bytes"
+
+    def delete_paths(self, **kwargs):
+        self.delete_calls.append(kwargs)
+        return {"errno": 0}
 
 
 def build_settings(tmp_path: Path, monkeypatch) -> Settings:
@@ -150,3 +155,16 @@ def test_baidu_storage_backend_lists_directory_entries(monkeypatch, tmp_path: Pa
     assert [(entry.path, entry.is_dir) for entry in entries] == [
         ("/apps/CloudStoragePlayer/videos/1", True)
     ]
+
+
+def test_baidu_storage_backend_deletes_remote_path(monkeypatch, tmp_path: Path) -> None:
+    settings = build_settings(tmp_path, monkeypatch)
+    api = FakeBaiduStorageApi()
+    backend = BaiduStorageBackend(settings, api=api)
+
+    backend.delete_path("/CloudStoragePlayer/videos/1/manifest.bin")
+
+    assert api.delete_calls == [{
+        "access_token": "access-token",
+        "remote_paths": ["/apps/CloudStoragePlayer/videos/1/manifest.bin"],
+    }]

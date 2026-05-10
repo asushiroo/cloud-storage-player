@@ -44,6 +44,15 @@ class MockStorageBackend(StorageBackend):
             for child in sorted(directory.iterdir(), key=lambda child: child.name)
         ]
 
+    def delete_path(self, remote_path: str) -> None:
+        path = self.local_path_for(remote_path)
+        if not path.exists():
+            return
+        if path.is_dir():
+            shutil.rmtree(path, ignore_errors=True)
+            return
+        path.unlink(missing_ok=True)
+
     def local_path_for(self, remote_path: str) -> Path:
         relative_path = _normalize_remote_path(remote_path)
         return self.root_dir / Path(*relative_path.parts)

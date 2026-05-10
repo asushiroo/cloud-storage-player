@@ -94,6 +94,13 @@ class BaiduStorageBackend(StorageBackend):
             if entry.get("path")
         ]
 
+    def delete_path(self, remote_path: str) -> None:
+        access_token = self._load_access_token()
+        self.api.delete_paths(
+            access_token=access_token,
+            remote_paths=[normalize_baidu_path(remote_path)],
+        )
+
     def _resolve_metadata(self, access_token: str, remote_path: str) -> dict:
         parent_path = PurePosixPath(remote_path).parent.as_posix() or "/"
         entries = self.api.list_directory(access_token=access_token, dir_path=parent_path)

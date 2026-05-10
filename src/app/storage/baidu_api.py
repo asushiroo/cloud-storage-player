@@ -224,6 +224,20 @@ class BaiduOpenApi:
             lambda: self._download_file_once(access_token=access_token, remote_path=remote_path)
         )
 
+    def delete_paths(self, *, access_token: str, remote_paths: list[str]) -> dict[str, Any]:
+        return self._post_form_json(
+            f"{PAN_BASE_URL}/rest/2.0/xpan/file",
+            params={
+                "method": "filemanager",
+                "access_token": access_token,
+                "opera": "delete",
+                "async": 0,
+            },
+            data={
+                "filelist": json.dumps(remote_paths, separators=(",", ":")),
+            },
+        )
+
     def _get_json(self, url: str, *, params: dict[str, Any]) -> dict[str, Any]:
         return self._run_with_retry(lambda: self._get_json_once(url, params=params))
 
