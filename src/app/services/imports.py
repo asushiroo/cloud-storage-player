@@ -14,6 +14,7 @@ from app.models.segments import VideoSegment
 from app.repositories.folders import get_folder
 from app.repositories.import_jobs import (
     create_import_job,
+    get_import_job,
     mark_import_job_completed,
     mark_import_job_failed,
     mark_import_job_running,
@@ -37,6 +38,30 @@ class ImportValidationError(ValueError):
     """Raised when the import request is invalid."""
 
 
+def queue_import_job(
+    settings: Settings,
+    *,
+    source_path: str,
+    folder_id: int | None = None,
+    title: str | None = None,
+    worker: "ImportWorker",
+) -> ImportJob:
+    source, requested_title = validate_import_request(
+        settings,
+        source_path=source_path,
+        folder_id=folder_id,
+        title=title,
+    )
+    job = create_import_job(
+        settings,
+        source_path=str(source),
+        folder_id=folder_id,
+        requested_title=requested_title,
+    )
+    worker.enqueue(job.id)
+    return job
+
+
 def import_local_video(
     settings: Settings,
     *,
@@ -44,27 +69,45 @@ def import_local_video(
     folder_id: int | None = None,
     title: str | None = None,
 ) -> ImportJob:
-    source = Path(source_path)
-    if not source.exists() or not source.is_file():
-        raise ImportValidationError(f"Source file does not exist: {source_path}")
-
-    if folder_id is not None and get_folder(settings, folder_id) is None:
-        raise ImportValidationError(f"Folder does not exist: {folder_id}")
-
-    requested_title = title.strip() if title else None
+    source, requested_title = validate_import_request(
+        settings,
+        source_path=source_path,
+        folder_id=folder_id,
+        title=title,
+    )
     job = create_import_job(
         settings,
         source_path=str(source),
         folder_id=folder_id,
         requested_title=requested_title,
     )
+    return process_import_job(settings, job.id)
+
+
+def process_import_job(settings: Settings, job_id: int) -> ImportJob:
+    job = get_import_job(settings, job_id)
+    if job is None:
+        raise ImportValidationError(f"Import job does not exist: {job_id}")
+    if job.status == "completed" or job.status == "failed":
+        return job
+
+    try:
+        source, requested_title = validate_import_request(
+            settings,
+            source_path=job.source_path,
+            folder_id=job.folder_id,
+            title=job.requested_title,
+        )
+    except ImportValidationError as exc:
+        return mark_import_job_failed(settings, job.id, error_message=str(exc))
+
     mark_import_job_running(settings, job.id)
 
     try:
         metadata = probe_video(source, ffprobe_binary=settings.ffprobe_binary)
         video = _create_video_from_probe(
             settings,
-            folder_id=folder_id,
+            folder_id=job.folder_id,
             title=requested_title or source.stem,
             source_path=str(source),
             mime_type=metadata.mime_type,
@@ -90,6 +133,24 @@ def import_local_video(
         return mark_import_job_failed(settings, job.id, error_message=str(exc))
 
     return mark_import_job_completed(settings, job.id, video_id=video.id)
+
+
+def validate_import_request(
+    settings: Settings,
+    *,
+    source_path: str,
+    folder_id: int | None = None,
+    title: str | None = None,
+) -> tuple[Path, str | None]:
+    source = Path(source_path)
+    if not source.exists() or not source.is_file():
+        raise ImportValidationError(f"Source file does not exist: {source_path}")
+
+    if folder_id is not None and get_folder(settings, folder_id) is None:
+        raise ImportValidationError(f"Folder does not exist: {folder_id}")
+
+    requested_title = title.strip() if title else None
+    return source, requested_title
 
 
 def _create_video_from_probe(

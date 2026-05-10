@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Sequence
 
 from app.core.config import Settings
 from app.db.connection import connect_database
@@ -73,6 +74,29 @@ def list_import_jobs(settings: Settings) -> list[ImportJob]:
     return [_row_to_import_job(row) for row in rows]
 
 
+def list_import_job_ids_by_status(
+    settings: Settings,
+    *,
+    statuses: Sequence[str],
+) -> list[int]:
+    if not statuses:
+        return []
+
+    placeholders = ", ".join("?" for _ in statuses)
+    with connect_database(settings) as connection:
+        rows = connection.execute(
+            f"""
+            SELECT id
+            FROM import_jobs
+            WHERE status IN ({placeholders})
+            ORDER BY id
+            """,
+            tuple(statuses),
+        ).fetchall()
+
+    return [int(row["id"]) for row in rows]
+
+
 def mark_import_job_running(settings: Settings, job_id: int) -> ImportJob:
     return _update_import_job(
         settings,
@@ -115,6 +139,23 @@ def mark_import_job_completed(settings: Settings, job_id: int, *, video_id: int)
         error_message=None,
         video_id=video_id,
     )
+
+
+def mark_running_import_jobs_interrupted(settings: Settings) -> int:
+    with connect_database(settings) as connection:
+        cursor = connection.execute(
+            """
+            UPDATE import_jobs
+            SET status = 'failed',
+                progress_percent = 0,
+                error_message = 'Import interrupted by service restart.',
+                video_id = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE status = 'running'
+            """
+        )
+        connection.commit()
+    return int(cursor.rowcount)
 
 
 def _update_import_job(

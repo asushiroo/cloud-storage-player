@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from app.api.dependencies import require_authenticated
 from app.api.schemas.imports import ImportJobResponse, ImportRequest
 from app.repositories.import_jobs import get_import_job, list_import_jobs
-from app.services.imports import ImportValidationError, import_local_video
+from app.services.imports import ImportValidationError, queue_import_job
 
 router = APIRouter(prefix="/api/imports", tags=["imports"])
 
@@ -17,12 +17,14 @@ async def create_import(
     _: None = Depends(require_authenticated),
 ) -> ImportJobResponse:
     settings = request.app.state.settings
+    worker = request.app.state.import_worker
     try:
-        job = import_local_video(
+        job = queue_import_job(
             settings,
             source_path=payload.source_path,
             folder_id=payload.folder_id,
             title=payload.title,
+            worker=worker,
         )
     except ImportValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -36,6 +38,7 @@ async def get_import_jobs(
     _: None = Depends(require_authenticated),
 ) -> list[ImportJobResponse]:
     settings = request.app.state.settings
+    request.app.state.import_worker.ensure_started()
     return [ImportJobResponse.model_validate(job) for job in list_import_jobs(settings)]
 
 
@@ -46,6 +49,7 @@ async def get_import_job_detail(
     _: None = Depends(require_authenticated),
 ) -> ImportJobResponse:
     settings = request.app.state.settings
+    request.app.state.import_worker.ensure_started()
     job = get_import_job(settings, job_id)
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import job not found.")

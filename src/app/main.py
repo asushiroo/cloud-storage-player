@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +17,7 @@ from app.api.routes.settings import router as settings_router
 from app.api.routes.stream import router as stream_router
 from app.core.config import Settings, get_settings
 from app.db.schema import initialize_database
+from app.services.import_worker import ImportWorker
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -22,8 +25,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     initialize_database(app_settings)
     app_settings.covers_dir.mkdir(parents=True, exist_ok=True)
 
-    app = FastAPI(title=app_settings.app_name)
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        try:
+            yield
+        finally:
+            app.state.import_worker.stop()
+
+    app = FastAPI(title=app_settings.app_name, lifespan=lifespan)
     app.state.settings = app_settings
+    app.state.import_worker = ImportWorker(app_settings)
     app.add_middleware(
         SessionMiddleware,
         secret_key=app_settings.session_secret,

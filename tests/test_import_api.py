@@ -1,5 +1,6 @@
 import json
 import subprocess
+import time
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -8,6 +9,7 @@ from app.core.config import Settings
 from app.core.security import hash_password
 from app.main import create_app
 from app.repositories.folders import create_folder
+from app.repositories.import_jobs import create_import_job
 from app.repositories.video_segments import list_video_segments
 from app.storage.mock import MockStorageBackend
 
@@ -59,6 +61,27 @@ def create_sample_video(output_path: Path) -> Path:
     return output_path
 
 
+def wait_for_job_status(
+    client: TestClient,
+    job_id: int,
+    *,
+    expected_status: str,
+    timeout_seconds: float = 15.0,
+) -> dict:
+    deadline = time.time() + timeout_seconds
+    last_payload: dict | None = None
+    while time.time() < deadline:
+        response = client.get(f"/api/imports/{job_id}")
+        assert response.status_code == 200
+        last_payload = response.json()
+        if last_payload["status"] == expected_status:
+            return last_payload
+        time.sleep(0.1)
+    raise AssertionError(
+        f"Timed out waiting for job {job_id} to reach {expected_status}. Last payload: {last_payload}"
+    )
+
+
 def test_import_api_requires_authentication(tmp_path: Path) -> None:
     client, _, _ = build_client(tmp_path)
 
@@ -68,7 +91,7 @@ def test_import_api_requires_authentication(tmp_path: Path) -> None:
     assert response.json() == {"detail": "Authentication required."}
 
 
-def test_import_video_creates_completed_job_and_video(tmp_path: Path) -> None:
+def test_import_video_creates_queued_job_and_completes_in_background(tmp_path: Path) -> None:
     client, settings, password = build_client(tmp_path)
     source_path = create_sample_video(tmp_path / "demo.mp4")
     folder = create_folder(settings, name="Movies")
@@ -85,11 +108,19 @@ def test_import_video_creates_completed_job_and_video(tmp_path: Path) -> None:
 
     assert response.status_code == 201
     payload = response.json()
-    assert payload["status"] == "completed"
-    assert payload["progress_percent"] == 100
-    assert payload["video_id"] is not None
+    assert payload["status"] == "queued"
+    assert payload["progress_percent"] == 0
+    assert payload["video_id"] is None
 
-    video_response = client.get(f"/api/videos/{payload['video_id']}")
+    completed_payload = wait_for_job_status(
+        client,
+        payload["id"],
+        expected_status="completed",
+    )
+    assert completed_payload["progress_percent"] == 100
+    assert completed_payload["video_id"] is not None
+
+    video_response = client.get(f"/api/videos/{completed_payload['video_id']}")
     assert video_response.status_code == 200
     video_payload = video_response.json()
     assert video_payload["title"] == "Imported Demo"
@@ -100,19 +131,21 @@ def test_import_video_creates_completed_job_and_video(tmp_path: Path) -> None:
     assert video_payload["source_path"] == str(source_path)
     assert video_payload["cover_path"] is not None
     assert video_payload["segment_count"] >= 1
-    assert video_payload["manifest_path"] == f"/apps/CloudStoragePlayer/videos/{payload['video_id']}/manifest.json"
+    assert video_payload["manifest_path"] == (
+        f"/apps/CloudStoragePlayer/videos/{completed_payload['video_id']}/manifest.json"
+    )
 
-    segments = list_video_segments(settings, video_id=payload["video_id"])
+    segments = list_video_segments(settings, video_id=completed_payload["video_id"])
     assert len(segments) == video_payload["segment_count"]
     assert all(Path(segment.local_staging_path).exists() for segment in segments)
-    manifest_file = settings.segment_staging_dir / str(payload["video_id"]) / "manifest.json"
+    manifest_file = settings.segment_staging_dir / str(completed_payload["video_id"]) / "manifest.json"
     assert manifest_file.exists()
 
     storage = MockStorageBackend(settings.mock_storage_dir)
     remote_manifest_path = storage.local_path_for(video_payload["manifest_path"])
     assert remote_manifest_path.exists()
     remote_manifest = json.loads(remote_manifest_path.read_text(encoding="utf-8"))
-    assert remote_manifest["video_id"] == payload["video_id"]
+    assert remote_manifest["video_id"] == completed_payload["video_id"]
     assert remote_manifest["segment_count"] == len(segments)
     for segment in segments:
         assert segment.cloud_path is not None
@@ -138,7 +171,25 @@ def test_import_job_list_and_detail_endpoints_work(tmp_path: Path) -> None:
     assert list_response.json()[0]["id"] == job_id
     assert detail_response.status_code == 200
     assert detail_response.json()["id"] == job_id
-    assert detail_response.json()["status"] == "completed"
+    assert detail_response.json()["status"] in {"queued", "running", "completed"}
+
+    completed_payload = wait_for_job_status(client, job_id, expected_status="completed")
+    assert completed_payload["video_id"] is not None
+
+
+def test_import_job_list_endpoint_recovers_preexisting_queued_jobs(tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    source_path = create_sample_video(tmp_path / "recovered-demo.mp4")
+    job = create_import_job(settings, source_path=str(source_path))
+    login(client, password)
+
+    response = client.get("/api/imports")
+
+    assert response.status_code == 200
+    assert response.json()[0]["id"] == job.id
+
+    completed_payload = wait_for_job_status(client, job.id, expected_status="completed")
+    assert completed_payload["video_id"] is not None
 
 
 def test_import_rejects_missing_source_file(tmp_path: Path) -> None:
@@ -161,9 +212,10 @@ def test_import_of_non_video_file_returns_failed_job(tmp_path: Path) -> None:
 
     assert response.status_code == 201
     payload = response.json()
-    assert payload["status"] == "failed"
-    assert payload["video_id"] is None
-    assert payload["error_message"] is not None
+    assert payload["status"] == "queued"
+    failed_payload = wait_for_job_status(client, payload["id"], expected_status="failed")
+    assert failed_payload["video_id"] is None
+    assert failed_payload["error_message"] is not None
 
 
 def test_import_still_succeeds_when_cover_extraction_fails(tmp_path: Path) -> None:
@@ -175,9 +227,10 @@ def test_import_still_succeeds_when_cover_extraction_fails(tmp_path: Path) -> No
 
     assert response.status_code == 201
     payload = response.json()
-    assert payload["status"] == "completed"
-    assert payload["video_id"] is not None
+    assert payload["status"] == "queued"
+    completed_payload = wait_for_job_status(client, payload["id"], expected_status="completed")
+    assert completed_payload["video_id"] is not None
 
-    video_response = client.get(f"/api/videos/{payload['video_id']}")
+    video_response = client.get(f"/api/videos/{completed_payload['video_id']}")
     assert video_response.status_code == 200
     assert video_response.json()["cover_path"] is None
