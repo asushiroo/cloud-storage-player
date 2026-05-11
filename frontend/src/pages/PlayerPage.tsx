@@ -9,7 +9,6 @@ import { formatBytes, formatDuration } from "../utils/format";
 
 const POSTER_TARGET = { width: 1280, height: 720 };
 const DEFAULT_CROP = { zoom: 1, offsetX: 0, offsetY: 0 };
-const OVERLAY_HIDE_DELAY_MS = 500;
 
 type CropConfig = typeof DEFAULT_CROP;
 
@@ -116,9 +115,6 @@ export function PlayerPage() {
   const session = useRequireSession();
   const queryClient = useQueryClient();
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const overlayHideTimerRef = useRef<number | null>(null);
-  const [isPlaying, setIsPlaying] = useState(true);
-  const [showOverlay, setShowOverlay] = useState(false);
   const [capturedDataUrl, setCapturedDataUrl] = useState<string | null>(null);
   const [posterPreviewDataUrl, setPosterPreviewDataUrl] = useState<string | null>(null);
   const [posterCrop, setPosterCrop] = useState<CropConfig>(DEFAULT_CROP);
@@ -130,14 +126,6 @@ export function PlayerPage() {
     enabled: session.data?.authenticated === true && Number.isFinite(videoId),
   });
 
-  useEffect(() => {
-    return () => {
-      if (overlayHideTimerRef.current !== null) {
-        window.clearTimeout(overlayHideTimerRef.current);
-      }
-    };
-  }, []);
-
   const refreshVideoCaches = (updatedVideo: Video) => {
     queryClient.setQueryData(["video", videoId], updatedVideo);
     queryClient.setQueriesData({ queryKey: ["videos"] }, (current: Video[] | undefined) => {
@@ -146,21 +134,6 @@ export function PlayerPage() {
       }
       return current.map((item) => (item.id === updatedVideo.id ? { ...item, ...updatedVideo } : item));
     });
-  };
-
-  const armOverlayHideTimer = () => {
-    if (overlayHideTimerRef.current !== null) {
-      window.clearTimeout(overlayHideTimerRef.current);
-    }
-    overlayHideTimerRef.current = window.setTimeout(() => {
-      setShowOverlay(false);
-      overlayHideTimerRef.current = null;
-    }, OVERLAY_HIDE_DELAY_MS);
-  };
-
-  const revealOverlay = () => {
-    setShowOverlay(true);
-    armOverlayHideTimer();
   };
 
   useEffect(() => {
@@ -219,29 +192,6 @@ export function PlayerPage() {
 
   const video = videoQuery.data;
 
-  const seekBy = (seconds: number) => {
-    const element = videoRef.current;
-    if (!element || !Number.isFinite(element.duration)) {
-      return;
-    }
-    revealOverlay();
-    const nextTime = Math.min(Math.max(element.currentTime + seconds, 0), element.duration);
-    element.currentTime = nextTime;
-  };
-
-  const togglePlayback = () => {
-    const element = videoRef.current;
-    if (!element) {
-      return;
-    }
-    revealOverlay();
-    if (element.paused) {
-      void element.play();
-      return;
-    }
-    element.pause();
-  };
-
   const captureCurrentFrame = () => {
     const element = videoRef.current;
     if (!element || element.readyState < 2 || element.videoWidth <= 0 || element.videoHeight <= 0) {
@@ -282,66 +232,8 @@ export function PlayerPage() {
           <p>{feedback}</p>
         </Surface>
       ) : null}
-      <div
-        className="player-surface"
-        onClick={(event) => {
-          if (event.target instanceof HTMLButtonElement) {
-            return;
-          }
-          revealOverlay();
-        }}
-      >
-        <video
-          autoPlay
-          className="player-video"
-          controls
-          onEnded={() => {
-            setIsPlaying(false);
-          }}
-          onLoadedMetadata={() => {
-            setIsPlaying(!(videoRef.current?.paused ?? true));
-          }}
-          onPause={() => {
-            setIsPlaying(false);
-          }}
-          onPlay={() => {
-            setIsPlaying(true);
-          }}
-          ref={videoRef}
-          src={getStreamUrl(videoId)}
-        />
-        <div className={`player-overlay ${showOverlay ? "player-overlay-visible" : "player-overlay-hidden"}`}>
-          <button
-            aria-label="后退 10 秒"
-            className="player-overlay-zone player-overlay-zone-left"
-            onClick={() => seekBy(-10)}
-            type="button"
-          >
-            <span className="player-overlay-icon-shell">
-              <span className="material-symbols-rounded player-overlay-icon">replay_10</span>
-            </span>
-          </button>
-          <button
-            aria-label={isPlaying ? "暂停播放" : "开始播放"}
-            className="player-overlay-zone player-overlay-zone-center"
-            onClick={togglePlayback}
-            type="button"
-          >
-            <span className="player-overlay-icon-shell player-overlay-icon-shell-center">
-              <span className="material-symbols-rounded player-overlay-icon">{isPlaying ? "pause" : "play_arrow"}</span>
-            </span>
-          </button>
-          <button
-            aria-label="快进 10 秒"
-            className="player-overlay-zone player-overlay-zone-right"
-            onClick={() => seekBy(10)}
-            type="button"
-          >
-            <span className="player-overlay-icon-shell">
-              <span className="material-symbols-rounded player-overlay-icon">forward_10</span>
-            </span>
-          </button>
-        </div>
+      <div className="player-surface">
+        <video autoPlay className="player-video" controls ref={videoRef} src={getStreamUrl(videoId)} />
       </div>
       <Surface>
         <div className="section-head">
