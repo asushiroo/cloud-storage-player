@@ -21,7 +21,6 @@ from app.repositories.import_jobs import (
     mark_import_job_completed,
     mark_import_job_failed,
     mark_import_job_running,
-    record_import_job_transfer,
     update_import_job_progress,
 )
 from app.repositories.video_segments import NewVideoSegment, create_video_segments
@@ -40,9 +39,16 @@ from app.services.manifests import (
     write_encrypted_remote_manifest,
     write_local_manifest,
 )
+from app.services.remote_transfers import (
+    DeferredTransferRetry,
+    TransferResult,
+    measure_transfer,
+    run_bounded_transfers,
+)
 from app.services.video_fingerprint import build_video_content_fingerprint
 from app.services.video_delete import delete_library_video
 from app.storage.factory import build_storage_backend
+from app.storage.baidu_api import BaiduFrequencyControlError
 
 VIDEO_FILE_EXTENSIONS = {
     ".mp4",
@@ -409,31 +415,95 @@ def _upload_remote_artifacts(
     job_id: int,
 ) -> None:
     storage = build_storage_backend(settings)
-
+    remote_artifacts: list[_UploadArtifact] = []
     for segment in segments:
-        throw_if_cancel_requested(settings, job_id)
         if not segment.local_staging_path:
             raise ValueError("Segment staging path is missing.")
         if not segment.cloud_path:
             raise ValueError("Segment cloud path is missing.")
         local_path = Path(segment.local_staging_path)
-        started_at = perf_counter()
-        storage.upload_file(local_path, segment.cloud_path)
+        remote_artifacts.append(
+            _UploadArtifact(
+                local_path=local_path,
+                remote_path=segment.cloud_path,
+                progress_percent=None,
+            )
+        )
+
+    if not video.manifest_path:
+        raise ValueError("Video manifest path is missing.")
+    manifest_artifact = _UploadArtifact(
+        local_path=manifest_path,
+        remote_path=video.manifest_path,
+        progress_percent=95,
+    )
+
+    try:
+        completed_segment_count = 0
+
+        def upload_artifact(task: _UploadArtifact) -> TransferResult[_UploadArtifact]:
+            started_at = perf_counter()
+            storage.upload_file(task.local_path, task.remote_path)
+            return measure_transfer(
+                task,
+                byte_count=task.local_path.stat().st_size,
+                started_at=started_at,
+            )
+
+        def on_result(result: TransferResult[_UploadArtifact], _completed: int, _total: int) -> None:
+            nonlocal completed_segment_count
+            if result.task.progress_percent is not None:
+                update_import_job_progress(settings, job_id, progress_percent=result.task.progress_percent)
+                return
+            completed_segment_count += 1
+            progress_span = 95 - 85
+            if segments:
+                progress_percent = 85 + int((completed_segment_count / len(segments)) * progress_span)
+            else:
+                progress_percent = 95
+            update_import_job_progress(settings, job_id, progress_percent=min(94, max(85, progress_percent)))
+
+        def on_exception(
+            task: _UploadArtifact,
+            exc: Exception,
+        ) -> DeferredTransferRetry[_UploadArtifact] | None:
+            if not isinstance(exc, BaiduFrequencyControlError):
+                return None
+            return DeferredTransferRetry(
+                task=task,
+                wait_seconds=float(settings.baidu_upload_resume_poll_interval_seconds),
+            )
+
+        if remote_artifacts:
+            run_bounded_transfers(
+                settings,
+                job_id=job_id,
+                tasks=remote_artifacts,
+                transfer_func=upload_artifact,
+                on_result=on_result,
+                on_exception=on_exception,
+            )
+
+        manifest_result = upload_artifact(manifest_artifact)
+        update_import_job_progress(settings, job_id, progress_percent=manifest_artifact.progress_percent or 95)
+        from app.repositories.import_jobs import record_import_job_transfer
+
         record_import_job_transfer(
             settings,
             job_id,
-            byte_count=local_path.stat().st_size,
-            elapsed_seconds=perf_counter() - started_at,
+            byte_count=manifest_result.byte_count,
+            elapsed_seconds=manifest_result.elapsed_seconds,
         )
+    finally:
+        close = getattr(storage, "close", None)
+        if callable(close):
+            close()
 
-    throw_if_cancel_requested(settings, job_id)
-    if not video.manifest_path:
-        raise ValueError("Video manifest path is missing.")
-    started_at = perf_counter()
-    storage.upload_file(manifest_path, video.manifest_path)
-    record_import_job_transfer(
-        settings,
-        job_id,
-        byte_count=manifest_path.stat().st_size,
-        elapsed_seconds=perf_counter() - started_at,
-    )
+
+class _UploadArtifact:
+    __slots__ = ("local_path", "remote_path", "progress_percent")
+
+    def __init__(self, *, local_path: Path, remote_path: str, progress_percent: int | None) -> None:
+        self.local_path = local_path
+        self.remote_path = remote_path
+        self.progress_percent = progress_percent

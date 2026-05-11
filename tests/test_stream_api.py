@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -211,10 +212,15 @@ def test_stream_remote_fallback_caches_downloaded_segments_without_full_exists_s
     assert response.status_code == 206
     assert response.content == file_bytes[:32]
     assert len(exists_calls) == 0
-    assert download_calls == [segments[0].cloud_path]
+    assert download_calls[0] == segments[0].cloud_path
     first_segment = segments[0]
     assert first_segment.local_staging_path is not None
     assert Path(first_segment.local_staging_path).exists()
+    if len(segments) > 1:
+        deadline = time.time() + 2
+        while time.time() < deadline and len(download_calls) < 2:
+            time.sleep(0.05)
+        assert len(download_calls) >= 2
 
 
 def test_stream_logs_warning_when_baidu_remote_segment_returns_404(
@@ -249,6 +255,47 @@ def test_stream_logs_warning_when_baidu_remote_segment_returns_404(
         "Failed to fetch encrypted segment from Baidu remote storage" in record.message
         for record in caplog.records
     )
+
+
+def test_stream_prefetch_continues_beyond_first_window(monkeypatch, tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    settings.segment_size_bytes = 64
+    source_path = create_sample_video(tmp_path / "prefetch-rolling-window.mp4")
+    file_bytes = source_path.read_bytes()
+    job = import_local_video(settings, source_path=str(source_path))
+    source_path.unlink()
+    remove_tree(settings.segment_staging_dir / str(job.video_id))
+
+    segments = list_video_segments(settings, video_id=job.video_id)
+    assert len(segments) >= 7
+    storage = MockStorageBackend(settings.mock_storage_dir)
+    download_calls: list[str] = []
+
+    class TrackingStorage:
+        def download_bytes(self, remote_path: str) -> bytes:
+            download_calls.append(remote_path)
+            time.sleep(0.03)
+            return storage.download_bytes(remote_path)
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr("app.services.streaming.build_storage_backend", lambda _settings: TrackingStorage())
+    login(client, password)
+
+    response = client.get(
+        f"/api/videos/{job.video_id}/stream",
+        headers={"Range": "bytes=0-31"},
+    )
+
+    assert response.status_code == 206
+    assert response.content == file_bytes[:32]
+
+    deadline = time.time() + 3
+    while time.time() < deadline and len(download_calls) < 6:
+        time.sleep(0.05)
+
+    assert len(download_calls) >= 6
 
 
 def test_stream_returns_404_when_source_local_and_remote_segments_are_all_missing(tmp_path: Path) -> None:

@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from app.storage.baidu_api import BaiduApiError, BaiduOpenApi
+from app.storage.baidu_api import BaiduApiError, BaiduFrequencyControlError, BaiduOpenApi
 
 
 class SequenceClient:
@@ -162,3 +162,29 @@ def test_precreate_file_does_not_retry_non_retryable_error() -> None:
     assert str(exc_info.value) == "Baidu API error 2: invalid parameter"
     assert len(client.post_calls) == 1
     assert sleep_calls == []
+
+
+def test_precreate_file_raises_frequency_control_error_for_errno_9013() -> None:
+    client = SequenceClient(
+        post_actions=[
+            make_json_response(
+                "POST",
+                "https://pan.baidu.com/rest/2.0/xpan/file",
+                200,
+                {"errno": 9013, "error_msg": "hit frequence control"},
+            )
+        ]
+    )
+    api = BaiduOpenApi(client=client, retry_delays=(0.0,))
+
+    with pytest.raises(BaiduFrequencyControlError) as exc_info:
+        api.precreate_file(
+            access_token="access-token",
+            remote_path="/apps/demo/manifest.json",
+            size=5,
+            block_list=["md5"],
+            content_md5="md5",
+            slice_md5="md5",
+        )
+
+    assert "9013" in str(exc_info.value)

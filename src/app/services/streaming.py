@@ -17,13 +17,14 @@ from app.models.segments import VideoSegment
 from app.repositories.video_segments import list_video_segments
 from app.repositories.videos import get_video
 from app.services.segment_prefetch import (
+    acquire_prefetch_session,
     cache_remote_segment,
-    select_prefetch_segments,
-    trigger_segment_prefetch,
+    release_prefetch_session,
 )
 from app.storage.baidu_api import BaiduApiError
 from app.storage.base import StorageBackend
 from app.storage.factory import build_storage_backend
+from app.services.manifests import local_segment_path
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ class VideoStreamPayload:
     segment_reads: list["PreparedSegmentRead"] | None = None
     content_key: bytes | None = None
     storage_backend: StorageBackend | None = None
-    prefetch_segments: list[VideoSegment] | None = None
+    prefetch_session: object | None = None
 
 
 @dataclass(slots=True)
@@ -100,7 +101,6 @@ def prepare_video_stream(
 def iter_video_stream(payload: VideoStreamPayload):
     try:
         if payload.segment_reads is not None and payload.content_key is not None:
-            prefetch_started = False
             for segment_read in payload.segment_reads:
                 try:
                     yield from iter_segment_slice(
@@ -111,13 +111,10 @@ def iter_video_stream(payload: VideoStreamPayload):
                     )
                 except VideoStreamNotFoundError:
                     return
-                if (
-                    not prefetch_started
-                    and payload.settings is not None
-                    and payload.prefetch_segments
-                ):
-                    trigger_segment_prefetch(payload.settings, payload.prefetch_segments)
-                    prefetch_started = True
+                if payload.prefetch_session is not None:
+                    payload.prefetch_session.request_prefetch(
+                        current_segment_index=segment_read.segment.segment_index
+                    )
             return
 
         if payload.source_path is None:
@@ -127,6 +124,9 @@ def iter_video_stream(payload: VideoStreamPayload):
         end = payload.byte_range.end if payload.byte_range else payload.size - 1
         yield from iter_file_range(payload.source_path, start=start, end=end)
     finally:
+        if payload.segment_reads and payload.prefetch_session is not None:
+            first_segment = payload.segment_reads[0].segment
+            release_prefetch_session(first_segment.video_id)
         close = getattr(payload.storage_backend, "close", None)
         if callable(close):
             close()
@@ -160,7 +160,7 @@ def _prepare_segment_stream(
         for segment_slice in segment_slices
     ]
 
-    if not all(_segment_is_addressable(segment_read.segment) for segment_read in prepared_reads):
+    if not all(_segment_is_addressable(settings, segment_read.segment) for segment_read in prepared_reads):
         return None
 
     storage_backend = _build_storage_backend_if_needed(settings, prepared_reads)
@@ -168,7 +168,7 @@ def _prepare_segment_stream(
         return None
 
     first_segment = prepared_reads[0].segment
-    if not _local_segment_exists(first_segment):
+    if not _local_segment_exists(settings, first_segment):
         if not first_segment.cloud_path:
             return None
         if storage_backend is None:
@@ -191,9 +191,10 @@ def _prepare_segment_stream(
         segment_reads=prepared_reads,
         content_key=content_key,
         storage_backend=storage_backend or None,
-        prefetch_segments=select_prefetch_segments(
-            segments,
-            start_segment_index=prepared_reads[0].segment.segment_index,
+        prefetch_session=acquire_prefetch_session(
+            settings,
+            video_id=prepared_reads[0].segment.video_id,
+            segments=segments,
         ),
     )
 
@@ -205,7 +206,7 @@ def _build_storage_backend_if_needed(
     missing_local_segments = [
         segment_read.segment
         for segment_read in segment_reads
-        if not _local_segment_exists(segment_read.segment)
+        if not _local_segment_exists(settings, segment_read.segment)
     ]
     if not missing_local_segments:
         return None
@@ -218,14 +219,12 @@ def _build_storage_backend_if_needed(
     return storage_backend
 
 
-def _segment_is_addressable(segment: VideoSegment) -> bool:
-    return _local_segment_exists(segment) or bool(segment.cloud_path)
+def _segment_is_addressable(settings: Settings, segment: VideoSegment) -> bool:
+    return _local_segment_exists(settings, segment) or bool(segment.cloud_path)
 
 
-def _local_segment_exists(segment: VideoSegment) -> bool:
-    if not segment.local_staging_path:
-        return False
-    segment_path = Path(segment.local_staging_path)
+def _local_segment_exists(settings: Settings, segment: VideoSegment) -> bool:
+    segment_path = _segment_cache_path(segment, settings=settings)
     return segment_path.exists() and segment_path.is_file()
 
 
@@ -281,14 +280,19 @@ def _read_segment_payload(
     storage_backend: StorageBackend | None,
     required: bool = False,
 ) -> bytes | None:
-    if segment.local_staging_path:
-        segment_path = Path(segment.local_staging_path)
+    if settings is not None:
+        segment_path = _segment_cache_path(segment, settings=settings)
         if segment_path.exists() and segment_path.is_file():
             return segment_path.read_bytes()
 
     if storage_backend is not None and segment.cloud_path and settings is not None:
         try:
-            return cache_remote_segment(settings, segment, storage_backend=storage_backend)
+            transfer_result = cache_remote_segment(
+                settings,
+                segment,
+                storage_backend=storage_backend,
+            )
+            return _resolve_segment_payload_from_cache(settings, transfer_result.task)
         except BaiduApiError as exc:
             logger.warning(
                 "Failed to fetch encrypted segment from Baidu remote storage: %s",
@@ -301,6 +305,25 @@ def _read_segment_payload(
             raise VideoStreamNotFoundError("Encrypted segment file is missing.") from exc
 
     raise VideoStreamNotFoundError("Encrypted segment file is missing.")
+
+
+def _resolve_segment_payload_from_cache(settings: Settings, segment: VideoSegment) -> bytes:
+    segment_path = _segment_cache_path(segment, settings=settings)
+    return segment_path.read_bytes()
+
+
+def _segment_cache_path(
+    segment: VideoSegment,
+    *,
+    settings: Settings,
+) -> Path:
+    if segment.local_staging_path:
+        return Path(segment.local_staging_path)
+    return local_segment_path(
+        settings,
+        video_id=segment.video_id,
+        segment_index=segment.segment_index,
+    )
 
 
 __all__ = [

@@ -1,46 +1,203 @@
 from __future__ import annotations
 
+import logging
+from dataclasses import dataclass, field
 from pathlib import Path
-from threading import Lock, Thread
+from threading import Event, Lock, Thread
+from time import perf_counter
 
 from app.core.config import Settings
 from app.models.segments import VideoSegment
 from app.repositories.video_segments import update_video_segment_local_staging_path
 from app.services.manifests import local_segment_path
+from app.services.remote_transfers import TransferResult, measure_transfer, run_bounded_transfers
 from app.storage.base import StorageBackend
 from app.storage.factory import build_storage_backend
 
+logger = logging.getLogger(__name__)
+
 _PREFETCH_WINDOW_SIZE = 5
-_inflight_lock = Lock()
-_inflight_segments: set[tuple[int, int]] = set()
+_PREFETCH_IDLE_GRACE_SECONDS = 15.0
+_sessions_lock = Lock()
+_prefetch_sessions: dict[int, "SegmentPrefetchSession"] = {}
 
 
-def select_prefetch_segments(segments: list[VideoSegment], *, start_segment_index: int) -> list[VideoSegment]:
-    return [
-        segment
-        for segment in segments
-        if segment.segment_index > start_segment_index and segment.cloud_path
-    ][: _PREFETCH_WINDOW_SIZE]
+@dataclass(slots=True)
+class SegmentPrefetchSession:
+    settings: Settings
+    video_id: int
+    ordered_segments: list[VideoSegment]
+    stop_event: Event = field(default_factory=Event)
+    lock: Lock = field(default_factory=Lock)
+    thread: Thread | None = None
+    next_segment_index: int = 0
+    active_segment_index: int = -1
+    consumer_count: int = 0
+    idle_since: float | None = None
+    completed_segment_indexes: set[int] = field(default_factory=set)
+    inflight_segment_indexes: set[int] = field(default_factory=set)
+
+    def start(self) -> None:
+        with self.lock:
+            if self.thread is not None and self.thread.is_alive():
+                return
+            self.thread = Thread(
+                target=self._run,
+                name=f"cloud-storage-player-prefetch-{self.video_id}",
+                daemon=True,
+            )
+            self.thread.start()
+
+    def stop(self) -> None:
+        self.stop_event.set()
+
+    def request_prefetch(self, *, current_segment_index: int) -> None:
+        with self.lock:
+            self.active_segment_index = max(self.active_segment_index, current_segment_index)
+            self.next_segment_index = max(self.next_segment_index, current_segment_index + 1)
+            self.idle_since = None
+        self.start()
+
+    def acquire(self) -> None:
+        with self.lock:
+            self.consumer_count += 1
+            self.idle_since = None
+
+    def release(self) -> None:
+        with self.lock:
+            self.consumer_count = max(0, self.consumer_count - 1)
+            if self.consumer_count == 0:
+                self.idle_since = perf_counter()
+
+    def _run(self) -> None:
+        storage = build_storage_backend(self.settings)
+        try:
+            while not self.stop_event.is_set():
+                batch = self._next_batch()
+                if not batch:
+                    if self._is_finished() or self._is_idle_expired():
+                        return
+                    self.stop_event.wait(0.1)
+                    continue
+                try:
+                    run_bounded_transfers(
+                        self.settings,
+                        job_id=None,
+                        tasks=batch,
+                        transfer_func=lambda segment: cache_remote_segment(
+                            self.settings,
+                            segment,
+                            storage_backend=storage,
+                        ),
+                        concurrency=min(self.settings.remote_transfer_concurrency, _PREFETCH_WINDOW_SIZE),
+                        stop_event=self.stop_event,
+                        on_result=self._mark_completed,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Background segment prefetch failed for video %s: %s",
+                        self.video_id,
+                        exc,
+                    )
+                    return
+        finally:
+            close = getattr(storage, "close", None)
+            if callable(close):
+                close()
+            with _sessions_lock:
+                current = _prefetch_sessions.get(self.video_id)
+                if current is self:
+                    _prefetch_sessions.pop(self.video_id, None)
+
+    def _next_batch(self) -> list[VideoSegment]:
+        with self.lock:
+            remaining_capacity = _PREFETCH_WINDOW_SIZE - len(self.inflight_segment_indexes)
+            if remaining_capacity <= 0:
+                return []
+
+            batch: list[VideoSegment] = []
+            for segment in self.ordered_segments:
+                if segment.segment_index <= self.active_segment_index:
+                    continue
+                if segment.segment_index < self.next_segment_index:
+                    continue
+                if segment.segment_index in self.completed_segment_indexes:
+                    continue
+                if segment.segment_index in self.inflight_segment_indexes:
+                    continue
+                if not segment.cloud_path:
+                    continue
+                if _resolve_segment_cache_path(self.settings, segment).exists():
+                    self.completed_segment_indexes.add(segment.segment_index)
+                    continue
+                self.inflight_segment_indexes.add(segment.segment_index)
+                batch.append(segment)
+                if len(batch) >= remaining_capacity:
+                    break
+
+            if batch:
+                self.next_segment_index = batch[-1].segment_index + 1
+            return batch
+
+    def _mark_completed(
+        self,
+        result: TransferResult[VideoSegment],
+        _completed_count: int,
+        _total_count: int,
+    ) -> None:
+        with self.lock:
+            self.inflight_segment_indexes.discard(result.task.segment_index)
+            self.completed_segment_indexes.add(result.task.segment_index)
+
+    def _is_finished(self) -> bool:
+        with self.lock:
+            return all(
+                (
+                    segment.segment_index <= self.active_segment_index
+                    or not segment.cloud_path
+                    or segment.segment_index in self.completed_segment_indexes
+                    or _resolve_segment_cache_path(self.settings, segment).exists()
+                )
+                for segment in self.ordered_segments
+            )
+
+    def _is_idle_expired(self) -> bool:
+        with self.lock:
+            if self.consumer_count > 0 or self.idle_since is None:
+                return False
+            return (perf_counter() - self.idle_since) >= _PREFETCH_IDLE_GRACE_SECONDS
 
 
-def trigger_segment_prefetch(settings: Settings, segments: list[VideoSegment]) -> None:
-    for segment in segments:
-        segment_path = _resolve_segment_cache_path(settings, segment)
-        if segment_path.exists() and segment_path.is_file():
-            continue
+def acquire_prefetch_session(
+    settings: Settings,
+    *,
+    video_id: int,
+    segments: list[VideoSegment],
+) -> SegmentPrefetchSession | None:
+    remote_segments = [segment for segment in segments if segment.cloud_path]
+    if not remote_segments:
+        return None
 
-        key = (segment.video_id, segment.segment_index)
-        with _inflight_lock:
-            if key in _inflight_segments:
-                continue
-            _inflight_segments.add(key)
+    with _sessions_lock:
+        existing = _prefetch_sessions.get(video_id)
+        if existing is not None:
+            existing.acquire()
+            return existing
+        session = SegmentPrefetchSession(
+            settings=settings,
+            video_id=video_id,
+            ordered_segments=sorted(remote_segments, key=lambda segment: segment.segment_index),
+        )
+        session.acquire()
+        _prefetch_sessions[video_id] = session
+        return session
 
-        Thread(
-            target=_prefetch_segment,
-            args=(settings, segment, key),
-            name=f"cloud-storage-player-prefetch-{segment.video_id}-{segment.segment_index}",
-            daemon=True,
-        ).start()
+
+def release_prefetch_session(video_id: int) -> None:
+    with _sessions_lock:
+        session = _prefetch_sessions.get(video_id)
+    if session is not None:
+        session.release()
 
 
 def cache_remote_segment(
@@ -48,12 +205,24 @@ def cache_remote_segment(
     segment: VideoSegment,
     *,
     storage_backend: StorageBackend | None = None,
-) -> bytes:
+) -> TransferResult[VideoSegment]:
     if not segment.cloud_path:
         raise FileNotFoundError("Segment cloud path is missing.")
 
+    segment_path = _resolve_segment_cache_path(settings, segment)
+    if segment_path.exists() and segment_path.is_file():
+        if segment.local_staging_path != str(segment_path):
+            update_video_segment_local_staging_path(
+                settings,
+                segment.id,
+                local_staging_path=str(segment_path),
+            )
+            segment.local_staging_path = str(segment_path)
+        return TransferResult(task=segment, byte_count=0, elapsed_seconds=0.0)
+
     storage = storage_backend or build_storage_backend(settings)
     should_close = storage_backend is None
+    started_at = perf_counter()
     try:
         payload = storage.download_bytes(segment.cloud_path)
     finally:
@@ -62,7 +231,6 @@ def cache_remote_segment(
             if callable(close):
                 close()
 
-    segment_path = _resolve_segment_cache_path(settings, segment)
     segment_path.parent.mkdir(parents=True, exist_ok=True)
     segment_path.write_bytes(payload)
     if segment.local_staging_path != str(segment_path):
@@ -71,21 +239,12 @@ def cache_remote_segment(
             segment.id,
             local_staging_path=str(segment_path),
         )
-    return payload
-
-
-def _prefetch_segment(
-    settings: Settings,
-    segment: VideoSegment,
-    key: tuple[int, int],
-) -> None:
-    try:
-        cache_remote_segment(settings, segment)
-    except Exception:
-        pass
-    finally:
-        with _inflight_lock:
-            _inflight_segments.discard(key)
+        segment.local_staging_path = str(segment_path)
+    return measure_transfer(
+        segment,
+        byte_count=len(payload),
+        started_at=started_at,
+    )
 
 
 def _resolve_segment_cache_path(settings: Settings, segment: VideoSegment) -> Path:

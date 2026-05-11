@@ -29,9 +29,12 @@ class BaiduStorageBackend(StorageBackend):
             self.api.close()
 
     def upload_file(self, local_path: Path, remote_path: str) -> None:
-        self.upload_bytes(local_path.read_bytes(), remote_path)
+        self._upload_payload(local_path.read_bytes(), remote_path)
 
     def upload_bytes(self, payload: bytes, remote_path: str) -> None:
+        self._upload_payload(payload, remote_path)
+
+    def _upload_payload(self, payload: bytes, remote_path: str) -> None:
         baidu_path = normalize_baidu_path(remote_path)
         access_token = self._load_access_token()
         content_md5 = hashlib.md5(payload).hexdigest()

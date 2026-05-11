@@ -3,7 +3,6 @@ from __future__ import annotations
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from time import perf_counter
 
 from app.core.config import Settings
 from app.models.imports import ImportJob
@@ -15,7 +14,6 @@ from app.repositories.import_jobs import (
     mark_import_job_completed,
     mark_import_job_failed,
     mark_import_job_running,
-    record_import_job_transfer,
     update_import_job_progress,
 )
 from app.repositories.video_segments import (
@@ -26,6 +24,8 @@ from app.repositories.video_segments import (
 from app.repositories.videos import get_video, list_videos
 from app.services.job_control import JobCancelledError, throw_if_cancel_requested
 from app.services.manifests import local_segment_path
+from app.services.remote_transfers import TransferResult, run_bounded_transfers
+from app.services.segment_prefetch import cache_remote_segment
 from app.storage.factory import build_storage_backend
 
 
@@ -175,7 +175,9 @@ def process_cache_job(settings: Settings, job_id: int) -> ImportJob:
     mark_import_job_running(settings, job_id)
 
     try:
-        for index, segment in enumerate(segments, start=1):
+        pending_segments = []
+        completed_segments = 0
+        for segment in segments:
             throw_if_cancel_requested(settings, job_id)
             segment_path = _resolve_local_segment_path(
                 settings,
@@ -189,24 +191,43 @@ def process_cache_job(settings: Settings, job_id: int) -> ImportJob:
                     segment.id,
                     local_staging_path=str(segment_path),
                 )
+                segment.local_staging_path = str(segment_path)
             if segment_path.exists() and segment_path.is_file():
-                update_import_job_progress(settings, job_id, progress_percent=_cache_progress(index, len(segments)))
+                completed_segments += 1
                 continue
             if not segment.cloud_path:
                 raise ValueError(f"Segment {segment.segment_index} is missing cloud_path.")
+            pending_segments.append(segment)
 
-            segment_path.parent.mkdir(parents=True, exist_ok=True)
-            started_at = perf_counter()
-            payload = storage.download_bytes(segment.cloud_path)
-            elapsed_seconds = perf_counter() - started_at
-            segment_path.write_bytes(payload)
-            record_import_job_transfer(
+        if completed_segments:
+            update_import_job_progress(
                 settings,
                 job_id,
-                byte_count=len(payload),
-                elapsed_seconds=elapsed_seconds,
+                progress_percent=_cache_progress(completed_segments, len(segments)),
             )
-            update_import_job_progress(settings, job_id, progress_percent=_cache_progress(index, len(segments)))
+
+        def on_result(
+            _result: TransferResult,
+            newly_completed_count: int,
+            _total_pending: int,
+        ) -> None:
+            update_import_job_progress(
+                settings,
+                job_id,
+                progress_percent=_cache_progress(completed_segments + newly_completed_count, len(segments)),
+            )
+
+        run_bounded_transfers(
+            settings,
+            job_id=job_id,
+            tasks=pending_segments,
+            transfer_func=lambda segment: cache_remote_segment(
+                settings,
+                segment,
+                storage_backend=storage,
+            ),
+            on_result=on_result,
+        )
     except JobCancelledError as exc:
         return mark_import_job_cancelled(settings, job_id, error_message=str(exc))
     except Exception as exc:

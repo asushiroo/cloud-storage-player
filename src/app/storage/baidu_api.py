@@ -33,6 +33,14 @@ class BaiduApiError(RuntimeError):
         self.retryable = retryable
 
 
+class BaiduFrequencyControlError(BaiduApiError):
+    """Raised when Baidu temporarily blocks upload frequency."""
+
+    def __init__(self, message: str, *, retryable: bool = False, errno: int = 9013) -> None:
+        super().__init__(message, retryable=retryable)
+        self.errno = errno
+
+
 class BaiduAuthorizationError(BaiduApiError):
     """Raised when OAuth exchange or refresh fails."""
 
@@ -377,6 +385,19 @@ def _raise_for_pan_error(payload: dict[str, Any]) -> None:
 
     message = payload.get("errmsg") or payload.get("show_msg") or payload.get("err_msg")
     retryable = _is_retryable_errno(errno) or _should_retry_message(str(message or ""))
+    normalized_errno = _normalize_errno(errno)
+    if normalized_errno == 9013:
+        if message:
+            raise BaiduFrequencyControlError(
+                f"Baidu API error {normalized_errno}: {message}",
+                retryable=False,
+                errno=normalized_errno,
+            )
+        raise BaiduFrequencyControlError(
+            f"Baidu API error {normalized_errno}.",
+            retryable=False,
+            errno=normalized_errno,
+        )
     if message:
         raise BaiduApiError(f"Baidu API error {errno}: {message}", retryable=retryable)
     raise BaiduApiError(f"Baidu API error {errno}.", retryable=retryable)
@@ -418,11 +439,17 @@ def _is_retryable_exception(exc: Exception) -> bool:
 
 
 def _is_retryable_errno(errno: object) -> bool:
-    try:
-        normalized = int(errno)
-    except (TypeError, ValueError):
+    normalized = _normalize_errno(errno)
+    if normalized is None:
         return False
     return normalized in RETRYABLE_PAN_ERRNOS
+
+
+def _normalize_errno(errno: object) -> int | None:
+    try:
+        return int(errno)
+    except (TypeError, ValueError):
+        return None
 
 
 def _should_retry_message(message: str) -> bool:
