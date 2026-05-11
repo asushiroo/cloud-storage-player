@@ -75,6 +75,7 @@ export interface PublicSettings {
   baidu_root_path: string;
   cache_limit_bytes: number;
   storage_backend: "mock" | "baidu" | string;
+  remote_transfer_concurrency: number;
   baidu_authorize_url: string | null;
   baidu_has_refresh_token: boolean;
 }

@@ -77,6 +77,7 @@
 - 百度网盘远端传输提速与恢复
   - 导入上传默认并发 5 路
   - 手动“缓存到本地”任务默认并发 5 路
+  - 设置页已支持持久化调整远端传输并发，修改后会直接影响手动缓存下载、播放预取与远端上传
   - 上传遇到 `errno=9013` / `hit frequence control` 时不会直接失败，而是按小时轮询后继续
 - 前端登录态体验优化
   - 浏览器会缓存最近一次 session 结果
@@ -207,6 +208,7 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
   - 可选：`mock` / `baidu`
 - `CSP_REMOTE_TRANSFER_CONCURRENCY`
   - 当前默认：`5`
+  - 作为启动默认值；也可以在前端设置页持久化覆盖，允许范围 `1` 到 `32`
 - `CSP_BAIDU_UPLOAD_RESUME_POLL_INTERVAL_SECONDS`
   - 当前默认：`3600`
 - `CSP_MOCK_STORAGE_PATH`

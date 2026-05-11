@@ -13,6 +13,7 @@ from app.models.segments import VideoSegment
 from app.repositories.video_segments import update_video_segment_local_staging_path
 from app.services.manifests import local_segment_path
 from app.services.remote_transfers import TransferResult, run_bounded_transfers
+from app.services.settings import get_remote_transfer_concurrency
 from app.storage.base import StorageBackend
 from app.storage.factory import build_storage_backend
 
@@ -103,7 +104,10 @@ class SegmentPrefetchSession:
                             segment,
                             storage_backend=storage,
                         ),
-                        concurrency=min(self.settings.remote_transfer_concurrency, _PREFETCH_WINDOW_SIZE),
+                        concurrency=min(
+                            get_remote_transfer_concurrency(self.settings),
+                            _PREFETCH_WINDOW_SIZE,
+                        ),
                         stop_event=self.stop_event,
                         on_result=self._mark_completed,
                     )

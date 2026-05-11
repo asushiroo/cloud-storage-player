@@ -36,6 +36,7 @@ async def update_settings_view(
             baidu_root_path=payload.baidu_root_path,
             cache_limit_bytes=payload.cache_limit_bytes,
             storage_backend=payload.storage_backend,
+            remote_transfer_concurrency=payload.remote_transfer_concurrency,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -17,6 +17,7 @@ export function SettingsPage() {
   const [storageBackend, setStorageBackend] = useState("mock");
   const [baiduRootPath, setBaiduRootPath] = useState("");
   const [cacheLimitBytes, setCacheLimitBytes] = useState("0");
+  const [remoteTransferConcurrency, setRemoteTransferConcurrency] = useState("5");
   const [oauthCode, setOauthCode] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +27,7 @@ export function SettingsPage() {
     setStorageBackend(settingsQuery.data.storage_backend);
     setBaiduRootPath(settingsQuery.data.baidu_root_path);
     setCacheLimitBytes(String(settingsQuery.data.cache_limit_bytes));
+    setRemoteTransferConcurrency(String(settingsQuery.data.remote_transfer_concurrency));
   }, [settingsQuery.data]);
 
   const saveMutation = useMutation({
@@ -34,6 +36,7 @@ export function SettingsPage() {
         storage_backend: storageBackend,
         baidu_root_path: baiduRootPath,
         cache_limit_bytes: Number(cacheLimitBytes),
+        remote_transfer_concurrency: Number(remoteTransferConcurrency),
       }),
     onSuccess: async () => {
       setFeedback("设置已保存。");
@@ -90,11 +93,27 @@ export function SettingsPage() {
           <input className="text-input" onChange={(event) => setStorageBackend(event.target.value)} placeholder="mock 或 baidu" value={storageBackend} />
           <input className="text-input" onChange={(event) => setBaiduRootPath(event.target.value)} placeholder="Baidu root path" value={baiduRootPath} />
           <input className="text-input" inputMode="numeric" onChange={(event) => setCacheLimitBytes(event.target.value)} placeholder="缓存字节数" value={cacheLimitBytes} />
+          <input
+            className="text-input"
+            inputMode="numeric"
+            max={32}
+            min={1}
+            onChange={(event) => setRemoteTransferConcurrency(event.target.value)}
+            placeholder="远程传输并发数"
+            type="number"
+            value={remoteTransferConcurrency}
+          />
           <button className="primary-button" disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()} type="button">
             {saveMutation.isPending ? "保存中..." : "保存设置"}
           </button>
         </div>
-        {settings ? <p className="muted">当前缓存上限：{formatBytes(settings.cache_limit_bytes)} · 当前存储后端：{settings.storage_backend}</p> : null}
+        {settings ? (
+          <p className="muted">
+            当前缓存上限：{formatBytes(settings.cache_limit_bytes)} · 当前存储后端：{settings.storage_backend} ·
+            远程传输并发：{settings.remote_transfer_concurrency}
+          </p>
+        ) : null}
+        <p className="muted">远程传输并发会影响手动缓存下载、播放预取和远端上传，允许范围为 1 到 32。</p>
       </Surface>
 
       <Surface>
