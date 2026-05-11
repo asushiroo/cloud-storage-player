@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Event, Lock, Thread
 from time import perf_counter, time_ns
+from uuid import uuid4
 
 from app.core.config import Settings
 from app.models.segments import VideoSegment
@@ -18,8 +20,20 @@ logger = logging.getLogger(__name__)
 
 _PREFETCH_WINDOW_SIZE = 5
 _PREFETCH_IDLE_GRACE_SECONDS = 15.0
+_CACHE_WRITE_WORKER_COUNT = 4
 _sessions_lock = Lock()
 _prefetch_sessions: dict[int, "SegmentPrefetchSession"] = {}
+_cache_write_executor = ThreadPoolExecutor(
+    max_workers=_CACHE_WRITE_WORKER_COUNT,
+    thread_name_prefix="cloud-storage-player-cache-write",
+)
+
+
+@dataclass(slots=True)
+class DownloadedSegmentPayload:
+    segment: VideoSegment
+    payload: bytes
+    transfer_result: TransferResult[VideoSegment]
 
 
 @dataclass(slots=True)
@@ -206,19 +220,32 @@ def cache_remote_segment(
     *,
     storage_backend: StorageBackend | None = None,
 ) -> TransferResult[VideoSegment]:
-    if not segment.cloud_path:
-        raise FileNotFoundError("Segment cloud path is missing.")
-
     segment_path = _resolve_segment_cache_path(settings, segment)
     if segment_path.exists() and segment_path.is_file():
-        if segment.local_staging_path != str(segment_path):
-            update_video_segment_local_staging_path(
-                settings,
-                segment.id,
-                local_staging_path=str(segment_path),
-            )
-            segment.local_staging_path = str(segment_path)
+        _ensure_segment_local_staging_path(settings, segment, segment_path)
         return TransferResult(task=segment, byte_count=0, elapsed_seconds=0.0)
+
+    downloaded = download_remote_segment_payload(
+        settings,
+        segment,
+        storage_backend=storage_backend,
+    )
+    persist_segment_payload(
+        settings,
+        segment,
+        downloaded.payload,
+    )
+    return downloaded.transfer_result
+
+
+def download_remote_segment_payload(
+    settings: Settings,
+    segment: VideoSegment,
+    *,
+    storage_backend: StorageBackend | None = None,
+) -> DownloadedSegmentPayload:
+    if not segment.cloud_path:
+        raise FileNotFoundError("Segment cloud path is missing.")
 
     storage = storage_backend or build_storage_backend(settings)
     should_close = storage_backend is None
@@ -240,22 +267,78 @@ def cache_remote_segment(
         if callable(close):
             close()
 
-    segment_path.parent.mkdir(parents=True, exist_ok=True)
-    segment_path.write_bytes(payload)
-    if segment.local_staging_path != str(segment_path):
-        update_video_segment_local_staging_path(
-            settings,
-            segment.id,
-            local_staging_path=str(segment_path),
-        )
-        segment.local_staging_path = str(segment_path)
-    return TransferResult(
-        task=segment,
-        byte_count=len(payload),
-        elapsed_seconds=elapsed_seconds,
-        started_at_millis=started_at_millis,
-        completed_at_millis=completed_at_millis,
+    return DownloadedSegmentPayload(
+        segment=segment,
+        payload=payload,
+        transfer_result=TransferResult(
+            task=segment,
+            byte_count=len(payload),
+            elapsed_seconds=elapsed_seconds,
+            started_at_millis=started_at_millis,
+            completed_at_millis=completed_at_millis,
+        ),
     )
+
+
+def persist_segment_payload(
+    settings: Settings,
+    segment: VideoSegment,
+    payload: bytes,
+) -> None:
+    segment_path = _resolve_segment_cache_path(settings, segment)
+    if segment_path.exists() and segment_path.is_file():
+        _ensure_segment_local_staging_path(settings, segment, segment_path)
+        return
+
+    segment_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = segment_path.with_name(f"{segment_path.name}.{uuid4().hex}.tmp")
+    try:
+        temp_path.write_bytes(payload)
+        temp_path.replace(segment_path)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+    _ensure_segment_local_staging_path(settings, segment, segment_path)
+
+
+def queue_segment_cache_write(
+    settings: Settings,
+    segment: VideoSegment,
+    payload: bytes,
+) -> None:
+    _cache_write_executor.submit(_persist_segment_payload_background, settings, segment, payload)
+
+
+def _persist_segment_payload_background(
+    settings: Settings,
+    segment: VideoSegment,
+    payload: bytes,
+) -> None:
+    try:
+        persist_segment_payload(settings, segment, payload)
+    except Exception as exc:
+        logger.warning(
+            "Failed to persist streamed segment %s for video %s: %s",
+            segment.segment_index,
+            segment.video_id,
+            exc,
+        )
+
+
+def _ensure_segment_local_staging_path(
+    settings: Settings,
+    segment: VideoSegment,
+    segment_path: Path,
+) -> None:
+    resolved_path = str(segment_path)
+    if segment.local_staging_path == resolved_path:
+        return
+    update_video_segment_local_staging_path(
+        settings,
+        segment.id,
+        local_staging_path=resolved_path,
+    )
+    segment.local_staging_path = resolved_path
 
 
 def _resolve_segment_cache_path(settings: Settings, segment: VideoSegment) -> Path:

@@ -18,7 +18,8 @@ from app.repositories.video_segments import list_video_segments
 from app.repositories.videos import get_video
 from app.services.segment_prefetch import (
     acquire_prefetch_session,
-    cache_remote_segment,
+    download_remote_segment_payload,
+    queue_segment_cache_write,
     release_prefetch_session,
 )
 from app.storage.baidu_api import BaiduApiError
@@ -44,6 +45,7 @@ class VideoStreamPayload:
     content_key: bytes | None = None
     storage_backend: StorageBackend | None = None
     prefetch_session: object | None = None
+    prefetched_remote_payloads: dict[int, bytes] | None = None
 
 
 @dataclass(slots=True)
@@ -108,6 +110,7 @@ def iter_video_stream(payload: VideoStreamPayload):
                         key=payload.content_key,
                         settings=payload.settings,
                         storage_backend=payload.storage_backend,
+                        prefetched_remote_payloads=payload.prefetched_remote_payloads,
                     )
                 except VideoStreamNotFoundError:
                     return
@@ -168,17 +171,19 @@ def _prepare_segment_stream(
         return None
 
     first_segment = prepared_reads[0].segment
+    prefetched_payload = None
     if not _local_segment_exists(settings, first_segment):
         if not first_segment.cloud_path:
             return None
         if storage_backend is None:
             return None
         try:
-            _read_segment_payload(
+            prefetched_payload = _read_segment_payload(
                 first_segment,
                 settings=settings,
                 storage_backend=storage_backend,
                 required=True,
+                queue_cache_write=False,
             )
         except (FileNotFoundError, NotImplementedError, RuntimeError, ValueError) as exc:
             raise VideoStreamNotFoundError("Encrypted segment file is missing.") from exc
@@ -191,6 +196,11 @@ def _prepare_segment_stream(
         segment_reads=prepared_reads,
         content_key=content_key,
         storage_backend=storage_backend or None,
+        prefetched_remote_payloads=(
+            {first_segment.id: prefetched_payload}
+            if prefetched_payload is not None
+            else None
+        ),
         prefetch_session=acquire_prefetch_session(
             settings,
             video_id=prepared_reads[0].segment.video_id,
@@ -252,11 +262,16 @@ def iter_segment_slice(
     key: bytes,
     settings: Settings | None,
     storage_backend: StorageBackend | None = None,
+    prefetched_remote_payloads: dict[int, bytes] | None = None,
 ):
+    prefetched_payload = None
+    if prefetched_remote_payloads is not None:
+        prefetched_payload = prefetched_remote_payloads.pop(segment_read.segment.id, None)
     payload = _read_segment_payload(
         segment_read.segment,
         settings=settings,
         storage_backend=storage_backend,
+        prefetched_payload=prefetched_payload,
     )
     if payload is None:
         return
@@ -279,20 +294,29 @@ def _read_segment_payload(
     settings: Settings | None,
     storage_backend: StorageBackend | None,
     required: bool = False,
+    prefetched_payload: bytes | None = None,
+    queue_cache_write: bool = True,
 ) -> bytes | None:
     if settings is not None:
         segment_path = _segment_cache_path(segment, settings=settings)
         if segment_path.exists() and segment_path.is_file():
             return segment_path.read_bytes()
 
+    if prefetched_payload is not None:
+        if queue_cache_write and settings is not None:
+            queue_segment_cache_write(settings, segment, prefetched_payload)
+        return prefetched_payload
+
     if storage_backend is not None and segment.cloud_path and settings is not None:
         try:
-            transfer_result = cache_remote_segment(
+            downloaded = download_remote_segment_payload(
                 settings,
                 segment,
                 storage_backend=storage_backend,
             )
-            return _resolve_segment_payload_from_cache(settings, transfer_result.task)
+            if queue_cache_write:
+                queue_segment_cache_write(settings, segment, downloaded.payload)
+            return downloaded.payload
         except BaiduApiError as exc:
             logger.warning(
                 "Failed to fetch encrypted segment from Baidu remote storage: %s",
@@ -305,11 +329,6 @@ def _read_segment_payload(
             raise VideoStreamNotFoundError("Encrypted segment file is missing.") from exc
 
     raise VideoStreamNotFoundError("Encrypted segment file is missing.")
-
-
-def _resolve_segment_payload_from_cache(settings: Settings, segment: VideoSegment) -> bytes:
-    segment_path = _segment_cache_path(segment, settings=settings)
-    return segment_path.read_bytes()
 
 
 def _segment_cache_path(
