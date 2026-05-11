@@ -98,12 +98,15 @@ def iter_video_stream(payload: VideoStreamPayload):
         if payload.segment_reads is not None and payload.content_key is not None:
             prefetch_started = False
             for segment_read in payload.segment_reads:
-                yield from iter_segment_slice(
-                    segment_read,
-                    key=payload.content_key,
-                    settings=payload.settings,
-                    storage_backend=payload.storage_backend,
-                )
+                try:
+                    yield from iter_segment_slice(
+                        segment_read,
+                        key=payload.content_key,
+                        settings=payload.settings,
+                        storage_backend=payload.storage_backend,
+                    )
+                except VideoStreamNotFoundError:
+                    return
                 if (
                     not prefetch_started
                     and payload.settings is not None
@@ -159,6 +162,24 @@ def _prepare_segment_stream(
     storage_backend = _build_storage_backend_if_needed(settings, prepared_reads)
     if storage_backend is False:
         return None
+
+    if byte_range is not None and storage_backend is not None:
+        try:
+            for segment_read in prepared_reads:
+                _read_segment_payload(
+                    segment_read.segment,
+                    settings=settings,
+                    storage_backend=storage_backend,
+                )
+        except Exception:
+            close = getattr(storage_backend, "close", None)
+            if callable(close):
+                close()
+            raise
+        close = getattr(storage_backend, "close", None)
+        if callable(close):
+            close()
+        storage_backend = None
 
     first_segment = prepared_reads[0].segment
     if not _local_segment_exists(first_segment):
@@ -274,7 +295,11 @@ def _read_segment_payload(
 
     if storage_backend is not None and segment.cloud_path and settings is not None:
         try:
-            return cache_remote_segment(settings, segment)
+            return cache_remote_segment(
+                settings,
+                segment,
+                storage_backend=storage_backend,
+            )
         except (FileNotFoundError, NotImplementedError, RuntimeError, ValueError) as exc:
             raise VideoStreamNotFoundError("Encrypted segment file is missing.") from exc
 

@@ -7,6 +7,7 @@ from app.core.config import Settings
 from app.models.segments import VideoSegment
 from app.repositories.video_segments import update_video_segment_local_staging_path
 from app.services.manifests import local_segment_path
+from app.storage.base import StorageBackend
 from app.storage.factory import build_storage_backend
 
 _PREFETCH_WINDOW_SIZE = 5
@@ -42,17 +43,24 @@ def trigger_segment_prefetch(settings: Settings, segments: list[VideoSegment]) -
         ).start()
 
 
-def cache_remote_segment(settings: Settings, segment: VideoSegment) -> bytes:
+def cache_remote_segment(
+    settings: Settings,
+    segment: VideoSegment,
+    *,
+    storage_backend: StorageBackend | None = None,
+) -> bytes:
     if not segment.cloud_path:
         raise FileNotFoundError("Segment cloud path is missing.")
 
-    storage = build_storage_backend(settings)
+    storage = storage_backend or build_storage_backend(settings)
+    should_close = storage_backend is None
     try:
         payload = storage.download_bytes(segment.cloud_path)
     finally:
-        close = getattr(storage, "close", None)
-        if callable(close):
-            close()
+        if should_close:
+            close = getattr(storage, "close", None)
+            if callable(close):
+                close()
 
     segment_path = _resolve_segment_cache_path(settings, segment)
     segment_path.parent.mkdir(parents=True, exist_ok=True)

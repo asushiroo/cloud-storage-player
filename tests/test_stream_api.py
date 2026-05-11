@@ -9,6 +9,7 @@ from app.models.segments import VideoSegment
 from app.repositories.videos import get_video
 from app.repositories.video_segments import list_video_segments
 from app.services.imports import import_local_video
+from app.storage.baidu_api import BaiduApiError
 from app.storage.mock import MockStorageBackend
 
 
@@ -185,9 +186,11 @@ def test_stream_remote_fallback_caches_downloaded_segments_without_full_exists_s
     assert len(segments) >= 1
     storage = MockStorageBackend(settings.mock_storage_dir)
     exists_calls: list[str] = []
+    download_calls: list[str] = []
 
     class CountingStorage:
       def download_bytes(self, remote_path: str) -> bytes:
+        download_calls.append(remote_path)
         return storage.download_bytes(remote_path)
 
       def exists(self, remote_path: str) -> bool:
@@ -207,11 +210,36 @@ def test_stream_remote_fallback_caches_downloaded_segments_without_full_exists_s
 
     assert response.status_code == 206
     assert response.content == file_bytes[:32]
-    assert len(exists_calls) <= 1
-    assert exists_calls == [segments[0].cloud_path]
+    assert len(exists_calls) == 0
+    assert download_calls == [segments[0].cloud_path]
     first_segment = segments[0]
     assert first_segment.local_staging_path is not None
     assert Path(first_segment.local_staging_path).exists()
+
+
+def test_stream_returns_404_when_remote_segment_download_fails_before_streaming(monkeypatch, tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    source_path = create_sample_video(tmp_path / "missing-remote.mp4")
+    job = import_local_video(settings, source_path=str(source_path))
+    remove_tree(settings.segment_staging_dir / str(job.video_id))
+
+    class FailingStorage:
+        def download_bytes(self, remote_path: str) -> bytes:
+            raise BaiduApiError("404 Not Found")
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr("app.services.streaming.build_storage_backend", lambda _settings: FailingStorage())
+    login(client, password)
+
+    response = client.get(
+        f"/api/videos/{job.video_id}/stream",
+        headers={"Range": "bytes=0-31"},
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Encrypted segment file is missing."}
 
 
 def test_stream_returns_404_when_source_local_and_remote_segments_are_all_missing(tmp_path: Path) -> None:
