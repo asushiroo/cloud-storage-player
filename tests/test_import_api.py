@@ -302,6 +302,7 @@ def test_delete_video_removes_catalog_row_and_local_and_mock_remote_artifacts(tm
     storage = MockStorageBackend(settings.mock_storage_dir)
     assert video_payload["manifest_path"] is not None
     remote_manifest_path = storage.local_path_for(video_payload["manifest_path"])
+    remote_video_dir = remote_manifest_path.parent
     assert remote_manifest_path.exists()
 
     delete_response = client.delete(f"/api/videos/{video_id}")
@@ -315,6 +316,7 @@ def test_delete_video_removes_catalog_row_and_local_and_mock_remote_artifacts(tm
     assert client.get("/api/videos").json() == []
     assert not stage_dir.exists()
     assert not remote_manifest_path.exists()
+    assert not remote_video_dir.exists()
 
     if video_payload["cover_path"] is not None:
         cover_response = client.get(video_payload["cover_path"])

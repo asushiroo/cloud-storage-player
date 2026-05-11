@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
+from pathlib import PurePosixPath
 
 from app.core.config import Settings
 from app.models.imports import ImportJob
@@ -76,7 +77,8 @@ def delete_library_video(settings: Settings, video_id: int) -> None:
         raise VideoDeleteNotFoundError(f"Video not found: {video_id}")
 
     remote_paths = _collect_remote_paths(settings, video)
-    _delete_remote_paths_best_effort(settings, remote_paths)
+    remote_directories = _collect_remote_directories(remote_paths)
+    _delete_remote_paths_best_effort(settings, remote_paths, remote_directories)
     _delete_local_artifacts(settings, video)
     delete_video(settings, video_id)
 
@@ -91,7 +93,20 @@ def _collect_remote_paths(settings: Settings, video: Video) -> list[str]:
     return sorted(paths)
 
 
-def _delete_remote_paths_best_effort(settings: Settings, remote_paths: list[str]) -> None:
+def _collect_remote_directories(remote_paths: list[str]) -> list[str]:
+    directories = {
+        str(PurePosixPath(remote_path).parent)
+        for remote_path in remote_paths
+        if remote_path and str(PurePosixPath(remote_path).parent) not in {"", ".", "/"}
+    }
+    return sorted(directories, key=lambda path: len(PurePosixPath(path).parts), reverse=True)
+
+
+def _delete_remote_paths_best_effort(
+    settings: Settings,
+    remote_paths: list[str],
+    remote_directories: list[str],
+) -> None:
     if not remote_paths:
         return
 
@@ -104,6 +119,11 @@ def _delete_remote_paths_best_effort(settings: Settings, remote_paths: list[str]
         for remote_path in remote_paths:
             try:
                 storage.delete_path(remote_path)
+            except Exception:
+                continue
+        for remote_directory in remote_directories:
+            try:
+                storage.delete_path(remote_directory)
             except Exception:
                 continue
     finally:

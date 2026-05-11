@@ -5,7 +5,9 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings
 from app.core.security import hash_password
 from app.main import create_app
+from app.models.segments import VideoSegment
 from app.repositories.videos import get_video
+from app.repositories.video_segments import list_video_segments
 from app.services.imports import import_local_video
 from app.storage.mock import MockStorageBackend
 
@@ -169,6 +171,47 @@ def test_stream_can_fallback_to_mock_remote_when_source_and_local_segments_are_r
     assert response.status_code == 206
     assert response.headers["content-length"] == str(127 - 16 + 1)
     assert response.content == file_bytes[16:128]
+
+
+def test_stream_remote_fallback_caches_downloaded_segments_without_full_exists_scan(monkeypatch, tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    source_path = create_sample_video(tmp_path / "remote-cache-window.mp4")
+    file_bytes = source_path.read_bytes()
+    job = import_local_video(settings, source_path=str(source_path))
+    source_path.unlink()
+    remove_tree(settings.segment_staging_dir / str(job.video_id))
+
+    segments = list_video_segments(settings, video_id=job.video_id)
+    assert len(segments) >= 1
+    storage = MockStorageBackend(settings.mock_storage_dir)
+    exists_calls: list[str] = []
+
+    class CountingStorage:
+      def download_bytes(self, remote_path: str) -> bytes:
+        return storage.download_bytes(remote_path)
+
+      def exists(self, remote_path: str) -> bool:
+        exists_calls.append(remote_path)
+        return storage.exists(remote_path)
+
+      def close(self) -> None:
+        return None
+
+    monkeypatch.setattr("app.services.streaming.build_storage_backend", lambda _settings: CountingStorage())
+    login(client, password)
+
+    response = client.get(
+        f"/api/videos/{job.video_id}/stream",
+        headers={"Range": "bytes=0-31"},
+    )
+
+    assert response.status_code == 206
+    assert response.content == file_bytes[:32]
+    assert len(exists_calls) <= 1
+    assert exists_calls == [segments[0].cloud_path]
+    first_segment = segments[0]
+    assert first_segment.local_staging_path is not None
+    assert Path(first_segment.local_staging_path).exists()
 
 
 def test_stream_returns_404_when_source_local_and_remote_segments_are_all_missing(tmp_path: Path) -> None:

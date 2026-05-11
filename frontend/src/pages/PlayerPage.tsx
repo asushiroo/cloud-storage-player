@@ -233,7 +233,7 @@ export function PlayerPage() {
         </Surface>
       ) : null}
       <div className="player-surface">
-        <video autoPlay className="player-video" controls ref={videoRef} src={getStreamUrl(videoId)} />
+        <video autoPlay className="player-video" controls preload="metadata" ref={videoRef} src={getStreamUrl(videoId)} />
       </div>
       <Surface>
         <div className="section-head">

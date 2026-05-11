@@ -11,11 +11,11 @@ import { VideoDetailPage } from "./pages/VideoDetailPage";
 function ProtectedRoutes() {
   const session = useRequireSession();
 
-  if (session.isLoading || (session.data?.authenticated !== true && !session.isError)) {
+  if (!session.data && session.isLoading) {
     return <p className="state-text">正在检查登录状态...</p>;
   }
 
-  if (session.isError) {
+  if (session.isError && !session.data) {
     return <p className="state-text">无法连接后端接口，请先确认 8000 端口后端已启动。</p>;
   }
 

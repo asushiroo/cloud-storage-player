@@ -3,7 +3,7 @@ import { useEffect, useState, type PropsWithChildren } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import logoImage from "../../asserts/logo.png";
 import { logout } from "../api/client";
-import { sessionQueryKey, useSession } from "../hooks/session";
+import { clearPersistedSession, sessionQueryKey, useSession } from "../hooks/session";
 
 export function Layout({ children }: PropsWithChildren) {
   const session = useSession();
@@ -14,6 +14,8 @@ export function Layout({ children }: PropsWithChildren) {
   const logoutMutation = useMutation({
     mutationFn: logout,
     onSuccess: async () => {
+      clearPersistedSession();
+      queryClient.setQueryData(sessionQueryKey, { authenticated: false });
       await queryClient.invalidateQueries({ queryKey: sessionQueryKey });
       navigate("/login", { replace: true });
     },

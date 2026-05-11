@@ -20,6 +20,7 @@ from app.services.manifests import (
     local_segment_path,
 )
 from app.services.settings import get_public_settings
+from app.storage.baidu_api import BaiduApiError
 from app.storage.factory import build_storage_backend
 
 
@@ -154,7 +155,7 @@ def _discover_manifest_paths(storage, *, root_path: str, content_key: bytes | No
             manifest_paths.add(manifest_path)
 
     legacy_video_root_path = f"{root_path}/videos"
-    for entry in storage.list_directory(legacy_video_root_path):
+    for entry in _list_directory_if_exists(storage, legacy_video_root_path):
         if not entry.is_dir:
             continue
         manifest_path = str(PurePosixPath(entry.path.rstrip("/")) / "manifest.json")
@@ -171,6 +172,13 @@ def _discover_manifest_paths(storage, *, root_path: str, content_key: bytes | No
                 manifest_paths.add(manifest_path)
 
     return sorted(manifest_paths)
+
+
+def _list_directory_if_exists(storage, remote_path: str):
+    try:
+        return storage.list_directory(remote_path)
+    except (FileNotFoundError, BaiduApiError):
+        return []
 
 
 def _load_manifest(storage, manifest_path: str, *, content_key: bytes | None) -> ManifestPayload:

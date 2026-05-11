@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { login } from "../api/client";
-import { sessionQueryKey, useRedirectIfAuthenticated } from "../hooks/session";
+import { persistAuthenticatedSession, sessionQueryKey, useRedirectIfAuthenticated } from "../hooks/session";
 import type { ApiError } from "../types/api";
 
 export function LoginPage() {
@@ -16,6 +16,8 @@ export function LoginPage() {
   const mutation = useMutation({
     mutationFn: login,
     onSuccess: async () => {
+      persistAuthenticatedSession();
+      queryClient.setQueryData(sessionQueryKey, { authenticated: true });
       await queryClient.invalidateQueries({ queryKey: sessionQueryKey });
       navigate(searchParams.get("next") || "/", { replace: true });
     },

@@ -68,6 +68,8 @@ def test_cache_summary_lists_and_clears_local_segments(tmp_path: Path) -> None:
     video_id = completed_job["video_id"]
     assert video_id is not None
     assert (settings.segment_staging_dir / str(video_id)).exists()
+    assert (settings.segment_staging_dir / str(video_id) / "manifest.json").exists()
+    assert (settings.segment_staging_dir / str(video_id) / "manifest.remote.bin").exists()
 
     summary_response = client.get("/api/cache")
     assert summary_response.status_code == 200
@@ -84,7 +86,9 @@ def test_cache_summary_lists_and_clears_local_segments(tmp_path: Path) -> None:
     clear_response = client.delete(f"/api/cache/videos/{video_id}")
     assert clear_response.status_code == 200
     assert clear_response.json() == {"cleared_video_count": 1}
-    assert not (settings.segment_staging_dir / str(video_id)).exists()
+    assert not (settings.segment_staging_dir / str(video_id) / "segments").exists()
+    assert (settings.segment_staging_dir / str(video_id) / "manifest.json").exists()
+    assert (settings.segment_staging_dir / str(video_id) / "manifest.remote.bin").exists()
 
     summary_after_clear = client.get("/api/cache")
     assert summary_after_clear.status_code == 200
@@ -102,13 +106,15 @@ def test_manual_cache_job_restores_local_cache_and_reports_transfer_speed(tmp_pa
     assert video_id is not None
 
     stage_dir = settings.segment_staging_dir / str(video_id)
-    for path in sorted(stage_dir.rglob("*"), reverse=True):
+    segments_dir = stage_dir / "segments"
+    for path in sorted(segments_dir.rglob("*"), reverse=True):
         if path.is_file():
             path.unlink()
         else:
             path.rmdir()
-    stage_dir.rmdir()
-    assert not stage_dir.exists()
+    segments_dir.rmdir()
+    assert not segments_dir.exists()
+    assert stage_dir.exists()
 
     cache_response = client.post(f"/api/videos/{video_id}/cache")
     assert cache_response.status_code == 202
@@ -119,7 +125,7 @@ def test_manual_cache_job_restores_local_cache_and_reports_transfer_speed(tmp_pa
     assert completed_cache["remote_bytes_transferred"] > 0
     assert completed_cache["transfer_speed_bytes_per_second"] is not None
     assert completed_cache["transfer_speed_bytes_per_second"] > 0
-    assert stage_dir.exists()
+    assert (stage_dir / "segments").exists()
 
     cache_summary = client.get("/api/cache")
     assert cache_summary.status_code == 200

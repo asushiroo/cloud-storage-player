@@ -107,13 +107,13 @@ def clear_video_cache(settings: Settings, *, video_id: int) -> None:
     video = get_video(settings, video_id)
     if video is None:
         raise VideoCacheNotFoundError(f"Video not found: {video_id}")
-    shutil.rmtree(settings.segment_staging_dir / str(video_id), ignore_errors=True)
+    shutil.rmtree(settings.segment_staging_dir / str(video_id) / "segments", ignore_errors=True)
 
 
 def clear_all_cache(settings: Settings) -> int:
     cached_videos = list_cached_videos(settings)
     for video in cached_videos:
-        shutil.rmtree(settings.segment_staging_dir / str(video.id), ignore_errors=True)
+        shutil.rmtree(settings.segment_staging_dir / str(video.id) / "segments", ignore_errors=True)
     return len(cached_videos)
 
 

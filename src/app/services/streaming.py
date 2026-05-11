@@ -15,6 +15,11 @@ from app.media.range_map import (
 from app.models.segments import VideoSegment
 from app.repositories.video_segments import list_video_segments
 from app.repositories.videos import get_video
+from app.services.segment_prefetch import (
+    cache_remote_segment,
+    select_prefetch_segments,
+    trigger_segment_prefetch,
+)
 from app.storage.base import StorageBackend
 from app.storage.factory import build_storage_backend
 
@@ -28,10 +33,12 @@ class VideoStreamPayload:
     mime_type: str
     size: int
     byte_range: ByteRange | None
+    settings: Settings | None = None
     source_path: Path | None = None
     segment_reads: list["PreparedSegmentRead"] | None = None
     content_key: bytes | None = None
     storage_backend: StorageBackend | None = None
+    prefetch_segments: list[VideoSegment] | None = None
 
 
 @dataclass(slots=True)
@@ -87,21 +94,35 @@ def prepare_video_stream(
 
 
 def iter_video_stream(payload: VideoStreamPayload):
-    if payload.segment_reads is not None and payload.content_key is not None:
-        for segment_read in payload.segment_reads:
-            yield from iter_segment_slice(
-                segment_read,
-                key=payload.content_key,
-                storage_backend=payload.storage_backend,
-            )
-        return
+    try:
+        if payload.segment_reads is not None and payload.content_key is not None:
+            prefetch_started = False
+            for segment_read in payload.segment_reads:
+                yield from iter_segment_slice(
+                    segment_read,
+                    key=payload.content_key,
+                    settings=payload.settings,
+                    storage_backend=payload.storage_backend,
+                )
+                if (
+                    not prefetch_started
+                    and payload.settings is not None
+                    and payload.prefetch_segments
+                ):
+                    trigger_segment_prefetch(payload.settings, payload.prefetch_segments)
+                    prefetch_started = True
+            return
 
-    if payload.source_path is None:
-        raise VideoStreamNotFoundError("Prepared stream payload has no source.")
+        if payload.source_path is None:
+            raise VideoStreamNotFoundError("Prepared stream payload has no source.")
 
-    start = payload.byte_range.start if payload.byte_range else 0
-    end = payload.byte_range.end if payload.byte_range else payload.size - 1
-    yield from iter_file_range(payload.source_path, start=start, end=end)
+        start = payload.byte_range.start if payload.byte_range else 0
+        end = payload.byte_range.end if payload.byte_range else payload.size - 1
+        yield from iter_file_range(payload.source_path, start=start, end=end)
+    finally:
+        close = getattr(payload.storage_backend, "close", None)
+        if callable(close):
+            close()
 
 
 def _prepare_segment_stream(
@@ -139,13 +160,30 @@ def _prepare_segment_stream(
     if storage_backend is False:
         return None
 
+    first_segment = prepared_reads[0].segment
+    if not _local_segment_exists(first_segment):
+        if not first_segment.cloud_path:
+            return None
+        if storage_backend is None:
+            return None
+        try:
+            if not storage_backend.exists(first_segment.cloud_path):
+                return None
+        except (FileNotFoundError, NotImplementedError, RuntimeError, ValueError):
+            return None
+
     return VideoStreamPayload(
         mime_type=mime_type,
         size=size,
         byte_range=byte_range,
+        settings=settings,
         segment_reads=prepared_reads,
         content_key=content_key,
         storage_backend=storage_backend or None,
+        prefetch_segments=select_prefetch_segments(
+            segments,
+            start_segment_index=prepared_reads[0].segment.segment_index,
+        ),
     )
 
 
@@ -163,13 +201,6 @@ def _build_storage_backend_if_needed(
 
     try:
         storage_backend = build_storage_backend(settings)
-    except (NotImplementedError, RuntimeError, ValueError):
-        return False
-
-    try:
-        for segment in missing_local_segments:
-            if not segment.cloud_path or not storage_backend.exists(segment.cloud_path):
-                return False
     except (NotImplementedError, RuntimeError, ValueError):
         return False
 
@@ -209,10 +240,12 @@ def iter_segment_slice(
     segment_read: PreparedSegmentRead,
     *,
     key: bytes,
+    settings: Settings | None,
     storage_backend: StorageBackend | None = None,
 ):
     payload = _read_segment_payload(
         segment_read.segment,
+        settings=settings,
         storage_backend=storage_backend,
     )
     if len(payload) < TAG_SIZE_BYTES:
@@ -231,6 +264,7 @@ def iter_segment_slice(
 def _read_segment_payload(
     segment: VideoSegment,
     *,
+    settings: Settings | None,
     storage_backend: StorageBackend | None,
 ) -> bytes:
     if segment.local_staging_path:
@@ -238,9 +272,9 @@ def _read_segment_payload(
         if segment_path.exists() and segment_path.is_file():
             return segment_path.read_bytes()
 
-    if storage_backend is not None and segment.cloud_path:
+    if storage_backend is not None and segment.cloud_path and settings is not None:
         try:
-            return storage_backend.download_bytes(segment.cloud_path)
+            return cache_remote_segment(settings, segment)
         except (FileNotFoundError, NotImplementedError, RuntimeError, ValueError) as exc:
             raise VideoStreamNotFoundError("Encrypted segment file is missing.") from exc
 
