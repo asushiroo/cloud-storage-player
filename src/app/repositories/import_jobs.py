@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Sequence
 from pathlib import Path
+from time import time_ns
 
 from app.core.config import Settings
 from app.core.tags import decode_tags, encode_tags
@@ -25,6 +26,8 @@ JOB_SELECT_SQL = """
            cancel_requested,
            remote_bytes_transferred,
            remote_transfer_millis,
+           remote_transfer_started_at_millis,
+           remote_transfer_updated_at_millis,
            created_at,
            updated_at
     FROM import_jobs
@@ -142,9 +145,11 @@ def create_cache_job(
                 target_video_id,
                 cancel_requested,
                 remote_bytes_transferred,
-                remote_transfer_millis
+                remote_transfer_millis,
+                remote_transfer_started_at_millis,
+                remote_transfer_updated_at_millis
             )
-            VALUES (?, ?, '[]', 'cache', ?, 'queued', 0, ?, 0, 0, 0)
+            VALUES (?, ?, '[]', 'cache', ?, 'queued', 0, ?, 0, 0, 0, NULL, NULL)
             """,
             (source_path, requested_title, task_name, target_video_id),
         )
@@ -216,18 +221,45 @@ def record_import_job_transfer(
     *,
     byte_count: int,
     elapsed_seconds: float,
+    started_at_millis: int | None = None,
+    completed_at_millis: int | None = None,
 ) -> ImportJob:
     elapsed_millis = max(int(round(elapsed_seconds * 1000)), 1 if byte_count > 0 else 0)
+    resolved_completed_at_millis = completed_at_millis if completed_at_millis is not None else _current_time_millis()
+    resolved_started_at_millis = (
+        started_at_millis
+        if started_at_millis is not None
+        else (resolved_completed_at_millis - elapsed_millis if elapsed_millis > 0 else resolved_completed_at_millis)
+    )
     with connect_database(settings) as connection:
         connection.execute(
             """
             UPDATE import_jobs
             SET remote_bytes_transferred = remote_bytes_transferred + ?,
-                remote_transfer_millis = remote_transfer_millis + ?,
+                remote_transfer_millis = CASE
+                    WHEN remote_transfer_started_at_millis IS NULL THEN ?
+                    ELSE remote_transfer_millis
+                END,
+                remote_transfer_started_at_millis = CASE
+                    WHEN remote_transfer_started_at_millis IS NULL THEN ?
+                    ELSE MIN(remote_transfer_started_at_millis, ?)
+                END,
+                remote_transfer_updated_at_millis = CASE
+                    WHEN remote_transfer_updated_at_millis IS NULL THEN ?
+                    ELSE MAX(remote_transfer_updated_at_millis, ?)
+                END,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             """,
-            (max(byte_count, 0), elapsed_millis, job_id),
+            (
+                max(byte_count, 0),
+                elapsed_millis,
+                resolved_started_at_millis,
+                resolved_started_at_millis,
+                resolved_completed_at_millis,
+                resolved_completed_at_millis,
+                job_id,
+            ),
         )
         connection.commit()
         row = _fetch_job_row(connection, job_id)
@@ -482,9 +514,16 @@ def _resolve_task_name(
 def _row_to_import_job(row: sqlite3.Row) -> ImportJob:
     remote_bytes_transferred = int(row["remote_bytes_transferred"] or 0)
     remote_transfer_millis = int(row["remote_transfer_millis"] or 0)
+    remote_transfer_started_at_millis = _coerce_optional_int(row["remote_transfer_started_at_millis"])
+    remote_transfer_updated_at_millis = _coerce_optional_int(row["remote_transfer_updated_at_millis"])
+    wall_clock_transfer_millis = _calculate_wall_clock_transfer_millis(
+        started_at_millis=remote_transfer_started_at_millis,
+        updated_at_millis=remote_transfer_updated_at_millis,
+        fallback_transfer_millis=remote_transfer_millis,
+    )
     transfer_speed_bytes_per_second = None
-    if remote_bytes_transferred > 0 and remote_transfer_millis > 0:
-        transfer_speed_bytes_per_second = remote_bytes_transferred / (remote_transfer_millis / 1000)
+    if remote_bytes_transferred > 0 and wall_clock_transfer_millis > 0:
+        transfer_speed_bytes_per_second = remote_bytes_transferred / (wall_clock_transfer_millis / 1000)
 
     return ImportJob(
         id=row["id"],
@@ -507,6 +546,29 @@ def _row_to_import_job(row: sqlite3.Row) -> ImportJob:
         created_at=row["created_at"],
         updated_at=row["updated_at"],
         remote_bytes_transferred=remote_bytes_transferred,
-        remote_transfer_millis=remote_transfer_millis,
+        remote_transfer_millis=wall_clock_transfer_millis,
+        remote_transfer_started_at_millis=remote_transfer_started_at_millis,
+        remote_transfer_updated_at_millis=remote_transfer_updated_at_millis,
         transfer_speed_bytes_per_second=transfer_speed_bytes_per_second,
     )
+
+
+def _coerce_optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    return int(value)
+
+
+def _calculate_wall_clock_transfer_millis(
+    *,
+    started_at_millis: int | None,
+    updated_at_millis: int | None,
+    fallback_transfer_millis: int,
+) -> int:
+    if started_at_millis is None or updated_at_millis is None:
+        return fallback_transfer_millis
+    return max(updated_at_millis - started_at_millis, 1)
+
+
+def _current_time_millis() -> int:
+    return time_ns() // 1_000_000

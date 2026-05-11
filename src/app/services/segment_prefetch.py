@@ -4,13 +4,13 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Event, Lock, Thread
-from time import perf_counter
+from time import perf_counter, time_ns
 
 from app.core.config import Settings
 from app.models.segments import VideoSegment
 from app.repositories.video_segments import update_video_segment_local_staging_path
 from app.services.manifests import local_segment_path
-from app.services.remote_transfers import TransferResult, measure_transfer, run_bounded_transfers
+from app.services.remote_transfers import TransferResult, run_bounded_transfers
 from app.storage.base import StorageBackend
 from app.storage.factory import build_storage_backend
 
@@ -222,14 +222,23 @@ def cache_remote_segment(
 
     storage = storage_backend or build_storage_backend(settings)
     should_close = storage_backend is None
+    started_at_millis = _current_time_millis()
     started_at = perf_counter()
     try:
         payload = storage.download_bytes(segment.cloud_path)
-    finally:
+    except Exception:
         if should_close:
             close = getattr(storage, "close", None)
             if callable(close):
                 close()
+        raise
+
+    completed_at_millis = _current_time_millis()
+    elapsed_seconds = max(perf_counter() - started_at, 0.0)
+    if should_close:
+        close = getattr(storage, "close", None)
+        if callable(close):
+            close()
 
     segment_path.parent.mkdir(parents=True, exist_ok=True)
     segment_path.write_bytes(payload)
@@ -240,10 +249,12 @@ def cache_remote_segment(
             local_staging_path=str(segment_path),
         )
         segment.local_staging_path = str(segment_path)
-    return measure_transfer(
-        segment,
+    return TransferResult(
+        task=segment,
         byte_count=len(payload),
-        started_at=started_at,
+        elapsed_seconds=elapsed_seconds,
+        started_at_millis=started_at_millis,
+        completed_at_millis=completed_at_millis,
     )
 
 
@@ -255,3 +266,7 @@ def _resolve_segment_cache_path(settings: Settings, segment: VideoSegment) -> Pa
         video_id=segment.video_id,
         segment_index=segment.segment_index,
     )
+
+
+def _current_time_millis() -> int:
+    return time_ns() // 1_000_000

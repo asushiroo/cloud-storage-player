@@ -53,6 +53,8 @@ CREATE TABLE IF NOT EXISTS import_jobs (
     cancel_requested INTEGER NOT NULL DEFAULT 0,
     remote_bytes_transferred INTEGER NOT NULL DEFAULT 0,
     remote_transfer_millis INTEGER NOT NULL DEFAULT 0,
+    remote_transfer_started_at_millis INTEGER,
+    remote_transfer_updated_at_millis INTEGER,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -90,6 +92,8 @@ def initialize_database(settings: Settings) -> None:
         _ensure_column(connection, "import_jobs", "cancel_requested", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(connection, "import_jobs", "remote_bytes_transferred", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(connection, "import_jobs", "remote_transfer_millis", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(connection, "import_jobs", "remote_transfer_started_at_millis", "INTEGER")
+        _ensure_column(connection, "import_jobs", "remote_transfer_updated_at_millis", "INTEGER")
         connection.execute(
             """
             UPDATE import_jobs

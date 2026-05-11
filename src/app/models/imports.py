@@ -22,4 +22,6 @@ class ImportJob:
     requested_tags: list[str] = field(default_factory=list)
     remote_bytes_transferred: int = 0
     remote_transfer_millis: int = 0
+    remote_transfer_started_at_millis: int | None = None
+    remote_transfer_updated_at_millis: int | None = None
     transfer_speed_bytes_per_second: float | None = None

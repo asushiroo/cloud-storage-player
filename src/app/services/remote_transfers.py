@@ -4,7 +4,7 @@ from collections.abc import Callable, Iterable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from threading import Event
-from time import perf_counter
+from time import perf_counter, time_ns
 import time
 from typing import Generic, TypeVar
 
@@ -21,6 +21,8 @@ class TransferResult(Generic[TResult]):
     task: TResult
     byte_count: int
     elapsed_seconds: float
+    started_at_millis: int | None = None
+    completed_at_millis: int | None = None
 
 
 @dataclass(slots=True)
@@ -89,6 +91,8 @@ def run_bounded_transfers(
                         job_id,
                         byte_count=result.byte_count,
                         elapsed_seconds=result.elapsed_seconds,
+                        started_at_millis=result.started_at_millis,
+                        completed_at_millis=result.completed_at_millis,
                     )
                 if on_result is not None:
                     on_result(result, len(results), total_task_count)
@@ -109,10 +113,15 @@ def run_bounded_transfers(
 
 
 def measure_transfer(task: TResult, *, byte_count: int, started_at: float) -> TransferResult[TResult]:
+    completed_at_millis = _current_time_millis()
+    elapsed_seconds = max(perf_counter() - started_at, 0.0)
+    elapsed_millis = max(int(round(elapsed_seconds * 1000)), 0)
     return TransferResult(
         task=task,
         byte_count=max(byte_count, 0),
-        elapsed_seconds=max(perf_counter() - started_at, 0.0),
+        elapsed_seconds=elapsed_seconds,
+        started_at_millis=completed_at_millis - elapsed_millis,
+        completed_at_millis=completed_at_millis,
     )
 
 
@@ -132,3 +141,7 @@ def _wait_for_deferred_retries(
             return
         remaining = deadline - perf_counter()
         time.sleep(min(1.0, max(remaining, 0.0)))
+
+
+def _current_time_millis() -> int:
+    return time_ns() // 1_000_000
