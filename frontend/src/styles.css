@@ -153,7 +153,15 @@ select {
 
 .page-container {
   width: 90vw;
+  max-width: none;
   margin: 0 auto;
+  padding: 1rem 0 2.5rem;
+  overflow-x: clip;
+}
+
+.page-container-library {
+  width: 100%;
+  margin: 0;
   padding: 1rem 0 2.5rem;
 }
 
@@ -305,7 +313,7 @@ h2 {
 
 .video-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
 }
 
@@ -501,6 +509,27 @@ h2 {
   gap: 0.8rem;
 }
 
+.detail-title {
+  cursor: text;
+}
+
+.detail-title-input {
+  width: min(100%, 36rem);
+  padding: 0.35rem 0.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.85rem;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 700;
+  line-height: 1.08;
+}
+
+.detail-title-input:focus {
+  outline: 2px solid rgba(130, 87, 230, 0.55);
+  border-color: transparent;
+}
+
 .player-surface {
   position: relative;
   overflow: hidden;
@@ -528,10 +557,6 @@ h2 {
 }
 
 @media (max-width: 1100px) {
-  .video-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
   .cache-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -576,27 +601,14 @@ h2 {
     width: 90vw;
   }
 
+  .page-container-library {
+    width: 100vw;
+  }
+
   .surface,
   .login-card,
-  .video-card,
-  .banner-surface {
+  .video-card {
     border-radius: 1.5rem;
-  }
-
-  .banner-stage {
-    aspect-ratio: 100 / 34;
-  }
-
-  .banner-poster-card {
-    width: min(70vw, 24rem);
-  }
-
-  .banner-poster-card-left {
-    transform: translate3d(-86%, -50%, -9rem) rotateY(36deg) scale(0.78);
-  }
-
-  .banner-poster-card-right {
-    transform: translate3d(-14%, -50%, -9rem) rotateY(-36deg) scale(0.78);
   }
 }
 
@@ -609,83 +621,285 @@ h2 {
   flex-wrap: wrap;
 }
 
-.banner-surface {
-  position: relative;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  overflow: visible;
-}
-
-.banner-stage-shell {
+.library-page {
   display: grid;
-  place-items: center;
-  perspective: 1600px;
-  overflow: visible;
+  gap: 1.5rem;
   width: 100%;
-  padding: 1rem 0 2rem;
+  overflow-x: clip;
 }
 
-.banner-stage {
+.library-banner-shell,
+.library-content-shell {
+  width: 90vw;
+  margin: 0 auto;
+}
+
+.library-content-shell {
+  display: grid;
+  gap: 1rem;
+}
+
+.banner-carousel {
+  --banner-card-width: min(54vw, 58rem);
+  --banner-card-height: calc(var(--banner-card-width) * 9 / 16);
+  --banner-stage-height: calc(var(--banner-card-height) + clamp(1.5rem, 3vw, 3rem));
+  --banner-center-transform: translate(-50%, -50%) rotateY(0deg) scale(1);
+  --banner-left-transform: translate(-118%, -50%) rotateY(58deg) scale(0.78);
+  --banner-right-transform: translate(18%, -50%) rotateY(-58deg) scale(0.78);
+  --banner-incoming-left-transform: translate(-168%, -50%) rotateY(68deg) scale(0.7);
+  --banner-incoming-right-transform: translate(68%, -50%) rotateY(-68deg) scale(0.7);
+  width: 100%;
+  padding: 0 0 0.75rem;
+  overflow: hidden;
+}
+
+.banner-carousel-shell {
   position: relative;
   width: 100%;
-  aspect-ratio: 100 / 29.25;
-  transform-style: preserve-3d;
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr) 4.5rem;
+  align-items: center;
+  cursor: grab;
+  user-select: none;
+  touch-action: pan-y;
 }
 
-.banner-poster-card {
+.banner-carousel-shell-animating {
+  cursor: grabbing;
+}
+
+.banner-carousel-stage {
+  position: relative;
+  width: 100%;
+  height: var(--banner-stage-height);
+  perspective: 2200px;
+  perspective-origin: center center;
+}
+
+.banner-carousel-card {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 52%;
+  width: var(--banner-card-width);
   aspect-ratio: 16 / 9;
   overflow: hidden;
-  border-radius: 1.5rem;
+  border-radius: 0.35rem;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
   background: #080b14;
-  transition: transform 320ms ease, opacity 320ms ease, box-shadow 320ms ease;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.42);
+  backface-visibility: hidden;
+  transition: transform 460ms cubic-bezier(0.22, 0.61, 0.36, 1), opacity 460ms ease, filter 460ms ease;
+  will-change: transform, opacity, filter;
 }
 
-.banner-poster-card-left {
-  transform: translate3d(-96%, -50%, -12rem) rotateY(40deg) scale(0.82);
-  opacity: 0.58;
-}
-
-.banner-poster-card-center {
-  transform: translate3d(-50%, -50%, 0) scale(1);
+.banner-carousel-card-center {
+  z-index: 3;
   opacity: 1;
+  transform: var(--banner-center-transform);
+  transform-origin: center center;
+}
+
+.banner-carousel-card-left {
+  z-index: 1;
+  opacity: 0.22;
+  filter: brightness(1.08);
+  transform: var(--banner-left-transform);
+  transform-origin: center right;
+}
+
+.banner-carousel-card-right {
+  z-index: 1;
+  opacity: 0.22;
+  filter: brightness(1.08);
+  transform: var(--banner-right-transform);
+  transform-origin: center left;
+}
+
+.banner-carousel-card-incoming-left {
+  z-index: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: var(--banner-incoming-left-transform);
+  transform-origin: center right;
+}
+
+.banner-carousel-card-incoming-right {
+  z-index: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: var(--banner-incoming-right-transform);
+  transform-origin: center left;
+}
+
+.banner-carousel-stage-next .banner-carousel-card-left {
+  z-index: 1;
+  animation: banner-slide-left-out 460ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+.banner-carousel-stage-next .banner-carousel-card-center {
+  z-index: 3;
+  transform-origin: center right;
+  animation: banner-slide-center-to-left 460ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+.banner-carousel-stage-next .banner-carousel-card-right {
+  z-index: 4;
+  animation: banner-slide-right-to-center 460ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+.banner-carousel-stage-next .banner-carousel-card-incoming-right {
   z-index: 2;
+  animation: banner-slide-in-right 460ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
 }
 
-.banner-poster-card-right {
-  transform: translate3d(-4%, -50%, -12rem) rotateY(-40deg) scale(0.82);
-  opacity: 0.58;
+.banner-carousel-stage-prev .banner-carousel-card-right {
+  z-index: 1;
+  animation: banner-slide-right-out 460ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
 }
 
-.banner-poster-card:hover {
-  opacity: 1;
+.banner-carousel-stage-prev .banner-carousel-card-center {
+  z-index: 3;
+  transform-origin: center left;
+  animation: banner-slide-center-to-right 460ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
 }
 
-.banner-poster-image {
+.banner-carousel-stage-prev .banner-carousel-card-left {
+  z-index: 4;
+  animation: banner-slide-left-to-center 460ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+.banner-carousel-stage-prev .banner-carousel-card-incoming-left {
+  z-index: 2;
+  animation: banner-slide-in-left 460ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+@keyframes banner-slide-left-out {
+  from {
+    opacity: 0.22;
+    transform: var(--banner-left-transform);
+  }
+  to {
+    opacity: 0;
+    transform: var(--banner-incoming-left-transform);
+  }
+}
+
+@keyframes banner-slide-center-to-left {
+  from {
+    opacity: 1;
+    transform: var(--banner-center-transform);
+  }
+  to {
+    opacity: 0.22;
+    transform: var(--banner-left-transform);
+  }
+}
+
+@keyframes banner-slide-right-to-center {
+  from {
+    opacity: 0.22;
+    transform: var(--banner-right-transform);
+  }
+  to {
+    opacity: 1;
+    transform: var(--banner-center-transform);
+  }
+}
+
+@keyframes banner-slide-in-right {
+  from {
+    opacity: 0;
+    transform: var(--banner-incoming-right-transform);
+  }
+  to {
+    opacity: 0.22;
+    transform: var(--banner-right-transform);
+  }
+}
+
+@keyframes banner-slide-right-out {
+  from {
+    opacity: 0.22;
+    transform: var(--banner-right-transform);
+  }
+  to {
+    opacity: 0;
+    transform: var(--banner-incoming-right-transform);
+  }
+}
+
+@keyframes banner-slide-center-to-right {
+  from {
+    opacity: 1;
+    transform: var(--banner-center-transform);
+  }
+  to {
+    opacity: 0.22;
+    transform: var(--banner-right-transform);
+  }
+}
+
+@keyframes banner-slide-left-to-center {
+  from {
+    opacity: 0.22;
+    transform: var(--banner-left-transform);
+  }
+  to {
+    opacity: 1;
+    transform: var(--banner-center-transform);
+  }
+}
+
+@keyframes banner-slide-in-left {
+  from {
+    opacity: 0;
+    transform: var(--banner-incoming-left-transform);
+  }
+  to {
+    opacity: 0.22;
+    transform: var(--banner-left-transform);
+  }
+}
+
+.banner-carousel-image {
+  display: block;
   width: 100%;
   height: 100%;
-  display: block;
   object-fit: cover;
 }
 
-.banner-poster-title {
+.banner-carousel-title {
   position: absolute;
-  left: 1.25rem;
-  right: 1.25rem;
-  bottom: 1rem;
-  z-index: 3;
+  left: 1.2rem;
+  right: 1.2rem;
+  bottom: 0.95rem;
+  z-index: 1;
   font-size: clamp(1rem, 2vw, 1.45rem);
   font-weight: 700;
   line-height: 1.25;
   color: white;
-  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.9);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.92);
+}
+
+.banner-carousel-arrow {
+  position: relative;
+  z-index: 4;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 3.2rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 160ms ease, opacity 160ms ease;
+}
+
+.banner-carousel-arrow:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.banner-carousel-arrow:hover {
+  color: white;
 }
 
 .management-grid {
@@ -715,6 +929,11 @@ h2 {
 
 .detail-cover {
   min-width: 0;
+}
+
+.detail-cover-link {
+  display: block;
+  width: 100%;
 }
 
 .editable-tag-panel {
@@ -812,12 +1031,44 @@ h2 {
 }
 
 @media (max-width: 560px) {
+  .banner-carousel {
+    --banner-card-width: min(72vw, 26rem);
+    --banner-left-transform: translate(-102%, -50%) rotateY(46deg) scale(0.74);
+    --banner-right-transform: translate(2%, -50%) rotateY(-46deg) scale(0.74);
+    --banner-incoming-left-transform: translate(-142%, -50%) rotateY(54deg) scale(0.66);
+    --banner-incoming-right-transform: translate(42%, -50%) rotateY(-54deg) scale(0.66);
+  }
+
   .video-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .cache-grid {
     grid-template-columns: 1fr;
+  }
+
+  .detail-layout {
+    gap: 1rem;
+  }
+
+  .action-row > * {
+    flex: 1 1 calc(50% - 0.75rem);
+  }
+
+  .banner-carousel-stage {
+    height: var(--banner-stage-height);
+  }
+
+  .banner-carousel-card {
+    width: var(--banner-card-width);
+  }
+
+  .banner-carousel-shell {
+    grid-template-columns: 2.5rem minmax(0, 1fr) 2.5rem;
+  }
+
+  .banner-carousel-arrow {
+    font-size: 2.4rem;
   }
 }
 

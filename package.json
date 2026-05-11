@@ -1,0 +1,13 @@
+{
+  "private": true,
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "scripts": {
+    "postinstall": "npm install --prefix frontend",
+    "backend": "uv run cloud-storage-player",
+    "frontend": "npm run dev --prefix frontend",
+    "build": "npm run build --prefix frontend",
+    "csp": "concurrently -n server,client -c cyan,magenta \"npm run backend\" \"npm run frontend\""
+  }
+}

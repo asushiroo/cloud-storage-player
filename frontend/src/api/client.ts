@@ -122,6 +122,20 @@ export const updateVideoTags = (videoId: number, tags: string[]): Promise<Video>
     body: JSON.stringify({ tags }),
   });
 
+export const updateVideoMetadata = (payload: {
+  videoId: number;
+  title: string;
+  tags: string[];
+}): Promise<Video> =>
+  request(`/api/videos/${payload.videoId}`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify({
+      title: payload.title,
+      tags: payload.tags,
+    }),
+  });
+
 export const updateVideoArtwork = (payload: {
   videoId: number;
   coverDataUrl?: string;

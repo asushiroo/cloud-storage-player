@@ -22,6 +22,8 @@ export interface Video {
   source_path: string | null;
   created_at: string;
   segment_count: number;
+  cached_size_bytes: number;
+  cached_segment_count: number;
   tags: string[];
 }
 

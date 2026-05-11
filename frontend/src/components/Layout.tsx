@@ -11,6 +11,7 @@ export function Layout({ children }: PropsWithChildren) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [librarySearchInput, setLibrarySearchInput] = useState("");
+  const isLibraryPage = location.pathname === "/";
   const logoutMutation = useMutation({
     mutationFn: logout,
     onSuccess: async () => {
@@ -87,7 +88,7 @@ export function Layout({ children }: PropsWithChildren) {
           )}
         </div>
       </header>
-      <main className="page-container">{children}</main>
+      <main className={isLibraryPage ? "page-container page-container-library" : "page-container"}>{children}</main>
     </div>
   );
 }
