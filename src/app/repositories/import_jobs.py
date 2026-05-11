@@ -23,6 +23,8 @@ JOB_SELECT_SQL = """
            video_id,
            target_video_id,
            cancel_requested,
+           remote_bytes_transferred,
+           remote_transfer_millis,
            created_at,
            updated_at
     FROM import_jobs
@@ -114,6 +116,40 @@ def create_delete_job(
     return _row_to_import_job(row)
 
 
+def create_cache_job(
+    settings: Settings,
+    *,
+    source_path: str,
+    requested_title: str,
+    task_name: str,
+    target_video_id: int,
+) -> ImportJob:
+    with connect_database(settings) as connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO import_jobs (
+                source_path,
+                requested_title,
+                requested_tags_json,
+                job_kind,
+                task_name,
+                status,
+                progress_percent,
+                target_video_id,
+                cancel_requested,
+                remote_bytes_transferred,
+                remote_transfer_millis
+            )
+            VALUES (?, ?, '[]', 'cache', ?, 'queued', 0, ?, 0, 0, 0)
+            """,
+            (source_path, requested_title, task_name, target_video_id),
+        )
+        connection.commit()
+        row = _fetch_job_row(connection, cursor.lastrowid)
+
+    return _row_to_import_job(row)
+
+
 def get_import_job(settings: Settings, job_id: int) -> ImportJob | None:
     with connect_database(settings) as connection:
         row = _fetch_job_row(connection, job_id)
@@ -168,6 +204,33 @@ def mark_import_job_running(settings: Settings, job_id: int) -> ImportJob:
         video_id=None,
         cancel_requested=False,
     )
+
+
+def record_import_job_transfer(
+    settings: Settings,
+    job_id: int,
+    *,
+    byte_count: int,
+    elapsed_seconds: float,
+) -> ImportJob:
+    elapsed_millis = max(int(round(elapsed_seconds * 1000)), 1 if byte_count > 0 else 0)
+    with connect_database(settings) as connection:
+        connection.execute(
+            """
+            UPDATE import_jobs
+            SET remote_bytes_transferred = remote_bytes_transferred + ?,
+                remote_transfer_millis = remote_transfer_millis + ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (max(byte_count, 0), elapsed_millis, job_id),
+        )
+        connection.commit()
+        row = _fetch_job_row(connection, job_id)
+
+    if row is None:
+        raise ImportJobNotFoundError(f"Import job does not exist: {job_id}")
+    return _row_to_import_job(row)
 
 
 def update_import_job_progress(settings: Settings, job_id: int, *, progress_percent: int) -> ImportJob:
@@ -329,6 +392,25 @@ def find_active_delete_job(settings: Settings, *, target_video_id: int) -> Impor
     return _row_to_import_job(row)
 
 
+def find_active_cache_job(settings: Settings, *, target_video_id: int) -> ImportJob | None:
+    with connect_database(settings) as connection:
+        row = connection.execute(
+            f"""
+            {JOB_SELECT_SQL}
+            WHERE job_kind = 'cache'
+              AND target_video_id = ?
+              AND status IN ('queued', 'running', 'cancelling')
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (target_video_id,),
+        ).fetchone()
+
+    if row is None:
+        return None
+    return _row_to_import_job(row)
+
+
 def _update_import_job(
     settings: Settings,
     job_id: int,
@@ -390,6 +472,12 @@ def _resolve_task_name(
 
 
 def _row_to_import_job(row: sqlite3.Row) -> ImportJob:
+    remote_bytes_transferred = int(row["remote_bytes_transferred"] or 0)
+    remote_transfer_millis = int(row["remote_transfer_millis"] or 0)
+    transfer_speed_bytes_per_second = None
+    if remote_bytes_transferred > 0 and remote_transfer_millis > 0:
+        transfer_speed_bytes_per_second = remote_bytes_transferred / (remote_transfer_millis / 1000)
+
     return ImportJob(
         id=row["id"],
         source_path=row["source_path"],
@@ -410,4 +498,7 @@ def _row_to_import_job(row: sqlite3.Row) -> ImportJob:
         cancel_requested=bool(row["cancel_requested"]),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+        remote_bytes_transferred=remote_bytes_transferred,
+        remote_transfer_millis=remote_transfer_millis,
+        transfer_speed_bytes_per_second=transfer_speed_bytes_per_second,
     )

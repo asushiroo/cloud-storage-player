@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { deleteVideo, fetchVideo, updateVideoTags } from "../api/client";
+import { createVideoCacheJob, deleteVideo, fetchVideo, updateVideoTags } from "../api/client";
 import { CoverCard } from "../components/CoverCard";
 import { EditableTagList } from "../components/EditableTagList";
 import { Surface } from "../components/Surface";
@@ -59,6 +59,19 @@ export function VideoDetailPage() {
     },
   });
 
+  const cacheVideoMutation = useMutation({
+    mutationFn: () => createVideoCacheJob(videoId),
+    onSuccess: async (job) => {
+      setFeedback(`已创建任务：${job.task_name}`);
+      setError(null);
+      await queryClient.invalidateQueries({ queryKey: ["imports"] });
+    },
+    onError: (exc: ApiError) => {
+      setError(exc.message);
+      setFeedback(null);
+    },
+  });
+
   if (session.isLoading || (session.data?.authenticated !== true && !session.isError)) {
     return <p className="state-text">正在加载视频详情...</p>;
   }
@@ -101,6 +114,15 @@ export function VideoDetailPage() {
                 <Link className="primary-button link-button" to={`/videos/${video.id}/play`}>
                   播放
                 </Link>
+                <button
+                  aria-label="缓存到本地"
+                  className="secondary-button icon-button"
+                  disabled={cacheVideoMutation.isPending}
+                  onClick={() => cacheVideoMutation.mutate()}
+                  type="button"
+                >
+                  {cacheVideoMutation.isPending ? "缓存中..." : "⬇ 缓存到本地"}
+                </button>
                 <Link className="secondary-button link-button" to="/">
                   返回媒体库
                 </Link>

@@ -10,6 +10,7 @@ from starlette.staticfiles import StaticFiles
 
 from app.api.routes.auth import router as auth_router
 from app.api.routes.auth_api import router as auth_api_router
+from app.api.routes.cache import router as cache_router
 from app.api.routes.imports import router as imports_router
 from app.api.routes.library_api import router as library_api_router
 from app.api.routes.pages import router as pages_router
@@ -51,6 +52,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.mount("/covers", StaticFiles(directory=str(app_settings.covers_dir)), name="covers")
     app.include_router(auth_router)
     app.include_router(auth_api_router)
+    app.include_router(cache_router)
     app.include_router(imports_router)
     app.include_router(library_api_router)
     app.include_router(settings_router)

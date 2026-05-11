@@ -81,6 +81,10 @@ def encrypted_remote_manifest_upload_path(settings: Settings, *, video_id: int) 
     return settings.segment_staging_dir / str(video_id) / "manifest.remote.bin"
 
 
+def local_segment_path(settings: Settings, *, video_id: int, segment_index: int) -> Path:
+    return settings.segment_staging_dir / str(video_id) / "segments" / f"{segment_index:06d}.cspseg"
+
+
 def build_manifest_payload(
     settings: Settings,
     *,

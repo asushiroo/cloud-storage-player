@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from time import perf_counter
 
 from app.core.config import Settings
 from app.core.keys import load_content_key, load_or_create_content_key
@@ -20,6 +21,7 @@ from app.repositories.import_jobs import (
     mark_import_job_completed,
     mark_import_job_failed,
     mark_import_job_running,
+    record_import_job_transfer,
     update_import_job_progress,
 )
 from app.repositories.video_segments import NewVideoSegment, create_video_segments
@@ -32,6 +34,7 @@ from app.services.job_control import JobCancelledError, throw_if_cancel_requeste
 from app.services.manifests import (
     build_remote_manifest_path,
     build_remote_segment_path,
+    local_segment_path,
     write_encrypted_remote_manifest,
     write_local_manifest,
 )
@@ -320,15 +323,14 @@ def _materialize_encrypted_segments(
     job_id: int,
 ) -> list[VideoSegment]:
     content_key = load_or_create_content_key(settings)
-    video_stage_dir = settings.segment_staging_dir / str(video.id)
-    video_segment_dir = video_stage_dir / "segments"
+    video_segment_dir = settings.segment_staging_dir / str(video.id) / "segments"
     video_segment_dir.mkdir(parents=True, exist_ok=True)
 
     segments_to_insert: list[NewVideoSegment] = []
     for chunk in iter_file_chunks(source, segment_size=settings.segment_size_bytes):
         throw_if_cancel_requested(settings, job_id)
         encrypted = encrypt_segment(chunk.payload, content_key)
-        segment_path = video_segment_dir / f"{chunk.index:06d}.cspseg"
+        segment_path = local_segment_path(settings, video_id=video.id, segment_index=chunk.index)
         segment_path.write_bytes(encrypted.ciphertext + encrypted.tag)
         segments_to_insert.append(
             NewVideoSegment(
@@ -399,9 +401,24 @@ def _upload_remote_artifacts(
             raise ValueError("Segment staging path is missing.")
         if not segment.cloud_path:
             raise ValueError("Segment cloud path is missing.")
-        storage.upload_file(Path(segment.local_staging_path), segment.cloud_path)
+        local_path = Path(segment.local_staging_path)
+        started_at = perf_counter()
+        storage.upload_file(local_path, segment.cloud_path)
+        record_import_job_transfer(
+            settings,
+            job_id,
+            byte_count=local_path.stat().st_size,
+            elapsed_seconds=perf_counter() - started_at,
+        )
 
     throw_if_cancel_requested(settings, job_id)
     if not video.manifest_path:
         raise ValueError("Video manifest path is missing.")
+    started_at = perf_counter()
     storage.upload_file(manifest_path, video.manifest_path)
+    record_import_job_transfer(
+        settings,
+        job_id,
+        byte_count=manifest_path.stat().st_size,
+        elapsed_seconds=perf_counter() - started_at,
+    )

@@ -60,6 +60,13 @@
 - 导入 / 删除统一任务栏
   - 导入任务显示任务名而不是纯路径
   - 支持单条取消、全部取消
+- 本地缓存管理
+  - 管理页默认显示本地缓存总大小
+  - 可展开 4 列缓存封面网格，支持单视频清理与一键清理全部缓存
+  - 视频详情页支持手动创建“缓存到本地”后台任务
+- 后台任务网络速度展示
+  - 导入上传任务与手动缓存下载任务会累计统计远端传输字节与平均速度
+  - 管理页任务栏展示当前任务网速与已传输大小
 - 已完成任务与失败/取消任务分开清理
   - 删除视频改为后台删除任务，并出现在同一个任务栏
 - 视频 artwork 管理
@@ -218,6 +225,14 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 - `POST /api/imports/cancel-all`
 - `DELETE /api/imports?status_group=completed|failed`
 - `GET /api/imports`
+
+缓存：
+
+- `GET /api/cache`
+- `GET /api/cache/videos`
+- `DELETE /api/cache`
+- `DELETE /api/cache/videos/{video_id}`
+- `POST /api/videos/{video_id}/cache`
 - `GET /api/imports/{job_id}`
 
 同步：

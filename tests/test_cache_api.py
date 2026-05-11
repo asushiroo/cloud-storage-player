@@ -1,0 +1,126 @@
+import subprocess
+import time
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+
+from app.core.config import Settings
+from app.core.security import hash_password
+from app.main import create_app
+
+
+def build_client(tmp_path: Path, password: str = "shared-secret") -> tuple[TestClient, Settings, str]:
+    settings = Settings(
+        session_secret="test-session-secret-123456",
+        password_hash=hash_password(password),
+        database_path=tmp_path / "cache.db",
+        covers_path=tmp_path / "covers",
+        content_key_path=tmp_path / "keys" / "content.key",
+        segment_staging_path=tmp_path / "segments",
+        mock_storage_path=tmp_path / "mock-remote",
+        segment_size_bytes=512,
+    )
+    return TestClient(create_app(settings)), settings, password
+
+
+def login(client: TestClient, password: str) -> None:
+    response = client.post("/api/auth/login", json={"password": password})
+    assert response.status_code == 200
+
+
+def create_sample_video(output_path: Path) -> Path:
+    command = [
+        "ffmpeg",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=black:s=160x90:d=1",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        str(output_path),
+    ]
+    subprocess.run(command, check=True, capture_output=True, text=True)
+    return output_path
+
+
+def wait_for_job_status(client: TestClient, job_id: int, *, expected_status: str) -> dict:
+    deadline = time.time() + 15
+    while time.time() < deadline:
+        response = client.get(f"/api/imports/{job_id}")
+        assert response.status_code == 200
+        payload = response.json()
+        if payload["status"] == expected_status:
+            return payload
+        time.sleep(0.1)
+    raise AssertionError(f"Timed out waiting for job {job_id} to reach {expected_status}.")
+
+
+def test_cache_summary_lists_and_clears_local_segments(tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    source_path = create_sample_video(tmp_path / "cached.mp4")
+    login(client, password)
+
+    create_response = client.post("/api/imports", json={"source_path": str(source_path)})
+    completed_job = wait_for_job_status(client, create_response.json()["id"], expected_status="completed")
+    video_id = completed_job["video_id"]
+    assert video_id is not None
+    assert (settings.segment_staging_dir / str(video_id)).exists()
+
+    summary_response = client.get("/api/cache")
+    assert summary_response.status_code == 200
+    assert summary_response.json()["video_count"] == 1
+    assert summary_response.json()["total_size_bytes"] > 0
+
+    list_response = client.get("/api/cache/videos")
+    assert list_response.status_code == 200
+    payload = list_response.json()
+    assert len(payload) == 1
+    assert payload[0]["id"] == video_id
+    assert payload[0]["cached_segment_count"] >= 1
+
+    clear_response = client.delete(f"/api/cache/videos/{video_id}")
+    assert clear_response.status_code == 200
+    assert clear_response.json() == {"cleared_video_count": 1}
+    assert not (settings.segment_staging_dir / str(video_id)).exists()
+
+    summary_after_clear = client.get("/api/cache")
+    assert summary_after_clear.status_code == 200
+    assert summary_after_clear.json() == {"total_size_bytes": 0, "video_count": 0}
+
+
+def test_manual_cache_job_restores_local_cache_and_reports_transfer_speed(tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    source_path = create_sample_video(tmp_path / "remote-cache.mp4")
+    login(client, password)
+
+    create_response = client.post("/api/imports", json={"source_path": str(source_path)})
+    completed_import = wait_for_job_status(client, create_response.json()["id"], expected_status="completed")
+    video_id = completed_import["video_id"]
+    assert video_id is not None
+
+    stage_dir = settings.segment_staging_dir / str(video_id)
+    for path in sorted(stage_dir.rglob("*"), reverse=True):
+        if path.is_file():
+            path.unlink()
+        else:
+            path.rmdir()
+    stage_dir.rmdir()
+    assert not stage_dir.exists()
+
+    cache_response = client.post(f"/api/videos/{video_id}/cache")
+    assert cache_response.status_code == 202
+    assert cache_response.json()["job_kind"] == "cache"
+
+    completed_cache = wait_for_job_status(client, cache_response.json()["id"], expected_status="completed")
+    assert completed_cache["video_id"] == video_id
+    assert completed_cache["remote_bytes_transferred"] > 0
+    assert completed_cache["transfer_speed_bytes_per_second"] is not None
+    assert completed_cache["transfer_speed_bytes_per_second"] > 0
+    assert stage_dir.exists()
+
+    cache_summary = client.get("/api/cache")
+    assert cache_summary.status_code == 200
+    assert cache_summary.json()["video_count"] == 1

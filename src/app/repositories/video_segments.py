@@ -96,6 +96,51 @@ def list_video_segments(settings: Settings, *, video_id: int) -> list[VideoSegme
     return [_row_to_video_segment(row) for row in rows]
 
 
+def list_all_video_segments(settings: Settings) -> list[VideoSegment]:
+    with connect_database(settings) as connection:
+        rows = connection.execute(
+            """
+            SELECT id, video_id, segment_index, original_offset, original_length,
+                   ciphertext_size, plaintext_sha256, nonce_b64, tag_b64,
+                   cloud_path, local_staging_path, created_at
+            FROM video_segments
+            ORDER BY video_id, segment_index
+            """
+        ).fetchall()
+
+    return [_row_to_video_segment(row) for row in rows]
+
+
+def update_video_segment_local_staging_path(
+    settings: Settings,
+    segment_id: int,
+    *,
+    local_staging_path: str | None,
+) -> VideoSegment:
+    with connect_database(settings) as connection:
+        connection.execute(
+            """
+            UPDATE video_segments
+            SET local_staging_path = ?
+            WHERE id = ?
+            """,
+            (local_staging_path, segment_id),
+        )
+        connection.commit()
+        row = connection.execute(
+            """
+            SELECT id, video_id, segment_index, original_offset, original_length,
+                   ciphertext_size, plaintext_sha256, nonce_b64, tag_b64,
+                   cloud_path, local_staging_path, created_at
+            FROM video_segments
+            WHERE id = ?
+            """,
+            (segment_id,),
+        ).fetchone()
+
+    return _row_to_video_segment(row)
+
+
 def delete_video_segments(settings: Settings, *, video_id: int) -> None:
     with connect_database(settings) as connection:
         connection.execute(

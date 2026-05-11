@@ -39,6 +39,9 @@ export interface ImportJob {
   video_id: number | null;
   target_video_id: number | null;
   cancel_requested: boolean;
+  remote_bytes_transferred: number;
+  remote_transfer_millis: number;
+  transfer_speed_bytes_per_second: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -72,6 +75,25 @@ export interface PublicSettings {
   storage_backend: "mock" | "baidu" | string;
   baidu_authorize_url: string | null;
   baidu_has_refresh_token: boolean;
+}
+
+export interface CacheSummary {
+  total_size_bytes: number;
+  video_count: number;
+}
+
+export interface CachedVideo {
+  id: number;
+  title: string;
+  poster_path: string | null;
+  cover_path: string | null;
+  cached_size_bytes: number;
+  cached_segment_count: number;
+  total_segment_count: number;
+}
+
+export interface ClearedCacheResult {
+  cleared_video_count: number;
 }
 
 export interface ApiError {

@@ -2,7 +2,10 @@ import type {
   ApiError,
   AuthSession,
   CancelAllImportJobsResult,
+  CacheSummary,
   CatalogSyncResult,
+  CachedVideo,
+  ClearedCacheResult,
   ClearedImportJobsResult,
   Folder,
   ImportFolderResult,
@@ -179,6 +182,25 @@ export const syncRemoteCatalog = (): Promise<CatalogSyncResult> =>
   });
 
 export const fetchSettings = (): Promise<PublicSettings> => request("/api/settings");
+
+export const fetchCacheSummary = (): Promise<CacheSummary> => request("/api/cache");
+
+export const fetchCachedVideos = (): Promise<CachedVideo[]> => request("/api/cache/videos");
+
+export const clearAllCachedVideos = (): Promise<ClearedCacheResult> =>
+  request("/api/cache", {
+    method: "DELETE",
+  });
+
+export const clearCachedVideo = (videoId: number): Promise<ClearedCacheResult> =>
+  request(`/api/cache/videos/${videoId}`, {
+    method: "DELETE",
+  });
+
+export const createVideoCacheJob = (videoId: number): Promise<ImportJob> =>
+  request(`/api/videos/${videoId}/cache`, {
+    method: "POST",
+  });
 
 export const updateSettings = (payload: Partial<PublicSettings>): Promise<PublicSettings> =>
   request("/api/settings", {

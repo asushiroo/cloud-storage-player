@@ -4,9 +4,13 @@ import { Link, useLocation } from "react-router-dom";
 import {
   cancelAllImportJobs,
   cancelImportJob,
+  clearAllCachedVideos,
+  clearCachedVideo,
   clearFinishedImportJobs,
   createFolderImport,
   createImport,
+  fetchCacheSummary,
+  fetchCachedVideos,
   fetchFolders,
   fetchImportJobs,
   syncRemoteCatalog,
@@ -14,14 +18,18 @@ import {
 import { Surface } from "../components/Surface";
 import { TagChip } from "../components/TagChip";
 import { useRequireSession } from "../hooks/session";
-import type { ApiError, ImportJob } from "../types/api";
-import { parseTagInput } from "../utils/format";
+import type { ApiError, CachedVideo, ImportJob } from "../types/api";
+import { buildAssetUrl } from "../api/client";
+import { formatBytes, parseTagInput } from "../utils/format";
 
 const ACTIVE_JOB_STATUSES = new Set(["queued", "running", "cancelling"]);
 
 function describeJob(job: ImportJob) {
   if (job.job_kind === "delete") {
     return `删除任务 · ${job.status} · ${job.progress_percent}%`;
+  }
+  if (job.job_kind === "cache") {
+    return `缓存任务 · ${job.status} · ${job.progress_percent}%`;
   }
   return `导入任务 · ${job.status} · ${job.progress_percent}%`;
 }
@@ -37,6 +45,7 @@ export function ManagementPage() {
   const [tagInput, setTagInput] = useState("");
   const [folderSourcePath, setFolderSourcePath] = useState("");
   const [folderTagInput, setFolderTagInput] = useState("");
+  const [showCachePanel, setShowCachePanel] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,6 +74,16 @@ export function ManagementPage() {
 
   const folders = foldersQuery.data ?? [];
   const importJobs = importsQuery.data ?? [];
+  const cacheSummaryQuery = useQuery({
+    queryKey: ["cache-summary"],
+    queryFn: fetchCacheSummary,
+    enabled: session.data?.authenticated === true,
+  });
+  const cachedVideosQuery = useQuery({
+    queryKey: ["cached-videos"],
+    queryFn: fetchCachedVideos,
+    enabled: session.data?.authenticated === true && showCachePanel,
+  });
 
   const importMutation = useMutation({
     mutationFn: createImport,
@@ -171,6 +190,37 @@ export function ManagementPage() {
     },
   });
 
+  const clearAllCacheMutation = useMutation({
+    mutationFn: clearAllCachedVideos,
+    onSuccess: async (result) => {
+      setFeedback(`已清理 ${result.cleared_video_count} 个视频的本地缓存。`);
+      setError(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["cache-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["cached-videos"] }),
+      ]);
+    },
+    onError: (exc: ApiError) => {
+      setError(exc.message);
+      setFeedback(null);
+    },
+  });
+
+  const clearSingleCacheMutation = useMutation({
+    mutationFn: (videoId: number) => clearCachedVideo(videoId),
+    onSuccess: async () => {
+      setError(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["cache-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["cached-videos"] }),
+      ]);
+    },
+    onError: (exc: ApiError) => {
+      setError(exc.message);
+      setFeedback(null);
+    },
+  });
+
   if (session.isLoading || (session.data?.authenticated !== true && !session.isError)) {
     return <p className="state-text">正在检查登录状态...</p>;
   }
@@ -201,6 +251,65 @@ export function ManagementPage() {
           <p>{feedback}</p>
         </Surface>
       ) : null}
+
+      <Surface>
+        <div className="section-head">
+          <div>
+            <h2>本地缓存</h2>
+            <p className="muted">
+              当前缓存：{formatBytes(cacheSummaryQuery.data?.total_size_bytes ?? 0)} · {cacheSummaryQuery.data?.video_count ?? 0} 个视频
+            </p>
+          </div>
+          <div className="action-row">
+            <button
+              className="secondary-button"
+              onClick={() => setShowCachePanel((value) => !value)}
+              type="button"
+            >
+              {showCachePanel ? "收起缓存列表" : "清理缓存"}
+            </button>
+          </div>
+        </div>
+        {showCachePanel ? (
+          <div className="cache-panel top-gap">
+            <div className="section-head">
+              <p className="muted">仅展示当前后端本地仍保留分片缓存的视频。</p>
+              <button
+                className="secondary-button danger-button"
+                disabled={clearAllCacheMutation.isPending || (cachedVideosQuery.data?.length ?? 0) === 0}
+                onClick={() => {
+                  if (!window.confirm("确认清理全部本地缓存吗？")) {
+                    return;
+                  }
+                  clearAllCacheMutation.mutate();
+                }}
+                type="button"
+              >
+                {clearAllCacheMutation.isPending ? "清理中..." : "清理全部缓存"}
+              </button>
+            </div>
+            {cachedVideosQuery.data && cachedVideosQuery.data.length > 0 ? (
+              <div className="cache-grid">
+                {cachedVideosQuery.data.map((video) => (
+                  <CachedVideoCard
+                    disabled={clearSingleCacheMutation.isPending}
+                    key={video.id}
+                    onClear={() => {
+                      if (!window.confirm(`确认清理《${video.title}》的本地缓存吗？`)) {
+                        return;
+                      }
+                      clearSingleCacheMutation.mutate(video.id);
+                    }}
+                    video={video}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="muted">{cachedVideosQuery.isLoading ? "正在加载缓存列表..." : "当前没有本地缓存。"}</p>
+            )}
+          </div>
+        ) : null}
+      </Surface>
 
       <Surface>
         <h2>导入目录</h2>
@@ -319,6 +428,11 @@ export function ManagementPage() {
                   ) : null}
                 </div>
                 <p className="muted small-text">{job.source_path || "无源路径"}</p>
+                {job.transfer_speed_bytes_per_second ? (
+                  <p className="muted small-text top-gap">
+                    网速：{formatBytes(job.transfer_speed_bytes_per_second)}/s · 已传输 {formatBytes(job.remote_bytes_transferred)}
+                  </p>
+                ) : null}
                 {job.requested_tags.length > 0 ? (
                   <div className="chip-row compact top-gap">
                     {job.requested_tags.map((tag) => (
@@ -342,5 +456,38 @@ export function ManagementPage() {
         )}
       </Surface>
     </div>
+  );
+}
+
+interface CachedVideoCardProps {
+  video: CachedVideo;
+  disabled: boolean;
+  onClear: () => void;
+}
+
+function CachedVideoCard({ video, disabled, onClear }: CachedVideoCardProps) {
+  const artworkUrl = buildAssetUrl(video.poster_path ?? video.cover_path);
+
+  return (
+    <article className="cache-card">
+      <div className="cache-card-cover">
+        {artworkUrl ? <img alt={video.title} className="cover-image" src={artworkUrl} /> : <div className="cover-placeholder">No Cover</div>}
+        <button
+          aria-label={`清理 ${video.title} 缓存`}
+          className="cache-card-delete"
+          disabled={disabled}
+          onClick={onClear}
+          type="button"
+        >
+          ✕
+        </button>
+      </div>
+      <div className="cache-card-meta">
+        <strong>{video.title}</strong>
+        <span className="muted small-text">
+          {formatBytes(video.cached_size_bytes)} · {video.cached_segment_count}/{video.total_segment_count} 分片
+        </span>
+      </div>
+    </article>
   );
 }

@@ -310,7 +310,7 @@ def test_delete_video_removes_catalog_row_and_local_and_mock_remote_artifacts(tm
     delete_job = delete_response.json()
     assert delete_job["job_kind"] == "delete"
     completed_delete_job = wait_for_job_status(client, delete_job["id"], expected_status="completed")
-    assert completed_delete_job["target_video_id"] == video_id
+    assert completed_delete_job["video_id"] is None
     assert client.get(f"/api/videos/{video_id}").status_code == 404
     assert client.get("/api/videos").json() == []
     assert not stage_dir.exists()
@@ -390,13 +390,12 @@ def test_clear_finished_import_jobs_keeps_active_jobs_and_removes_finished_ones(
     response = client.delete("/api/imports")
 
     assert response.status_code == 200
-    assert response.json()["deleted_job_count"] == 2
+    assert response.json()["deleted_job_count"] == 1
 
     list_response = client.get("/api/imports")
     assert list_response.status_code == 200
-    remaining_jobs = list_response.json()
-    assert len(remaining_jobs) == 1
-    assert remaining_jobs[0]["id"] == queued_job.id
+    remaining_jobs = {job["id"] for job in list_response.json()}
+    assert remaining_jobs == {queued_job.id, failed_job.id}
 
 
 def test_cancel_running_import_job_marks_it_cancelled_and_cleans_partial_video(monkeypatch, tmp_path: Path) -> None:

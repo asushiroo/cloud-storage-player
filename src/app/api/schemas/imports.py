@@ -49,5 +49,8 @@ class ImportJobResponse(BaseModel):
     video_id: int | None
     target_video_id: int | None
     cancel_requested: bool
+    remote_bytes_transferred: int
+    remote_transfer_millis: int
+    transfer_speed_bytes_per_second: float | None
     created_at: str
     updated_at: str

@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS import_jobs (
     video_id INTEGER REFERENCES videos(id) ON DELETE SET NULL,
     target_video_id INTEGER REFERENCES videos(id) ON DELETE SET NULL,
     cancel_requested INTEGER NOT NULL DEFAULT 0,
+    remote_bytes_transferred INTEGER NOT NULL DEFAULT 0,
+    remote_transfer_millis INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -80,6 +82,8 @@ def initialize_database(settings: Settings) -> None:
         _ensure_column(connection, "import_jobs", "task_name", "TEXT")
         _ensure_column(connection, "import_jobs", "target_video_id", "INTEGER REFERENCES videos(id) ON DELETE SET NULL")
         _ensure_column(connection, "import_jobs", "cancel_requested", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(connection, "import_jobs", "remote_bytes_transferred", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(connection, "import_jobs", "remote_transfer_millis", "INTEGER NOT NULL DEFAULT 0")
         connection.execute(
             """
             UPDATE import_jobs
