@@ -189,16 +189,16 @@ def test_stream_remote_fallback_caches_downloaded_segments_without_full_exists_s
     download_calls: list[str] = []
 
     class CountingStorage:
-      def download_bytes(self, remote_path: str) -> bytes:
-        download_calls.append(remote_path)
-        return storage.download_bytes(remote_path)
+        def download_bytes(self, remote_path: str) -> bytes:
+            download_calls.append(remote_path)
+            return storage.download_bytes(remote_path)
 
-      def exists(self, remote_path: str) -> bool:
-        exists_calls.append(remote_path)
-        return storage.exists(remote_path)
+        def exists(self, remote_path: str) -> bool:
+            exists_calls.append(remote_path)
+            return storage.exists(remote_path)
 
-      def close(self) -> None:
-        return None
+        def close(self) -> None:
+            return None
 
     monkeypatch.setattr("app.services.streaming.build_storage_backend", lambda _settings: CountingStorage())
     login(client, password)
@@ -217,7 +217,11 @@ def test_stream_remote_fallback_caches_downloaded_segments_without_full_exists_s
     assert Path(first_segment.local_staging_path).exists()
 
 
-def test_stream_returns_404_when_remote_segment_download_fails_before_streaming(monkeypatch, tmp_path: Path) -> None:
+def test_stream_logs_warning_when_baidu_remote_segment_returns_404(
+    monkeypatch,
+    caplog,
+    tmp_path: Path,
+) -> None:
     client, settings, password = build_client(tmp_path)
     source_path = create_sample_video(tmp_path / "missing-remote.mp4")
     job = import_local_video(settings, source_path=str(source_path))
@@ -233,13 +237,18 @@ def test_stream_returns_404_when_remote_segment_download_fails_before_streaming(
     monkeypatch.setattr("app.services.streaming.build_storage_backend", lambda _settings: FailingStorage())
     login(client, password)
 
-    response = client.get(
-        f"/api/videos/{job.video_id}/stream",
-        headers={"Range": "bytes=0-31"},
-    )
+    with caplog.at_level("WARNING", logger="app.services.streaming"):
+        response = client.get(
+            f"/api/videos/{job.video_id}/stream",
+            headers={"Range": "bytes=0-31"},
+        )
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Encrypted segment file is missing."}
+    assert any(
+        "Failed to fetch encrypted segment from Baidu remote storage" in record.message
+        for record in caplog.records
+    )
 
 
 def test_stream_returns_404_when_source_local_and_remote_segments_are_all_missing(tmp_path: Path) -> None:
@@ -259,4 +268,4 @@ def test_stream_returns_404_when_source_local_and_remote_segments_are_all_missin
     response = client.get(f"/api/videos/{job.video_id}/stream")
 
     assert response.status_code == 404
-    assert response.json() == {"detail": "Source file not found."}
+    assert response.json() == {"detail": "Encrypted segment file is missing."}

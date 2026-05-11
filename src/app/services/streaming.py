@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,8 +21,11 @@ from app.services.segment_prefetch import (
     select_prefetch_segments,
     trigger_segment_prefetch,
 )
+from app.storage.baidu_api import BaiduApiError
 from app.storage.base import StorageBackend
 from app.storage.factory import build_storage_backend
+
+logger = logging.getLogger(__name__)
 
 
 class VideoStreamNotFoundError(FileNotFoundError):
@@ -163,24 +167,6 @@ def _prepare_segment_stream(
     if storage_backend is False:
         return None
 
-    if byte_range is not None and storage_backend is not None:
-        try:
-            for segment_read in prepared_reads:
-                _read_segment_payload(
-                    segment_read.segment,
-                    settings=settings,
-                    storage_backend=storage_backend,
-                )
-        except Exception:
-            close = getattr(storage_backend, "close", None)
-            if callable(close):
-                close()
-            raise
-        close = getattr(storage_backend, "close", None)
-        if callable(close):
-            close()
-        storage_backend = None
-
     first_segment = prepared_reads[0].segment
     if not _local_segment_exists(first_segment):
         if not first_segment.cloud_path:
@@ -188,10 +174,14 @@ def _prepare_segment_stream(
         if storage_backend is None:
             return None
         try:
-            if not storage_backend.exists(first_segment.cloud_path):
-                return None
-        except (FileNotFoundError, NotImplementedError, RuntimeError, ValueError):
-            return None
+            _read_segment_payload(
+                first_segment,
+                settings=settings,
+                storage_backend=storage_backend,
+                required=True,
+            )
+        except (FileNotFoundError, NotImplementedError, RuntimeError, ValueError) as exc:
+            raise VideoStreamNotFoundError("Encrypted segment file is missing.") from exc
 
     return VideoStreamPayload(
         mime_type=mime_type,
@@ -269,6 +259,8 @@ def iter_segment_slice(
         settings=settings,
         storage_backend=storage_backend,
     )
+    if payload is None:
+        return
     if len(payload) < TAG_SIZE_BYTES:
         raise VideoStreamNotFoundError("Encrypted segment file is incomplete.")
 
@@ -287,7 +279,8 @@ def _read_segment_payload(
     *,
     settings: Settings | None,
     storage_backend: StorageBackend | None,
-) -> bytes:
+    required: bool = False,
+) -> bytes | None:
     if segment.local_staging_path:
         segment_path = Path(segment.local_staging_path)
         if segment_path.exists() and segment_path.is_file():
@@ -295,11 +288,15 @@ def _read_segment_payload(
 
     if storage_backend is not None and segment.cloud_path and settings is not None:
         try:
-            return cache_remote_segment(
-                settings,
-                segment,
-                storage_backend=storage_backend,
+            return cache_remote_segment(settings, segment, storage_backend=storage_backend)
+        except BaiduApiError as exc:
+            logger.warning(
+                "Failed to fetch encrypted segment from Baidu remote storage: %s",
+                exc,
             )
+            if required:
+                raise VideoStreamNotFoundError("Encrypted segment file is missing.") from exc
+            return None
         except (FileNotFoundError, NotImplementedError, RuntimeError, ValueError) as exc:
             raise VideoStreamNotFoundError("Encrypted segment file is missing.") from exc
 
