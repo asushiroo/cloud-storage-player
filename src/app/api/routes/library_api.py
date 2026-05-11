@@ -9,14 +9,20 @@ from app.api.schemas.library import (
     CatalogSyncResponse,
     FolderResponse,
     VideoArtworkUpdateRequest,
+    VideoMetadataUpdateRequest,
     VideoResponse,
     VideoTagsUpdateRequest,
 )
 from app.core.tags import normalize_tags
 from app.repositories.folders import list_folders
-from app.repositories.videos import get_video, list_videos, update_video_tags
+from app.repositories.videos import get_video, list_videos
 from app.services.baidu_oauth import BaiduOAuthConfigurationError
+from app.services.cache import get_video_cache_status
 from app.services.catalog_sync import sync_remote_catalog
+from app.services.video_metadata import (
+    VideoMetadataValidationError,
+    update_video_metadata_and_rewrite_manifest,
+)
 from app.services.video_artwork import (
     VideoArtworkNotFoundError,
     VideoArtworkValidationError,
@@ -63,6 +69,10 @@ async def get_video_detail(
     if video is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found.")
 
+    cache_status = get_video_cache_status(settings, video_id=video.id)
+    video.cached_size_bytes = cache_status.cached_size_bytes
+    video.cached_segment_count = cache_status.cached_segment_count
+
     return VideoResponse.model_validate(video)
 
 
@@ -78,11 +88,37 @@ async def patch_video_tags(
     if video is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found.")
 
-    updated_video = update_video_tags(
-        settings,
-        video_id,
-        tags=normalize_tags(payload.tags),
-    )
+    try:
+        updated_video = update_video_metadata_and_rewrite_manifest(
+            settings,
+            video_id,
+            title=video.title,
+            tags=normalize_tags(payload.tags),
+        )
+    except VideoMetadataValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return VideoResponse.model_validate(updated_video)
+
+
+@router.patch("/videos/{video_id}", response_model=VideoResponse)
+async def patch_video_metadata(
+    video_id: int,
+    payload: VideoMetadataUpdateRequest,
+    request: Request,
+    _: None = Depends(require_authenticated),
+) -> VideoResponse:
+    settings = request.app.state.settings
+    try:
+        updated_video = update_video_metadata_and_rewrite_manifest(
+            settings,
+            video_id,
+            title=payload.title,
+            tags=normalize_tags(payload.tags),
+        )
+    except VideoMetadataValidationError as exc:
+        detail = str(exc)
+        status_code = status.HTTP_404_NOT_FOUND if detail.startswith("Video not found:") else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=detail) from exc
     return VideoResponse.model_validate(updated_video)
 
 

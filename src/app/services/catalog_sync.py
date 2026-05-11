@@ -61,6 +61,7 @@ class ManifestPayload(BaseModel):
     title: str = Field(min_length=1)
     tags: list[str] = Field(default_factory=list)
     source: ManifestSourcePayload
+    content_fingerprint: str | None = None
     original_size: int = Field(ge=0)
     mime_type: str = Field(min_length=1)
     segment_count: int = Field(ge=0)
@@ -101,6 +102,7 @@ def sync_remote_catalog(settings: Settings) -> CatalogSyncResult:
                     manifest_path=manifest_path,
                     source_path=manifest.source.path,
                     tags=manifest.tags,
+                    content_fingerprint=manifest.content_fingerprint,
                 )
                 result.created_video_count += 1
             else:
@@ -114,6 +116,7 @@ def sync_remote_catalog(settings: Settings) -> CatalogSyncResult:
                     manifest_path=manifest_path,
                     source_path=manifest.source.path,
                     tags=manifest.tags,
+                    content_fingerprint=manifest.content_fingerprint,
                 )
                 delete_video_segments(settings, video_id=video.id)
                 result.updated_video_count += 1

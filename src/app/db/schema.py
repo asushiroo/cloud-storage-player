@@ -25,6 +25,9 @@ CREATE TABLE IF NOT EXISTS videos (
     manifest_path TEXT,
     source_path TEXT,
     tags_json TEXT NOT NULL DEFAULT '[]',
+    content_fingerprint TEXT,
+    manifest_sync_dirty INTEGER NOT NULL DEFAULT 0,
+    manifest_sync_requested_at TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -77,6 +80,9 @@ def initialize_database(settings: Settings) -> None:
         _ensure_column(connection, "videos", "source_path", "TEXT")
         _ensure_column(connection, "videos", "tags_json", "TEXT NOT NULL DEFAULT '[]'")
         _ensure_column(connection, "videos", "poster_path", "TEXT")
+        _ensure_column(connection, "videos", "content_fingerprint", "TEXT")
+        _ensure_column(connection, "videos", "manifest_sync_dirty", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(connection, "videos", "manifest_sync_requested_at", "TEXT")
         _ensure_column(connection, "import_jobs", "requested_tags_json", "TEXT NOT NULL DEFAULT '[]'")
         _ensure_column(connection, "import_jobs", "job_kind", "TEXT NOT NULL DEFAULT 'import'")
         _ensure_column(connection, "import_jobs", "task_name", "TEXT")

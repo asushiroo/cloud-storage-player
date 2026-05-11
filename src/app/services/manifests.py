@@ -101,6 +101,7 @@ def build_manifest_payload(
             "mime_type": video.mime_type,
             "duration_seconds": video.duration_seconds,
         },
+        "content_fingerprint": video.content_fingerprint,
         "segment_size_bytes": settings.segment_size_bytes,
         "segment_count": len(segments),
         "original_size": video.size,

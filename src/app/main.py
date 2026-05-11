@@ -19,6 +19,7 @@ from app.api.routes.stream import router as stream_router
 from app.core.config import Settings, get_settings
 from app.db.schema import initialize_database
 from app.services.import_worker import ImportWorker
+from app.services.manifest_sync_scheduler import ManifestSyncScheduler
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -28,14 +29,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        app.state.import_worker.ensure_started()
+        app.state.manifest_sync_scheduler.start()
         try:
             yield
         finally:
             app.state.import_worker.stop()
+            app.state.manifest_sync_scheduler.stop()
 
     app = FastAPI(title=app_settings.app_name, lifespan=lifespan)
     app.state.settings = app_settings
     app.state.import_worker = ImportWorker(app_settings)
+    app.state.manifest_sync_scheduler = ManifestSyncScheduler(app_settings)
     app.add_middleware(
         SessionMiddleware,
         secret_key=app_settings.session_secret,

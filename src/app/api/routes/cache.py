@@ -6,6 +6,7 @@ from app.api.dependencies import require_authenticated
 from app.api.schemas.cache import CacheSummaryResponse, CachedVideoResponse, ClearedCacheResponse
 from app.api.schemas.imports import ImportJobResponse
 from app.services.cache import (
+    VideoAlreadyCachedError,
     VideoCacheNotFoundError,
     clear_all_cache,
     clear_video_cache,
@@ -73,4 +74,6 @@ async def create_video_cache_job(
         )
     except VideoCacheNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found.") from exc
+    except VideoAlreadyCachedError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Video is already fully cached.") from exc
     return ImportJobResponse.model_validate(job)

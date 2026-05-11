@@ -33,6 +33,10 @@ class VideoCacheNotFoundError(RuntimeError):
     """Raised when the target video does not exist."""
 
 
+class VideoAlreadyCachedError(RuntimeError):
+    """Raised when the target video is already fully cached."""
+
+
 @dataclass(slots=True)
 class CacheSummary:
     total_size_bytes: int
@@ -48,6 +52,17 @@ class CachedVideo:
     cached_size_bytes: int
     cached_segment_count: int
     total_segment_count: int
+
+
+@dataclass(slots=True)
+class VideoCacheStatus:
+    cached_size_bytes: int
+    cached_segment_count: int
+    total_segment_count: int
+
+    @property
+    def is_fully_cached(self) -> bool:
+        return self.total_segment_count > 0 and self.cached_segment_count >= self.total_segment_count
 
 
 def get_cache_summary(settings: Settings) -> CacheSummary:
@@ -70,21 +85,8 @@ def list_cached_videos(settings: Settings) -> list[CachedVideo]:
         if video is None:
             continue
 
-        cached_size_bytes = 0
-        cached_segment_count = 0
-        for segment in segments:
-            segment_path = _resolve_local_segment_path(
-                settings,
-                segment.video_id,
-                segment.segment_index,
-                segment.local_staging_path,
-            )
-            if not segment_path.exists() or not segment_path.is_file():
-                continue
-            cached_segment_count += 1
-            cached_size_bytes += segment_path.stat().st_size
-
-        if cached_segment_count == 0:
+        cache_status = _build_video_cache_status(settings, segments=segments)
+        if cache_status.cached_segment_count == 0:
             continue
 
         cached_videos.append(
@@ -93,14 +95,21 @@ def list_cached_videos(settings: Settings) -> list[CachedVideo]:
                 title=video.title,
                 poster_path=video.poster_path,
                 cover_path=video.cover_path,
-                cached_size_bytes=cached_size_bytes,
-                cached_segment_count=cached_segment_count,
-                total_segment_count=len(segments),
+                cached_size_bytes=cache_status.cached_size_bytes,
+                cached_segment_count=cache_status.cached_segment_count,
+                total_segment_count=cache_status.total_segment_count,
             )
         )
 
     cached_videos.sort(key=lambda item: (item.title.casefold(), item.id))
     return cached_videos
+
+
+def get_video_cache_status(settings: Settings, *, video_id: int) -> VideoCacheStatus:
+    return _build_video_cache_status(
+        settings,
+        segments=list_video_segments(settings, video_id=video_id),
+    )
 
 
 def clear_video_cache(settings: Settings, *, video_id: int) -> None:
@@ -125,6 +134,10 @@ def queue_video_cache_job(settings: Settings, *, video_id: int, worker: "ImportW
     existing_job = find_active_cache_job(settings, target_video_id=video_id)
     if existing_job is not None:
         return existing_job
+
+    cache_status = get_video_cache_status(settings, video_id=video_id)
+    if cache_status.is_fully_cached:
+        raise VideoAlreadyCachedError(f"Video already fully cached: {video_id}")
 
     job = create_cache_job(
         settings,
@@ -215,6 +228,28 @@ def _resolve_local_segment_path(
     if local_staging_path:
         return Path(local_staging_path)
     return local_segment_path(settings, video_id=video_id, segment_index=segment_index)
+
+
+def _build_video_cache_status(settings: Settings, *, segments: list) -> VideoCacheStatus:
+    cached_size_bytes = 0
+    cached_segment_count = 0
+    for segment in segments:
+        segment_path = _resolve_local_segment_path(
+            settings,
+            segment.video_id,
+            segment.segment_index,
+            segment.local_staging_path,
+        )
+        if not segment_path.exists() or not segment_path.is_file():
+            continue
+        cached_segment_count += 1
+        cached_size_bytes += segment_path.stat().st_size
+
+    return VideoCacheStatus(
+        cached_size_bytes=cached_size_bytes,
+        cached_segment_count=cached_segment_count,
+        total_segment_count=len(segments),
+    )
 
 
 def _cache_progress(current_index: int, total_segments: int) -> int:

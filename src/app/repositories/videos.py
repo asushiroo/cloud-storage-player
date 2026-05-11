@@ -19,6 +19,9 @@ VIDEO_SELECT_SQL = """
            videos.manifest_path,
            videos.source_path,
            videos.tags_json,
+           videos.content_fingerprint,
+           videos.manifest_sync_dirty,
+           videos.manifest_sync_requested_at,
            videos.created_at,
            COUNT(video_segments.id) AS segment_count
     FROM videos
@@ -78,6 +81,7 @@ def create_video(
     duration_seconds: float | None = None,
     manifest_path: str | None = None,
     source_path: str | None = None,
+    content_fingerprint: str | None = None,
 ) -> Video:
     with connect_database(settings) as connection:
         cursor = connection.execute(
@@ -92,9 +96,10 @@ def create_video(
                 duration_seconds,
                 manifest_path,
                 source_path,
-                tags_json
+                tags_json,
+                content_fingerprint
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 folder_id,
@@ -107,6 +112,7 @@ def create_video(
                 manifest_path,
                 source_path,
                 encode_tags(tags),
+                content_fingerprint,
             ),
         )
         connection.commit()
@@ -229,6 +235,7 @@ def update_video_sync_metadata(
     manifest_path: str,
     source_path: str | None,
     tags: list[str] | None,
+    content_fingerprint: str | None = None,
 ) -> Video:
     with connect_database(settings) as connection:
         connection.execute(
@@ -240,7 +247,9 @@ def update_video_sync_metadata(
                 duration_seconds = ?,
                 manifest_path = ?,
                 source_path = ?,
-                tags_json = ?
+                tags_json = ?,
+                content_fingerprint = ?,
+                manifest_sync_dirty = 0
             WHERE id = ?
             """,
             (
@@ -251,6 +260,7 @@ def update_video_sync_metadata(
                 manifest_path,
                 source_path,
                 encode_tags(tags),
+                content_fingerprint,
                 video_id,
             ),
         )
@@ -294,6 +304,125 @@ def update_video_tags(
     return _row_to_video(row)
 
 
+def update_video_fields(
+    settings: Settings,
+    video_id: int,
+    *,
+    title: str,
+    tags: list[str] | None,
+    content_fingerprint: str | None | _UnchangedValue = _UNCHANGED,
+) -> Video:
+    assignments = [
+        "title = ?",
+        "tags_json = ?",
+    ]
+    parameters: list[object] = [title, encode_tags(tags)]
+    if not isinstance(content_fingerprint, _UnchangedValue):
+        assignments.append("content_fingerprint = ?")
+        parameters.append(content_fingerprint)
+
+    with connect_database(settings) as connection:
+        connection.execute(
+            f"""
+            UPDATE videos
+            SET {", ".join(assignments)}
+            WHERE id = ?
+            """,
+            (*parameters, video_id),
+        )
+        connection.commit()
+        row = _fetch_video_row(connection, video_id)
+
+    return _row_to_video(row)
+
+
+def update_video_metadata(
+    settings: Settings,
+    video_id: int,
+    *,
+    title: str,
+    tags: list[str] | None,
+) -> Video:
+    with connect_database(settings) as connection:
+        connection.execute(
+            """
+            UPDATE videos
+            SET title = ?,
+                tags_json = ?,
+                manifest_sync_dirty = 1,
+                manifest_sync_requested_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (title, encode_tags(tags), video_id),
+        )
+        connection.commit()
+        row = _fetch_video_row(connection, video_id)
+
+    return _row_to_video(row)
+
+
+def mark_video_manifest_sync_clean(settings: Settings, video_id: int) -> Video:
+    with connect_database(settings) as connection:
+        connection.execute(
+            """
+            UPDATE videos
+            SET manifest_sync_dirty = 0
+            WHERE id = ?
+            """,
+            (video_id,),
+        )
+        connection.commit()
+        row = _fetch_video_row(connection, video_id)
+
+    return _row_to_video(row)
+
+
+def list_dirty_manifest_videos(settings: Settings) -> list[Video]:
+    with connect_database(settings) as connection:
+        rows = connection.execute(
+            f"""
+            {VIDEO_SELECT_SQL}
+            WHERE videos.manifest_sync_dirty = 1
+            GROUP BY videos.id
+            ORDER BY videos.id
+            """
+        ).fetchall()
+
+    return [_row_to_video(row) for row in rows]
+
+
+def get_video_by_title(settings: Settings, title: str) -> Video | None:
+    with connect_database(settings) as connection:
+        row = connection.execute(
+            f"""
+            {VIDEO_SELECT_SQL}
+            WHERE videos.title = ?
+            GROUP BY videos.id
+            """,
+            (title,),
+        ).fetchone()
+
+    if row is None:
+        return None
+    return _row_to_video(row)
+
+
+def get_video_by_content_fingerprint(settings: Settings, content_fingerprint: str) -> Video | None:
+    with connect_database(settings) as connection:
+        row = connection.execute(
+            f"""
+            {VIDEO_SELECT_SQL}
+            WHERE videos.content_fingerprint = ?
+            GROUP BY videos.id
+            """,
+            (content_fingerprint,),
+        ).fetchone()
+
+    if row is None:
+        return None
+    return _row_to_video(row)
+
+
 def _fetch_video_row(connection: sqlite3.Connection, video_id: int) -> sqlite3.Row | None:
     return connection.execute(
         f"""
@@ -320,6 +449,9 @@ def _row_to_video(row: sqlite3.Row) -> Video:
         created_at=row["created_at"],
         segment_count=row["segment_count"],
         tags=decode_tags(row["tags_json"]),
+        content_fingerprint=row["content_fingerprint"],
+        manifest_sync_dirty=bool(row["manifest_sync_dirty"]),
+        manifest_sync_requested_at=row["manifest_sync_requested_at"],
     )
 
 

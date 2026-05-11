@@ -7,6 +7,8 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings
 from app.core.security import hash_password
 from app.main import create_app
+from app.repositories.video_segments import NewVideoSegment, create_video_segments
+from app.repositories.videos import create_video
 
 
 def build_client(tmp_path: Path, password: str = "shared-secret") -> tuple[TestClient, Settings, str]:
@@ -130,3 +132,54 @@ def test_manual_cache_job_restores_local_cache_and_reports_transfer_speed(tmp_pa
     cache_summary = client.get("/api/cache")
     assert cache_summary.status_code == 200
     assert cache_summary.json()["video_count"] == 1
+
+
+def test_video_detail_includes_cache_status_and_cache_endpoint_rejects_fully_cached_video(tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    login(client, password)
+
+    video = create_video(
+        settings,
+        title="Cached Detail",
+        mime_type="video/mp4",
+        size=1024,
+        manifest_path="/apps/CloudStoragePlayer/mock/manifest.bin",
+        source_path=str(tmp_path / "cached-detail.mp4"),
+    )
+    segment_paths = [
+        settings.segment_staging_dir / str(video.id) / "segments" / "0.cspseg",
+        settings.segment_staging_dir / str(video.id) / "segments" / "1.cspseg",
+    ]
+    for index, segment_path in enumerate(segment_paths):
+        segment_path.parent.mkdir(parents=True, exist_ok=True)
+        segment_path.write_bytes(f"segment-{index}".encode("utf-8"))
+
+    create_video_segments(
+        settings,
+        video_id=video.id,
+        segments=[
+            NewVideoSegment(
+                segment_index=index,
+                original_offset=index * 100,
+                original_length=100,
+                ciphertext_size=segment_path.stat().st_size,
+                plaintext_sha256=f"sha-{index}",
+                nonce_b64=f"nonce-{index}",
+                tag_b64=f"tag-{index}",
+                cloud_path=f"/apps/CloudStoragePlayer/mock/{video.id}/{index}.bin",
+                local_staging_path=str(segment_path),
+            )
+            for index, segment_path in enumerate(segment_paths)
+        ],
+    )
+
+    detail_response = client.get(f"/api/videos/{video.id}")
+    assert detail_response.status_code == 200
+    detail_payload = detail_response.json()
+    assert detail_payload["segment_count"] == 2
+    assert detail_payload["cached_segment_count"] == detail_payload["segment_count"]
+    assert detail_payload["cached_size_bytes"] > 0
+
+    cache_response = client.post(f"/api/videos/{video.id}/cache")
+    assert cache_response.status_code == 409
+    assert cache_response.json() == {"detail": "Video is already fully cached."}

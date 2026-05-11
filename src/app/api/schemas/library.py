@@ -27,10 +27,20 @@ class VideoResponse(BaseModel):
     source_path: str | None
     created_at: str
     segment_count: int = 0
+    cached_size_bytes: int = 0
+    cached_segment_count: int = 0
     tags: list[str] = Field(default_factory=list)
+    content_fingerprint: str | None = None
+    manifest_sync_dirty: bool = False
+    manifest_sync_requested_at: str | None = None
 
 
 class VideoTagsUpdateRequest(BaseModel):
+    tags: list[str] = Field(default_factory=list)
+
+
+class VideoMetadataUpdateRequest(BaseModel):
+    title: str = Field(min_length=1)
     tags: list[str] = Field(default_factory=list)
 
 

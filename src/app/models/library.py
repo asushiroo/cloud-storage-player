@@ -26,3 +26,8 @@ class Video:
     created_at: str
     segment_count: int = 0
     tags: list[str] = field(default_factory=list)
+    content_fingerprint: str | None = None
+    manifest_sync_dirty: bool = False
+    manifest_sync_requested_at: str | None = None
+    cached_size_bytes: int = 0
+    cached_segment_count: int = 0

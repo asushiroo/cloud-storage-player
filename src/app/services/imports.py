@@ -27,7 +27,9 @@ from app.repositories.import_jobs import (
 from app.repositories.video_segments import NewVideoSegment, create_video_segments
 from app.repositories.videos import (
     create_video,
+    get_video_by_content_fingerprint,
     update_video_artwork_paths,
+    update_video_fields,
     update_video_manifest_path,
 )
 from app.services.job_control import JobCancelledError, throw_if_cancel_requested
@@ -38,6 +40,7 @@ from app.services.manifests import (
     write_encrypted_remote_manifest,
     write_local_manifest,
 )
+from app.services.video_fingerprint import build_video_content_fingerprint
 from app.services.video_delete import delete_library_video
 from app.storage.factory import build_storage_backend
 
@@ -183,6 +186,17 @@ def process_import_job(settings: Settings, job_id: int) -> ImportJob:
         throw_if_cancel_requested(settings, job.id)
         update_import_job_progress(settings, job.id, progress_percent=40)
         segments = _materialize_encrypted_segments(settings, source=source, video=video, job_id=job.id)
+        content_fingerprint = build_video_content_fingerprint(segments, size=metadata.size)
+        duplicate_video = get_video_by_content_fingerprint(settings, content_fingerprint)
+        if duplicate_video is not None and duplicate_video.id != video.id:
+            raise ImportValidationError(f"Duplicate video content already exists: {duplicate_video.title}")
+        video = update_video_fields(
+            settings,
+            video.id,
+            title=video.title,
+            tags=video.tags,
+            content_fingerprint=content_fingerprint,
+        )
         throw_if_cancel_requested(settings, job.id)
         update_import_job_progress(settings, job.id, progress_percent=70)
         video, remote_manifest_upload_path = _write_manifest(settings, video=video, segments=segments)
@@ -292,6 +306,7 @@ def _create_video_from_probe(
         manifest_path=None,
         source_path=source_path,
         tags=tags,
+        content_fingerprint=None,
     )
 
 
