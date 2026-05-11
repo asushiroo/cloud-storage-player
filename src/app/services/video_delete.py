@@ -11,14 +11,13 @@ from app.repositories.import_jobs import (
     create_delete_job,
     find_active_delete_job,
     get_import_job,
-    mark_import_job_cancelled,
     mark_import_job_completed,
     mark_import_job_failed,
     mark_import_job_running,
+    update_import_job_progress,
 )
 from app.repositories.video_segments import list_video_segments
 from app.repositories.videos import delete_video, get_video
-from app.services.job_control import JobCancelledError, throw_if_cancel_requested
 from app.storage.factory import build_storage_backend
 
 
@@ -57,12 +56,8 @@ def process_delete_job(settings: Settings, job_id: int) -> ImportJob:
         return mark_import_job_failed(settings, job_id, error_message="Delete job is missing target_video_id.")
 
     try:
-        throw_if_cancel_requested(settings, job_id)
         mark_import_job_running(settings, job_id)
-        throw_if_cancel_requested(settings, job_id)
-        delete_library_video(settings, job.target_video_id)
-    except JobCancelledError as exc:
-        return mark_import_job_cancelled(settings, job_id, error_message=str(exc))
+        delete_library_video(settings, job.target_video_id, job_id=job_id)
     except VideoDeleteNotFoundError as exc:
         return mark_import_job_failed(settings, job_id, error_message=str(exc))
     except Exception as exc:
@@ -71,7 +66,7 @@ def process_delete_job(settings: Settings, job_id: int) -> ImportJob:
     return mark_import_job_completed(settings, job_id)
 
 
-def delete_library_video(settings: Settings, video_id: int) -> None:
+def delete_library_video(settings: Settings, video_id: int, *, job_id: int | None = None) -> None:
     video = get_video(settings, video_id)
     if video is None:
         raise VideoDeleteNotFoundError(f"Video not found: {video_id}")
@@ -79,7 +74,10 @@ def delete_library_video(settings: Settings, video_id: int) -> None:
     remote_paths = _collect_remote_paths(settings, video)
     remote_directories = _collect_remote_directories(remote_paths)
     _delete_remote_paths_best_effort(settings, remote_paths, remote_directories)
+    _update_delete_job_progress(settings, job_id, progress_percent=40)
     _delete_local_artifacts(settings, video)
+    _update_delete_job_progress(settings, job_id, progress_percent=70)
+    _update_delete_job_progress(settings, job_id, progress_percent=90)
     delete_video(settings, video_id)
 
 
@@ -150,3 +148,9 @@ def _resolve_artwork_files(settings: Settings, video: Video) -> list[Path]:
         seen_names.add(file_name)
         resolved.append(settings.covers_dir / file_name)
     return resolved
+
+
+def _update_delete_job_progress(settings: Settings, job_id: int | None, *, progress_percent: int) -> None:
+    if job_id is None:
+        return
+    update_import_job_progress(settings, job_id, progress_percent=progress_percent)

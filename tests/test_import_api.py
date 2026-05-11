@@ -346,6 +346,26 @@ def test_delete_video_still_cleans_local_catalog_after_switching_active_backend(
     assert client.get("/api/videos").json() == []
 
 
+def test_delete_job_cancel_endpoint_rejects_cancel_request(tmp_path: Path) -> None:
+    client, _, password = build_client(tmp_path)
+    source_path = create_sample_video(tmp_path / "delete-cancel-demo.mp4")
+    login(client, password)
+
+    create_response = client.post("/api/imports", json={"source_path": str(source_path)})
+    job_id = create_response.json()["id"]
+    completed_payload = wait_for_job_status(client, job_id, expected_status="completed")
+    video_id = completed_payload["video_id"]
+    assert video_id is not None
+
+    delete_response = client.delete(f"/api/videos/{video_id}")
+    assert delete_response.status_code == 202
+    delete_job = delete_response.json()
+
+    cancel_response = client.post(f"/api/imports/{delete_job['id']}/cancel")
+    assert cancel_response.status_code == 409
+    assert "cannot be cancelled" in cancel_response.json()["detail"]
+
+
 def test_folder_import_creates_one_job_per_video_file_recursively(tmp_path: Path) -> None:
     client, _, password = build_client(tmp_path)
     source_dir = tmp_path / "batch-folder"

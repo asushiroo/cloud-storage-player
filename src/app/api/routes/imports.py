@@ -14,6 +14,7 @@ from app.api.schemas.imports import (
     ImportRequest,
 )
 from app.repositories.import_jobs import (
+    ImportJobCancellationNotAllowedError,
     delete_completed_import_jobs,
     delete_failed_import_jobs,
     get_import_job,
@@ -86,7 +87,10 @@ async def cancel_import_job(
     _: None = Depends(require_authenticated),
 ) -> ImportJobResponse:
     settings = request.app.state.settings
-    job = request_cancel_job(settings, job_id)
+    try:
+        job = request_cancel_job(settings, job_id)
+    except ImportJobCancellationNotAllowedError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import job not found.")
     return ImportJobResponse.model_validate(job)

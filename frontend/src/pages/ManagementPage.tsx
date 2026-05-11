@@ -24,6 +24,10 @@ import { formatBytes, parseTagInput } from "../utils/format";
 
 const ACTIVE_JOB_STATUSES = new Set(["queued", "running", "cancelling"]);
 
+function canCancelJob(job: ImportJob) {
+  return job.job_kind !== "delete" && ACTIVE_JOB_STATUSES.has(job.status);
+}
+
 function describeJob(job: ImportJob) {
   if (job.job_kind === "delete") {
     return `删除任务 · ${job.status} · ${job.progress_percent}%`;
@@ -381,11 +385,11 @@ export function ManagementPage() {
         <div className="section-head">
           <div>
             <h2>任务栏</h2>
-            <p className="muted">导入和删除都会显示在这里；运行中的任务支持单条取消，也支持一键全部取消。</p>
+            <p className="muted">导入、缓存和删除任务都会显示在这里；只有导入和缓存任务支持取消。</p>
           </div>
           <div className="action-row">
             <button className="secondary-button danger-button" disabled={cancelAllMutation.isPending} onClick={() => cancelAllMutation.mutate()} type="button">
-              {cancelAllMutation.isPending ? "请求中..." : "取消全部活动任务"}
+              {cancelAllMutation.isPending ? "请求中..." : "取消全部导入/缓存任务"}
             </button>
             <button
               className="secondary-button"
@@ -416,7 +420,7 @@ export function ManagementPage() {
                     <strong>#{job.id} · {job.task_name}</strong>
                     <span className="muted small-text">{describeJob(job)}</span>
                   </div>
-                  {ACTIVE_JOB_STATUSES.has(job.status) ? (
+                  {canCancelJob(job) ? (
                     <button
                       className="secondary-button danger-button"
                       disabled={cancelJobMutation.isPending}

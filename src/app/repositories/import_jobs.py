@@ -40,6 +40,10 @@ class ImportJobNotFoundError(LookupError):
     """Raised when the target background job no longer exists."""
 
 
+class ImportJobCancellationNotAllowedError(RuntimeError):
+    """Raised when a job type does not support user cancellation."""
+
+
 def create_import_job(
     settings: Settings,
     *,
@@ -308,6 +312,8 @@ def request_cancel_job(settings: Settings, job_id: int) -> ImportJob | None:
         return None
     if job.status in FINISHED_JOB_STATUSES:
         return job
+    if job.job_kind == "delete":
+        raise ImportJobCancellationNotAllowedError("Delete jobs cannot be cancelled.")
     if job.status == "queued":
         return mark_import_job_cancelled(settings, job_id, error_message="Cancelled by user.")
 
@@ -333,6 +339,7 @@ def request_cancel_all_active_jobs(settings: Settings) -> int:
                 cancel_requested = 1,
                 updated_at = CURRENT_TIMESTAMP
             WHERE status = 'queued'
+              AND job_kind != 'delete'
             """
         )
         running_cursor = connection.execute(
@@ -342,6 +349,7 @@ def request_cancel_all_active_jobs(settings: Settings) -> int:
                 cancel_requested = 1,
                 updated_at = CURRENT_TIMESTAMP
             WHERE status IN ('running', 'cancelling')
+              AND job_kind != 'delete'
             """
         )
         connection.commit()
