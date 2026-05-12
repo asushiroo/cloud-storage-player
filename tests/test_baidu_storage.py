@@ -67,7 +67,7 @@ class FakeBaiduStorageApi:
 
     def get_file_metas(self, **kwargs):
         self.filemetas_calls.append(kwargs)
-        return [{"dlink": "https://d.pcs.baidu.com/file/demo"}]
+        return [{"dlink": "https://d.pcs.baidu.com/file/demo", "size": 128}]
 
     def download_dlink(self, **kwargs):
         self.download_calls.append(kwargs)
@@ -168,3 +168,14 @@ def test_baidu_storage_backend_deletes_remote_path(monkeypatch, tmp_path: Path) 
         "access_token": "access-token",
         "remote_paths": ["/apps/CloudStoragePlayer/videos/1/manifest.bin"],
     }]
+
+
+def test_baidu_storage_backend_get_file_size(monkeypatch, tmp_path: Path) -> None:
+    settings = build_settings(tmp_path, monkeypatch)
+    api = FakeBaiduStorageApi()
+    backend = BaiduStorageBackend(settings, api=api)
+
+    size = backend.get_file_size("/CloudStoragePlayer/videos/1/segments/000000.cspseg")
+
+    assert size == 128
+    assert api.filemetas_calls[0]["access_token"] == "access-token"

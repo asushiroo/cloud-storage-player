@@ -104,6 +104,20 @@ class BaiduStorageBackend(StorageBackend):
             remote_paths=[normalize_baidu_path(remote_path)],
         )
 
+    def get_file_size(self, remote_path: str) -> int | None:
+        try:
+            access_token = self._load_access_token()
+            metadata = self._resolve_metadata(access_token, normalize_baidu_path(remote_path))
+        except (FileNotFoundError, BaiduApiError, BaiduOAuthConfigurationError, ValueError):
+            return None
+        size_value = metadata.get("size")
+        if size_value is None:
+            return None
+        try:
+            return int(size_value)
+        except (TypeError, ValueError):
+            return None
+
     def _resolve_metadata(self, access_token: str, remote_path: str) -> dict:
         parent_path = PurePosixPath(remote_path).parent.as_posix() or "/"
         entries = self.api.list_directory(access_token=access_token, dir_path=parent_path)

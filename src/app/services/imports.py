@@ -571,7 +571,14 @@ def _remote_artifact_matches_size(storage, task: _UploadArtifact, *, expected_si
         return False
     local_path_for = getattr(storage, "local_path_for", None)
     if not callable(local_path_for):
-        return False
+        get_file_size = getattr(storage, "get_file_size", None)
+        if not callable(get_file_size):
+            return False
+        try:
+            remote_size = get_file_size(task.remote_path)
+        except Exception:
+            return False
+        return remote_size is not None and int(remote_size) == expected_size
     try:
         remote_path = local_path_for(task.remote_path)
     except Exception:
@@ -590,6 +597,18 @@ def _assert_remote_artifact_uploaded(storage, task: _UploadArtifact, *, expected
                 "Uploaded artifact size mismatch: "
                 f"video_id={task.video_id}, segment_index={task.segment_index}, "
                 f"expected={expected_size}, actual={remote_path.stat().st_size}, remote_path={task.remote_path}"
+            )
+        return
+    get_file_size = getattr(storage, "get_file_size", None)
+    if callable(get_file_size):
+        remote_size = get_file_size(task.remote_path)
+        if remote_size is None:
+            raise ValueError(f"Uploaded artifact is missing on remote: {task.remote_path}")
+        if int(remote_size) != expected_size:
+            raise ValueError(
+                "Uploaded artifact size mismatch: "
+                f"video_id={task.video_id}, segment_index={task.segment_index}, "
+                f"expected={expected_size}, actual={remote_size}, remote_path={task.remote_path}"
             )
         return
     if not storage.exists(task.remote_path):
