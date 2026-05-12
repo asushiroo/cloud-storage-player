@@ -53,12 +53,12 @@
 - 前端已切换到 `frontend/` 中的新实现
   - 首页 `/` 现在重定向到独立推荐页 `/recommend`
   - 推荐页顶部保留 3D Banner，最近观看改为单行标题列表，次推荐位限制为 12 个视频
-  - 媒体库独立到 `/library`，仅保留搜索、目录 / 标签筛选和 poster 墙
+  - 媒体库独立到 `/library`，仅保留搜索、一级 / 二级标签筛选和 poster 墙
   - 媒体库卡片保持原来的 cover + 元信息布局，修复卡片收缩时封面溢出问题
   - 搜索与标签过滤在独立媒体库页完成；管理页专注导入、同步与任务管理
   - 登录页走 `/api/auth/login`
   - 推荐页走 `/api/videos/recommendations`
-  - 媒体库页走 `/api/videos/page`
+  - 媒体库页走 `/api/videos`
   - 管理页走 `/api/folders`、`/api/videos`、`/api/imports`
   - 视频详情页走 `/api/videos/{id}`、`PATCH /api/videos/{id}/tags`、`POST /api/videos/{id}/artwork`、`DELETE /api/videos/{id}`
   - 设置页走 `/api/settings`、`/api/settings/baidu/oauth`
@@ -132,11 +132,14 @@
   - Banner 外层高度改为跟随主卡宽度和 16:9 比例自动撑开，避免宽屏继续放大时被固定高度卡住
   - Banner 动画终点与静态卡位统一，并修正中间卡切到侧卡时的 `transform-origin`，消除切换结束时额外跳帧和卡顿
   - Banner 切换时复用同一批卡片节点，避免动画落点正确后仍因节点重建产生视觉卡顿
+  - Banner 支持每 10 秒自动轮转一次
+  - 推荐页“最近观看”继续沿用 `continue_watching` 候选，但进入页面会强制刷新，前端最多展示 5 条
+  - 媒体库页调整为“全部视频”视图：默认不选标签时展示全部视频，仅保留一级 / 二级标签筛选，视频网格按 12 张一批继续展开
 - 播放统计与推荐基础
   - 新增单机单用户播放会话统计：有效播放次数、总会话数、总观看时长、最近播放位置、跳出率、重看倾向
   - 后端会按一二级标签累计偏好分，并回写推荐分、继续观看分、缓存优先级
   - 播放页新增观看心跳上报与“跳到高潮”按钮；高光区间基于轻量 heatmap 计算
-  - 媒体库 poster 墙改为每次 12 张的分页懒加载，滚动到位后再继续请求下一页
+  - 媒体库 poster 墙改为每次先展示 12 张，并随滚动继续展开后续视频
 - 左上角站点标题已替换为 `frontend/asserts/` 中的 logo
 - `uv run pytest` 自动化测试
 
@@ -181,7 +184,7 @@ npm run dev
 
 - `/`：重定向到 `/recommend`
 - `/recommend`：推荐页，包含 3D Banner、最近观看单行列表、12 宫格次推荐位
-- `/library`：独立媒体库，包含搜索、目录 / 标签筛选和 poster 分页懒加载
+- `/library`：独立媒体库，包含搜索、一级 / 二级标签筛选和 poster 分批展开
 - `/manage`：单文件导入、文件夹批量导入、同步与任务管理
 - `/settings`：运行设置与百度授权
 

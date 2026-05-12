@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { buildAssetUrl } from "../api/client";
 import type { Video } from "../types/api";
@@ -7,6 +7,8 @@ interface BannerCarouselProps {
   videos: Video[];
   versionToken?: number;
 }
+
+const AUTO_ROTATE_INTERVAL_MS = 10_000;
 
 function getWrappedIndex(index: number, length: number): number {
   return ((index % length) + length) % length;
@@ -39,6 +41,16 @@ export function BannerCarousel({ videos, versionToken }: BannerCarouselProps) {
       createEntry("incoming-right", 2),
     ];
   }, [activeIndex, videos]);
+
+  useEffect(() => {
+    if (videos.length <= 1 || transitionDirection !== 0) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setTransitionDirection(1);
+    }, AUTO_ROTATE_INTERVAL_MS);
+    return () => window.clearTimeout(timer);
+  }, [activeIndex, transitionDirection, videos.length]);
 
   const rotate = (direction: 1 | -1) => {
     if (videos.length <= 1 || transitionDirection !== 0) {

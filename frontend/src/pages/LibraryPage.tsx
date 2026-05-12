@@ -1,7 +1,7 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { fetchFolders, fetchVideoPage } from "../api/client";
+import { fetchVideos } from "../api/client";
 import { Surface } from "../components/Surface";
 import { TagChip } from "../components/TagChip";
 import { VideoGridCard } from "../components/VideoGridCard";
@@ -15,31 +15,21 @@ export function LibraryPage() {
   const [searchParams] = useSearchParams();
   const [activePrimaryTag, setActivePrimaryTag] = useState<string | undefined>();
   const [activeSecondaryTag, setActiveSecondaryTag] = useState<string | undefined>();
-  const [selectedFolderId, setSelectedFolderId] = useState<number | undefined>();
+  const [visibleCount, setVisibleCount] = useState(LIBRARY_PAGE_SIZE);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const appliedSearch = searchParams.get("q")?.trim() ?? "";
 
-  const foldersQuery = useQuery({
-    queryKey: ["folders"],
-    queryFn: fetchFolders,
-    enabled: session.data?.authenticated === true,
-  });
-  const videosQuery = useInfiniteQuery({
-    queryKey: ["videos", "library-page", selectedFolderId ?? "all", appliedSearch],
-    queryFn: ({ pageParam }) =>
-      fetchVideoPage({
-        folderId: selectedFolderId,
+  const videosQuery = useQuery({
+    queryKey: ["videos", "library", appliedSearch],
+    queryFn: () =>
+      fetchVideos({
         q: appliedSearch,
-        offset: Number(pageParam),
-        limit: LIBRARY_PAGE_SIZE,
       }),
     enabled: session.data?.authenticated === true,
-    initialPageParam: 0,
-    getNextPageParam: (lastPage) => (lastPage.has_more ? lastPage.offset + lastPage.items.length : undefined),
+    refetchOnMount: "always",
   });
 
-  const folders = foldersQuery.data ?? [];
-  const videos = videosQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const videos = videosQuery.data ?? [];
   const artworkVersionToken = videosQuery.dataUpdatedAt;
   const primaryTagGroups = useMemo(() => {
     const groups = new Map<string, number>();
@@ -96,7 +86,22 @@ export function LibraryPage() {
       }),
     [activePrimaryTag, activeSecondaryTag, videos],
   );
-  const { fetchNextPage, hasNextPage, isFetchingNextPage } = videosQuery;
+  const visibleVideos = filteredVideos.slice(0, visibleCount);
+  const hasMoreVisibleVideos = visibleVideos.length < filteredVideos.length;
+
+  useEffect(() => {
+    setVisibleCount(LIBRARY_PAGE_SIZE);
+  }, [activePrimaryTag, activeSecondaryTag, appliedSearch]);
+
+  useEffect(() => {
+    if (!activePrimaryTag) {
+      return;
+    }
+    if (!primaryTagGroups.some((primary) => primary.label === activePrimaryTag)) {
+      setActivePrimaryTag(undefined);
+      setActiveSecondaryTag(undefined);
+    }
+  }, [activePrimaryTag, primaryTagGroups]);
 
   useEffect(() => {
     if (!activeSecondaryTag) {
@@ -109,20 +114,20 @@ export function LibraryPage() {
 
   useEffect(() => {
     const sentinel = loadMoreRef.current;
-    if (!sentinel || !hasNextPage || isFetchingNextPage) {
+    if (!sentinel || !hasMoreVisibleVideos) {
       return;
     }
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) {
-          void fetchNextPage();
+          setVisibleCount((current) => Math.min(current + LIBRARY_PAGE_SIZE, filteredVideos.length));
         }
       },
       { rootMargin: "240px 0px" },
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
+  }, [filteredVideos.length, hasMoreVisibleVideos]);
 
   if (session.isLoading || (session.data?.authenticated !== true && !session.isError)) {
     return <p className="state-text">正在检查登录状态...</p>;
@@ -135,23 +140,21 @@ export function LibraryPage() {
           <div className="section-head">
             <div>
               <h1>媒体库</h1>
-              <p className="muted">移除推荐 Banner 后，这里只保留筛选、搜索和分批滚动加载的库视图。</p>
+              <p className="muted">这里展示全部视频。不选择标签时默认显示全部视频，选中一级标签后再按需细分二级标签。</p>
             </div>
           </div>
-          {folders.length > 0 ? (
+
+          <div className="top-gap">
+            <p className="muted small-text">一级标签</p>
             <div className="chip-row top-gap">
-              {folders.map((folder) => (
-                <TagChip
-                  key={folder.id}
-                  active={selectedFolderId === folder.id}
-                  label={folder.name}
-                  onClick={() => setSelectedFolderId(selectedFolderId === folder.id ? undefined : folder.id)}
-                />
-              ))}
-            </div>
-          ) : null}
-          {primaryTagGroups.length > 0 ? (
-            <div className="chip-row top-gap">
+              <TagChip
+                active={activePrimaryTag === undefined}
+                label={`全部视频 (${videos.length})`}
+                onClick={() => {
+                  setActivePrimaryTag(undefined);
+                  setActiveSecondaryTag(undefined);
+                }}
+              />
               {primaryTagGroups.map((group) => (
                 <TagChip
                   key={group.label}
@@ -165,27 +168,37 @@ export function LibraryPage() {
                 />
               ))}
             </div>
-          ) : null}
+          </div>
+
           {activePrimaryTag && secondaryTagGroups.length > 0 ? (
-            <div className="chip-row top-gap">
-              <TagChip active={activeSecondaryTag === undefined} label="全部子分类" onClick={() => setActiveSecondaryTag(undefined)} />
-              {secondaryTagGroups.map((secondary) => (
-                <TagChip
-                  key={secondary.label}
-                  active={activeSecondaryTag === secondary.label}
-                  label={`${secondary.label} (${secondary.count})`}
-                  onClick={() => setActiveSecondaryTag(activeSecondaryTag === secondary.label ? undefined : secondary.label)}
-                />
-              ))}
+            <div className="top-gap">
+              <p className="muted small-text">二级标签</p>
+              <div className="chip-row top-gap">
+                <TagChip active={activeSecondaryTag === undefined} label="全部子分类" onClick={() => setActiveSecondaryTag(undefined)} />
+                {secondaryTagGroups.map((secondary) => (
+                  <TagChip
+                    key={secondary.label}
+                    active={activeSecondaryTag === secondary.label}
+                    label={`${secondary.label} (${secondary.count})`}
+                    onClick={() => setActiveSecondaryTag(activeSecondaryTag === secondary.label ? undefined : secondary.label)}
+                  />
+                ))}
+              </div>
             </div>
           ) : null}
         </Surface>
 
         <div className="section-divider" />
 
-        {filteredVideos.length > 0 ? (
+        {videosQuery.isLoading ? (
+          <Surface>
+            <p className="muted">正在加载视频...</p>
+          </Surface>
+        ) : null}
+
+        {visibleVideos.length > 0 ? (
           <div className="video-grid">
-            {filteredVideos.map((video) => (
+            {visibleVideos.map((video) => (
               <VideoGridCard key={video.id} versionToken={artworkVersionToken} video={video} />
             ))}
           </div>
@@ -197,14 +210,14 @@ export function LibraryPage() {
           </Surface>
         ) : null}
 
-        {hasNextPage ? (
+        {hasMoreVisibleVideos ? (
           <div className="video-grid-footer">
             <div className="load-more-sentinel" ref={loadMoreRef} />
-            <p className="muted small-text">{isFetchingNextPage ? "正在加载下一页..." : "继续向下滚动以加载更多 poster。"}</p>
+            <p className="muted small-text">继续向下滚动以展开更多视频。</p>
           </div>
-        ) : filteredVideos.length > 0 ? (
+        ) : filteredVideos.length > 0 && !videosQuery.isLoading ? (
           <div className="video-grid-footer">
-            <p className="muted small-text">媒体库已经全部加载完毕。</p>
+            <p className="muted small-text">全部视频已经展示完毕。</p>
           </div>
         ) : null}
       </div>

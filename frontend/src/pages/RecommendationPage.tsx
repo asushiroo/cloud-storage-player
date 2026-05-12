@@ -9,7 +9,7 @@ import type { Video, VideoRecommendationShelf } from "../types/api";
 
 const HERO_BANNER_LIMIT = 5;
 const SECONDARY_RECOMMENDATION_LIMIT = 12;
-const RECENT_WATCH_LIMIT = 10;
+const RECENT_WATCH_LIMIT = 5;
 
 function mergeUniqueVideos(...groups: Video[][]): Video[] {
   const merged: Video[] = [];
@@ -51,6 +51,7 @@ export function RecommendationPage() {
     queryKey: ["videos", "recommendations"],
     queryFn: fetchVideoRecommendations,
     enabled: session.data?.authenticated === true,
+    refetchOnMount: "always",
   });
 
   if (session.isLoading || (session.data?.authenticated !== true && !session.isError)) {
