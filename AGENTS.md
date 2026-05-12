@@ -65,17 +65,7 @@ Detailed frontend architecture lives in [frontend/AGENTS.md](/root/cloud-storage
 - If code from `third/` is useful, copy/adapt the needed parts into `frontend/` and make `frontend/` self-contained.
 - Do not preserve compatibility with the removed frontend if the task explicitly says not to.
 
-## Baidu Cloud Disk API KEY
-
-百度网盘的 appkey、secretkey、signkey 都在环境变量中：
-
-- `BAIDU_APP_KEY`
-- `BAIDU_SECRET_KEY`
-- `BAIDU_SIGN_KEY`
-
 ## 技术要求
 
 在生成代码的同时要同步在README.md中更新进度，docs文档只有我让更新时再更新，避免每轮都更新浪费token
-由于该项目会有视频解码编码的操作，python 的速度绝对是不够的，必要时使用 rust 异步操作提高速度。
-需要极限也可以使用 cpp。
-在完成一个阶段时就用 git 进行 commit
+在完成一个阶段时就用 git 进行 commit, commit的格式要符合工程规范，e. feat(cli): add run command;

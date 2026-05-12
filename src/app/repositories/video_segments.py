@@ -138,6 +138,8 @@ def update_video_segment_local_staging_path(
             (segment_id,),
         ).fetchone()
 
+    if row is None:
+        raise ValueError(f"Video segment not found: {segment_id}")
     return _row_to_video_segment(row)
 
 
