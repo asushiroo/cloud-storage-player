@@ -82,7 +82,6 @@ export function RecommendationPage() {
           <div className="section-head">
             <div>
               <h2>最近观看</h2>
-              <p className="muted">这里只保留一行标题，方便快速回到上次停下的位置。</p>
             </div>
           </div>
           {recentVideos.length > 0 ? (
@@ -96,18 +95,6 @@ export function RecommendationPage() {
           ) : (
             <p className="muted top-gap">还没有最近观看记录。</p>
           )}
-        </Surface>
-
-        <Surface>
-          <div className="section-head">
-            <div>
-              <h2>次推荐位</h2>
-              <p className="muted">优先展示推荐候选，数量限制为 4 行 3 列的首屏节奏。</p>
-            </div>
-            <Link className="secondary-button link-button" to="/library">
-              打开媒体库
-            </Link>
-          </div>
         </Surface>
 
         {secondaryVideos.length > 0 ? (

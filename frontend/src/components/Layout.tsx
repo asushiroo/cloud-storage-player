@@ -57,7 +57,7 @@ export function Layout({ children }: PropsWithChildren) {
               媒体库
             </NavLink>
             <NavLink className="nav-link" to="/manage">
-              导入与任务
+              管理
             </NavLink>
             <NavLink className="nav-link" to="/settings">
               设置

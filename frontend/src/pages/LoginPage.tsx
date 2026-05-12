@@ -29,8 +29,7 @@ export function LoginPage() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <p className="eyebrow">Kyoo code moved into frontend/</p>
-        <h1>登录局域网影库</h1>
+        <h1 style={{ marginBottom: "1rem"}}>Oh My Video </h1>
         <div className="form-stack">
           <input
             autoFocus
@@ -44,7 +43,7 @@ export function LoginPage() {
                 mutation.mutate(password);
               }
             }}
-            placeholder="输入管理员密码"
+            placeholder="凸(｀0´)凸"
             type="password"
             value={password}
           />

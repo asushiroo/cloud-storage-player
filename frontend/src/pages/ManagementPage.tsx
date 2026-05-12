@@ -236,19 +236,6 @@ export function ManagementPage() {
 
   return (
     <div className="page-stack">
-      <Surface>
-        <p className="eyebrow">管理页</p>
-        <h1>导入与任务管理</h1>
-        <p className="muted">搜索已经移动到独立媒体库页，这里只负责导入、同步和任务控制。</p>
-        <div className="action-row">
-          <button className="primary-button" disabled={syncMutation.isPending} onClick={() => syncMutation.mutate()} type="button">
-            {syncMutation.isPending ? "同步中..." : "同步远端目录"}
-          </button>
-          <Link className="secondary-button link-button" to="/library">
-            打开媒体库
-          </Link>
-        </div>
-      </Surface>
 
       {error ? (
         <Surface>
@@ -275,7 +262,7 @@ export function ManagementPage() {
               onClick={() => setShowCachePanel((value) => !value)}
               type="button"
             >
-              {showCachePanel ? "收起缓存列表" : "清理缓存"}
+              {showCachePanel ? "收起缓存列表" : "查看缓存"}
             </button>
           </div>
         </div>
@@ -319,6 +306,19 @@ export function ManagementPage() {
           </div>
         ) : null}
       </Surface>
+      
+      <div className="section-divider" />
+      
+      <Surface>
+        <div className="action-row">
+          <button className="primary-button" style={{ width: "100%" }}
+            disabled={syncMutation.isPending} onClick={() => syncMutation.mutate()} type="button">
+            {syncMutation.isPending ? "同步中..." : "同步远端目录"}
+          </button>
+        </div>
+      </Surface>
+      
+      <div className="section-divider" />
 
       <Surface>
         <h2>导入目录</h2>
@@ -341,7 +341,7 @@ export function ManagementPage() {
           <div className="form-stack top-gap">
             {importMode === "video" ? (
               <>
-                <input className="text-input" onChange={(event) => setSourcePath(event.target.value)} placeholder="例如：D:\\Videos\\movie.mp4" value={sourcePath} />
+                <input className="text-input" onChange={(event) => setSourcePath(event.target.value)} placeholder="例如：D:\Videos\movie.mp4" value={sourcePath} />
                 <input className="text-input" onChange={(event) => setTitle(event.target.value)} placeholder="可选：显示标题" value={title} />
                 <input className="text-input" onChange={(event) => setTagInput(event.target.value)} placeholder="可选：标签，逗号分隔" value={tagInput} />
                 <button
@@ -362,7 +362,7 @@ export function ManagementPage() {
               </>
             ) : (
               <>
-                <input className="text-input" onChange={(event) => setFolderSourcePath(event.target.value)} placeholder="例如：D:\\Anime\\Season1" value={folderSourcePath} />
+                <input className="text-input" onChange={(event) => setFolderSourcePath(event.target.value)} placeholder="例如：D:\Anime\Season1" value={folderSourcePath} />
                 <input className="text-input" onChange={(event) => setFolderTagInput(event.target.value)} placeholder="可选：给整个文件夹导入统一打标签" value={folderTagInput} />
                 <button
                   className="primary-button"
@@ -390,7 +390,6 @@ export function ManagementPage() {
         <div className="section-head">
           <div>
             <h2>任务栏</h2>
-            <p className="muted">导入、缓存和删除任务都会显示在这里；只有导入和缓存任务支持取消。</p>
           </div>
           <div className="action-row">
             <button className="secondary-button danger-button" disabled={cancelAllMutation.isPending} onClick={() => cancelAllMutation.mutate()} type="button">

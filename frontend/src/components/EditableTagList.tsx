@@ -225,7 +225,6 @@ export function EditableTagList({ disabled = false, tags, onSave }: EditableTagL
       {renderTagRow("primary", "一级标签", primaryTags)}
       {renderTagRow("secondary", "二级标签", secondaryTags)}
       {!hasTags ? <p className="muted small-text">暂无标签，点击上方按钮开始。</p> : null}
-      <p className="muted small-text">双击标签可编辑，右上角 × 可删除；一级与二级标签会分开保存与展示。</p>
     </div>
   );
 }

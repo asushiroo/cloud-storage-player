@@ -137,13 +137,6 @@ export function LibraryPage() {
     <div className="library-page">
       <div className="library-content-shell page-stack">
         <Surface>
-          <div className="section-head">
-            <div>
-              <h1>媒体库</h1>
-              <p className="muted">这里展示全部视频。不选择标签时默认显示全部视频，选中一级标签后再按需细分二级标签。</p>
-            </div>
-          </div>
-
           <div className="top-gap">
             <p className="muted small-text">一级标签</p>
             <div className="chip-row top-gap">
@@ -192,7 +185,7 @@ export function LibraryPage() {
 
         {videosQuery.isLoading ? (
           <Surface>
-            <p className="muted">正在加载视频...</p>
+            <p className="muted">正在加载视频ლ(´ڡ`ლ)...</p>
           </Surface>
         ) : null}
 
@@ -206,18 +199,18 @@ export function LibraryPage() {
 
         {filteredVideos.length === 0 && !videosQuery.isLoading ? (
           <Surface>
-            <p className="muted">当前筛选条件下没有视频。</p>
+            <p className="muted">没找到呀(｡•́‿•̀｡)</p>
           </Surface>
         ) : null}
 
         {hasMoreVisibleVideos ? (
           <div className="video-grid-footer">
             <div className="load-more-sentinel" ref={loadMoreRef} />
-            <p className="muted small-text">继续向下滚动以展开更多视频。</p>
+            <p className="muted small-text">摩多摩多(✪ω✪)</p>
           </div>
         ) : filteredVideos.length > 0 && !videosQuery.isLoading ? (
           <div className="video-grid-footer">
-            <p className="muted small-text">全部视频已经展示完毕。</p>
+            <p className="muted small-text">已经到底了!!!∑(ﾟДﾟノ)ノ</p>
           </div>
         ) : null}
       </div>

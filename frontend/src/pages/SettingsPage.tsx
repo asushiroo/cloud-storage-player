@@ -142,12 +142,6 @@ export function SettingsPage() {
     !hasSplitConcurrencyFields(settings) && hasLegacyConcurrencyField(settings);
   return (
     <div className="page-stack">
-      <Surface>
-        <p className="eyebrow">Settings</p>
-        <h1>运行设置</h1>
-        <p className="muted">这里继续沿用当前 FastAPI 设置接口，只是前端代码已经迁回 frontend/。</p>
-      </Surface>
-
       {error ? (
         <Surface>
           <p className="error-text">{error}</p>
@@ -190,16 +184,13 @@ export function SettingsPage() {
           </button>
         </div>
         {settings ? (
-          <p className="muted">
-            当前缓存上限：{formatBytes(settings.cache_limit_bytes)} · 当前存储后端：{settings.storage_backend} ·
-            上传并发：{currentUploadConcurrency} · 下载并发：{currentDownloadConcurrency}
+          <p className="muted" style={{ marginTop: "1rem" }}>
+            当前缓存上限：{formatBytes(settings.cache_limit_bytes)} 
           </p>
         ) : null}
-        {backendIsLegacyConcurrencyOnly ? (
-          <p className="error-text">当前连接到的后端仍只支持旧的单并发字段。要分别保存上传并发和下载并发，先重启后端到最新代码。</p>
-        ) : null}
-        <p className="muted">上传并发影响导入上传；下载并发影响手动缓存下载和播放预取，允许范围都为 1 到 32。</p>
       </Surface>
+
+      <div className="section-divider" />
 
       <Surface>
         <h2>百度授权</h2>
@@ -217,7 +208,7 @@ export function SettingsPage() {
             {oauthMutation.isPending ? "提交中..." : "提交 OAuth code"}
           </button>
         </div>
-        <p className="muted">Refresh Token 状态：{settings?.baidu_has_refresh_token ? "已存在" : "未配置"}</p>
+        <p className="muted" style={{ marginTop: "1rem" }}>Refresh Token 状态：{settings?.baidu_has_refresh_token ? "已存在" : "未配置"}</p>
       </Surface>
     </div>
   );
