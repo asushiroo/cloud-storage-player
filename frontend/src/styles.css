@@ -708,6 +708,52 @@ h2 {
   gap: 1rem;
 }
 
+.recommendation-page {
+  padding-bottom: 1.5rem;
+}
+
+.recent-watch-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(13rem, 1fr);
+  gap: 0.9rem;
+  overflow-x: auto;
+  padding-bottom: 0.35rem;
+}
+
+.recent-watch-link {
+  display: block;
+  min-width: 0;
+  padding: 0.95rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.recent-watch-link:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  transform: translateY(-1px);
+}
+
+.video-grid-footer {
+  display: grid;
+  justify-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0 1rem;
+}
+
+.load-more-sentinel {
+  width: 100%;
+  height: 1px;
+}
+
 .banner-carousel {
   --banner-card-width: min(54vw, 58rem);
   --banner-card-height: calc(var(--banner-card-width) * 9 / 16);
@@ -1086,6 +1132,15 @@ h2 {
 }
 
 .artwork-controls-shell {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.artwork-controls-shell-stacked {
+  align-content: start;
+}
+
+.artwork-action-stack {
   display: grid;
   gap: 0.75rem;
 }

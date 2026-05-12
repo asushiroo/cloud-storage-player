@@ -133,9 +133,23 @@ export function PlayerPage() {
 
   const refreshVideoCaches = (updatedVideo: Video) => {
     queryClient.setQueryData(["video", videoId], updatedVideo);
-    queryClient.setQueriesData({ queryKey: ["videos"] }, (current: Video[] | undefined) => {
+    queryClient.setQueriesData({ queryKey: ["videos"] }, (current: unknown) => {
       if (!Array.isArray(current)) {
-        return current;
+        if (!current || typeof current !== "object" || !("pages" in current) || !Array.isArray(current.pages)) {
+          return current;
+        }
+        return {
+          ...current,
+          pages: current.pages.map((page) => {
+            if (!page || typeof page !== "object" || !("items" in page) || !Array.isArray(page.items)) {
+              return page;
+            }
+            return {
+              ...page,
+              items: page.items.map((item: Video) => (item.id === updatedVideo.id ? { ...item, ...updatedVideo } : item)),
+            };
+          }),
+        };
       }
       return current.map((item) => (item.id === updatedVideo.id ? { ...item, ...updatedVideo } : item));
     });
@@ -323,14 +337,9 @@ export function PlayerPage() {
       <Surface>
         <h1>{video?.title ?? `Video #${videoId}`}</h1>
         {video ? (
-          <>
-            <p className="muted">
-              {formatDuration(video.duration_seconds)} · {formatBytes(video.size)} · {video.mime_type}
-            </p>
-            <p className="muted small-text">
-              推荐分 {video.recommendation_score.toFixed(2)} · 兴趣分 {video.interest_score.toFixed(2)} · 热门分 {video.popularity_score.toFixed(2)}
-            </p>
-          </>
+          <p className="muted">
+            {formatDuration(video.duration_seconds)} · {formatBytes(video.size)} · {video.mime_type}
+          </p>
         ) : null}
       </Surface>
 
@@ -382,25 +391,25 @@ export function PlayerPage() {
                 <p className="small-text muted">Poster 预览（固定横版）</p>
                 <img alt="Poster preview" className="artwork-preview-image artwork-preview-poster" src={posterPreviewDataUrl} />
               </div>
-              <div className="artwork-controls-shell">
+              <div className="artwork-controls-shell artwork-controls-shell-stacked">
                 <CropControls crop={posterCrop} onChange={setPosterCrop} title="调整横版 poster" />
+                <div className="artwork-action-stack">
+                  <button className="primary-button" disabled={artworkMutation.isPending} onClick={() => artworkMutation.mutate()} type="button">
+                    {artworkMutation.isPending ? "保存中..." : "应用到数据库"}
+                  </button>
+                  <button
+                    className="secondary-button"
+                    onClick={() => {
+                      setCapturedDataUrl(null);
+                      setFeedback(null);
+                      setError(null);
+                    }}
+                    type="button"
+                  >
+                    丢弃预览
+                  </button>
+                </div>
               </div>
-            </div>
-            <div className="action-row">
-              <button className="primary-button" disabled={artworkMutation.isPending} onClick={() => artworkMutation.mutate()} type="button">
-                {artworkMutation.isPending ? "保存中..." : "应用到数据库"}
-              </button>
-              <button
-                className="secondary-button"
-                onClick={() => {
-                  setCapturedDataUrl(null);
-                  setFeedback(null);
-                  setError(null);
-                }}
-                type="button"
-              >
-                丢弃预览
-              </button>
             </div>
           </div>
         ) : null}
@@ -410,7 +419,7 @@ export function PlayerPage() {
         <Link className="secondary-button link-button" to={`/videos/${videoId}`}>
           返回详情
         </Link>
-        <Link className="secondary-button link-button" to="/">
+        <Link className="secondary-button link-button" to="/library">
           返回媒体库
         </Link>
       </div>

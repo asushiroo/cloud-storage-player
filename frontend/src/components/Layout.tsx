@@ -11,7 +11,7 @@ export function Layout({ children }: PropsWithChildren) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [librarySearchInput, setLibrarySearchInput] = useState("");
-  const isLibraryPage = location.pathname === "/";
+  const isShowcasePage = location.pathname === "/library" || location.pathname === "/recommend";
   const logoutMutation = useMutation({
     mutationFn: logout,
     onSuccess: async () => {
@@ -23,7 +23,7 @@ export function Layout({ children }: PropsWithChildren) {
   });
 
   useEffect(() => {
-    if (location.pathname !== "/") {
+    if (location.pathname !== "/library") {
       setLibrarySearchInput("");
       return;
     }
@@ -35,10 +35,10 @@ export function Layout({ children }: PropsWithChildren) {
     const nextSearch = librarySearchInput.trim();
     navigate(
       {
-        pathname: "/",
+        pathname: "/library",
         search: nextSearch ? `?q=${encodeURIComponent(nextSearch)}` : "",
       },
-      { replace: location.pathname === "/" },
+      { replace: location.pathname === "/library" },
     );
   };
 
@@ -46,11 +46,14 @@ export function Layout({ children }: PropsWithChildren) {
     <div className="app-shell">
       <header className="app-header">
         <div className="header-left">
-          <Link aria-label="Cloud Storage Player" className="brand brand-logo-link" to="/">
+          <Link aria-label="Cloud Storage Player" className="brand brand-logo-link" to="/recommend">
             <img alt="Cloud Storage Player" className="brand-logo" src={logoImage} />
           </Link>
           <nav className="header-nav">
-            <NavLink className="nav-link" to="/">
+            <NavLink className="nav-link" to="/recommend">
+              推荐
+            </NavLink>
+            <NavLink className="nav-link" to="/library">
               媒体库
             </NavLink>
             <NavLink className="nav-link" to="/manage">
@@ -71,7 +74,7 @@ export function Layout({ children }: PropsWithChildren) {
           <input
             className="header-search-input"
             onChange={(event) => setLibrarySearchInput(event.target.value)}
-            placeholder="搜索片名 / 标签 / 路径"
+            placeholder="搜索媒体库片名 / 标签 / 路径"
             type="search"
             value={librarySearchInput}
           />
@@ -88,7 +91,7 @@ export function Layout({ children }: PropsWithChildren) {
           )}
         </div>
       </header>
-      <main className={isLibraryPage ? "page-container page-container-library" : "page-container"}>{children}</main>
+      <main className={isShowcasePage ? "page-container page-container-library" : "page-container"}>{children}</main>
     </div>
   );
 }

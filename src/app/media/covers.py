@@ -74,22 +74,62 @@ def extract_artwork_variant(
         "1",
         "-vf",
         filter_chain,
-        str(output_path),
     ]
-    try:
-        completed = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except OSError as exc:
-        raise CoverExtractionError(str(exc)) from exc
-    if completed.returncode != 0:
-        error_message = completed.stderr.strip() or "ffmpeg artwork extraction failed."
-        raise CoverExtractionError(error_message)
+    return _run_artwork_command(
+        command,
+        output_path=output_path,
+    )
 
-    if not output_path.exists() or output_path.stat().st_size == 0:
-        raise CoverExtractionError("ffmpeg did not produce an artwork file.")
 
-    return output_path
+def transcode_image_to_avif(
+    source_path: Path,
+    output_path: Path,
+    *,
+    ffmpeg_binary: str = "ffmpeg",
+) -> Path:
+    command = [
+        ffmpeg_binary,
+        "-y",
+        "-i",
+        str(source_path),
+        "-frames:v",
+        "1",
+    ]
+    return _run_artwork_command(
+        command,
+        output_path=output_path,
+    )
+
+
+def _run_artwork_command(
+    command: list[str],
+    *,
+    output_path: Path,
+) -> Path:
+    attempts = [command + _codec_arguments_for(output_path) + [str(output_path)]]
+    if output_path.suffix.casefold() == ".avif":
+        attempts.append(command + ["-pix_fmt", "yuv420p", str(output_path)])
+
+    last_error_message = "ffmpeg artwork extraction failed."
+    for attempt in attempts:
+        output_path.unlink(missing_ok=True)
+        try:
+            completed = subprocess.run(
+                attempt,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except OSError as exc:
+            raise CoverExtractionError(str(exc)) from exc
+        if completed.returncode == 0 and output_path.exists() and output_path.stat().st_size > 0:
+            return output_path
+        last_error_message = completed.stderr.strip() or last_error_message
+
+    raise CoverExtractionError(last_error_message)
+
+
+def _codec_arguments_for(output_path: Path) -> list[str]:
+    if output_path.suffix.casefold() == ".avif":
+        return ["-c:v", "libaom-av1", "-still-picture", "1", "-pix_fmt", "yuv420p"]
+    return []

@@ -8,6 +8,7 @@ from app.main import create_app
 from app.repositories.folders import create_folder
 from app.repositories.settings import get_setting, set_setting
 from app.repositories.videos import create_video
+from app.services.artwork_storage import build_poster_file_name, store_encrypted_artwork_bytes
 
 
 def build_client(tmp_path: Path, password: str = "shared-secret") -> tuple[TestClient, Settings, str]:
@@ -43,11 +44,20 @@ def test_empty_catalog_endpoints_return_empty_lists(tmp_path: Path) -> None:
 
     folders_response = client.get("/api/folders")
     videos_response = client.get("/api/videos")
+    paged_videos_response = client.get("/api/videos/page")
 
     assert folders_response.status_code == 200
     assert folders_response.json() == []
     assert videos_response.status_code == 200
     assert videos_response.json() == []
+    assert paged_videos_response.status_code == 200
+    assert paged_videos_response.json() == {
+        "items": [],
+        "offset": 0,
+        "limit": 12,
+        "total": 0,
+        "has_more": False,
+    }
 
 
 def test_catalog_endpoints_return_inserted_rows(tmp_path: Path) -> None:
@@ -157,6 +167,57 @@ def test_videos_endpoint_can_search_by_title_source_path_or_tag(tmp_path: Path) 
     response = client.get("/api/videos?q=ocean-blue")
     assert response.status_code == 200
     assert [item["title"] for item in response.json()] == ["Ocean Documentary"]
+
+
+def test_video_page_endpoint_paginates_results(tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    for index in range(15):
+        create_video(
+            settings,
+            title=f"Episode {index:02d}",
+            mime_type="video/mp4",
+            size=100 + index,
+        )
+    login(client, password)
+
+    first_page = client.get("/api/videos/page?offset=0&limit=12")
+    second_page = client.get("/api/videos/page?offset=12&limit=12")
+
+    assert first_page.status_code == 200
+    first_payload = first_page.json()
+    assert first_payload["offset"] == 0
+    assert first_payload["limit"] == 12
+    assert first_payload["total"] == 15
+    assert first_payload["has_more"] is True
+    assert len(first_payload["items"]) == 12
+    assert first_payload["items"][0]["title"] == "Episode 00"
+
+    assert second_page.status_code == 200
+    second_payload = second_page.json()
+    assert second_payload["offset"] == 12
+    assert second_payload["limit"] == 12
+    assert second_payload["total"] == 15
+    assert second_payload["has_more"] is False
+    assert [item["title"] for item in second_payload["items"]] == ["Episode 12", "Episode 13", "Episode 14"]
+
+
+def test_artwork_api_returns_decrypted_avif_payload(tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    login(client, password)
+
+    artwork_name = build_poster_file_name(42)
+    payload = b"fake-avif-payload"
+    stored_path = store_encrypted_artwork_bytes(
+        settings,
+        file_name=artwork_name,
+        payload=payload,
+    )
+
+    response = client.get(stored_path)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/avif"
+    assert response.content == payload
 
 
 def test_video_tags_endpoint_updates_saved_tags(tmp_path: Path) -> None:

@@ -5,6 +5,7 @@ from app.core.config import Settings
 from app.core.security import hash_password
 from app.db.schema import initialize_database
 from app.repositories.videos import get_video
+from app.services.artwork_storage import encrypted_artwork_path, read_artwork_bytes
 from app.services.imports import import_local_video
 
 
@@ -69,8 +70,13 @@ def test_import_generates_fixed_ratio_poster_only(tmp_path: Path) -> None:
     assert video is not None
     assert video.cover_path is None
     assert video.poster_path is not None
-    poster_file = settings.covers_dir / Path(video.poster_path).name
-    assert poster_file.exists()
+    artwork_name = Path(video.poster_path).name
+    encrypted_poster_file = encrypted_artwork_path(settings, file_name=artwork_name)
+    assert encrypted_poster_file.exists()
+    poster_bytes, media_type = read_artwork_bytes(settings, artwork_name=artwork_name)
+    assert media_type == "image/avif"
+    poster_file = tmp_path / artwork_name
+    poster_file.write_bytes(poster_bytes)
 
     poster_width, poster_height = read_image_size(poster_file)
     assert (poster_width, poster_height) == (1280, 720)

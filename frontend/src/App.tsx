@@ -5,6 +5,7 @@ import { LibraryPage } from "./pages/LibraryPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ManagementPage } from "./pages/ManagementPage";
 import { PlayerPage } from "./pages/PlayerPage";
+import { RecommendationPage } from "./pages/RecommendationPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { VideoDetailPage } from "./pages/VideoDetailPage";
 
@@ -34,14 +35,16 @@ export default function App() {
   return (
     <Routes>
       <Route element={<LoginPage />} path="/login" />
-      <Route element={<ProtectedRoutes />}> 
-        <Route element={<LibraryPage />} path="/" />
+      <Route element={<ProtectedRoutes />}>
+        <Route element={<Navigate replace to="/recommend" />} path="/" />
+        <Route element={<RecommendationPage />} path="/recommend" />
+        <Route element={<LibraryPage />} path="/library" />
         <Route element={<ManagementPage />} path="/manage" />
         <Route element={<SettingsPage />} path="/settings" />
         <Route element={<VideoDetailPage />} path="/videos/:videoId" />
         <Route element={<PlayerPage />} path="/videos/:videoId/play" />
       </Route>
-      <Route element={<Navigate replace to="/" />} path="*" />
+      <Route element={<Navigate replace to="/recommend" />} path="*" />
     </Routes>
   );
 }

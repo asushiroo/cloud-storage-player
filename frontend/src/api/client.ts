@@ -11,6 +11,7 @@ import type {
   ImportFolderResult,
   ImportJob,
   PublicSettings,
+  VideoPage,
   Video,
   VideoRecommendationShelf,
   VideoWatchHeartbeatResult,
@@ -117,6 +118,33 @@ export const fetchVideos = (params?: { folderId?: number; q?: string; tag?: stri
   }
   const suffix = search.size > 0 ? `?${search.toString()}` : "";
   return request(`/api/videos${suffix}`);
+};
+
+export const fetchVideoPage = (params?: {
+  folderId?: number;
+  q?: string;
+  tag?: string;
+  offset?: number;
+  limit?: number;
+}): Promise<VideoPage> => {
+  const search = new URLSearchParams();
+  if (params?.folderId !== undefined) {
+    search.set("folder_id", String(params.folderId));
+  }
+  if (params?.q?.trim()) {
+    search.set("q", params.q.trim());
+  }
+  if (params?.tag?.trim()) {
+    search.set("tag", params.tag.trim());
+  }
+  if (params?.offset !== undefined) {
+    search.set("offset", String(params.offset));
+  }
+  if (params?.limit !== undefined) {
+    search.set("limit", String(params.limit));
+  }
+  const suffix = search.size > 0 ? `?${search.toString()}` : "";
+  return request(`/api/videos/page${suffix}`);
 };
 
 export const fetchVideo = (videoId: number): Promise<Video> => request(`/api/videos/${videoId}`);

@@ -1,40 +1,22 @@
-import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { fetchFolders, fetchVideoRecommendations, fetchVideos } from "../api/client";
-import { BannerCarousel } from "../components/BannerCarousel";
-import { CoverCard } from "../components/CoverCard";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { fetchFolders, fetchVideoPage } from "../api/client";
 import { Surface } from "../components/Surface";
 import { TagChip } from "../components/TagChip";
+import { VideoGridCard } from "../components/VideoGridCard";
 import { useRequireSession } from "../hooks/session";
-import type { Video } from "../types/api";
 import { expandTagValue } from "../utils/tagHierarchy";
-import { formatBytes, formatDuration } from "../utils/format";
 
-const BANNER_SELECTION_SIZE = 5;
-const BANNER_REFRESH_MS = 10 * 60 * 1_000;
-
-function pickBannerVideos(videoIdsSeed: number, videos: Video[]) {
-  const withPoster = videos.filter((video) => video.poster_path || video.cover_path);
-  if (withPoster.length <= BANNER_SELECTION_SIZE) {
-    return withPoster;
-  }
-
-  const decorated = withPoster.map((video, index) => ({
-    video,
-    weight: Math.abs(Math.sin(videoIdsSeed * 997 + video.id * 131 + index * 17)),
-  }));
-  decorated.sort((left, right) => left.weight - right.weight);
-  return decorated.slice(0, BANNER_SELECTION_SIZE).map((item) => item.video);
-}
+const LIBRARY_PAGE_SIZE = 12;
 
 export function LibraryPage() {
   const session = useRequireSession();
   const [searchParams] = useSearchParams();
-  const [bannerSeed, setBannerSeed] = useState(() => Math.floor(Date.now() / BANNER_REFRESH_MS));
   const [activePrimaryTag, setActivePrimaryTag] = useState<string | undefined>();
   const [activeSecondaryTag, setActiveSecondaryTag] = useState<string | undefined>();
   const [selectedFolderId, setSelectedFolderId] = useState<number | undefined>();
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const appliedSearch = searchParams.get("q")?.trim() ?? "";
 
   const foldersQuery = useQuery({
@@ -42,27 +24,22 @@ export function LibraryPage() {
     queryFn: fetchFolders,
     enabled: session.data?.authenticated === true,
   });
-  const videosQuery = useQuery({
-    queryKey: ["videos", "library-wall", selectedFolderId ?? "all", appliedSearch],
-    queryFn: () => fetchVideos({ folderId: selectedFolderId, q: appliedSearch }),
+  const videosQuery = useInfiniteQuery({
+    queryKey: ["videos", "library-page", selectedFolderId ?? "all", appliedSearch],
+    queryFn: ({ pageParam }) =>
+      fetchVideoPage({
+        folderId: selectedFolderId,
+        q: appliedSearch,
+        offset: Number(pageParam),
+        limit: LIBRARY_PAGE_SIZE,
+      }),
     enabled: session.data?.authenticated === true,
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => (lastPage.has_more ? lastPage.offset + lastPage.items.length : undefined),
   });
-  const recommendationsQuery = useQuery({
-    queryKey: ["videos", "recommendations"],
-    queryFn: fetchVideoRecommendations,
-    enabled: session.data?.authenticated === true,
-  });
-
-  useEffect(() => {
-    const refreshTimer = window.setInterval(() => {
-      setBannerSeed(Math.floor(Date.now() / BANNER_REFRESH_MS));
-    }, 30_000);
-    return () => window.clearInterval(refreshTimer);
-  }, []);
 
   const folders = foldersQuery.data ?? [];
-  const videos = videosQuery.data ?? [];
-  const recommendationShelf = recommendationsQuery.data;
+  const videos = videosQuery.data?.pages.flatMap((page) => page.items) ?? [];
   const artworkVersionToken = videosQuery.dataUpdatedAt;
   const primaryTagGroups = useMemo(() => {
     const groups = new Map<string, number>();
@@ -119,45 +96,7 @@ export function LibraryPage() {
       }),
     [activePrimaryTag, activeSecondaryTag, videos],
   );
-  const groupedVideoTags = useMemo(
-    () =>
-      new Map(
-        filteredVideos.map((video) => {
-          const primaryTags = video.tags
-            .flatMap(expandTagValue)
-            .filter((tag) => tag.level === "primary" && tag.label)
-            .map((tag) => tag.label);
-          const secondaryTags = video.tags
-            .flatMap(expandTagValue)
-            .filter((tag) => tag.level === "secondary" && tag.label)
-            .map((tag) => tag.label);
-          return [video.id, { primaryTags, secondaryTags }] as const;
-        }),
-      ),
-    [filteredVideos],
-  );
-  const bannerVideos = useMemo(() => {
-    const recommended = (recommendationShelf?.recommended ?? []).filter((video) => video.poster_path || video.cover_path);
-    if (recommended.length >= 3) {
-      return recommended.slice(0, BANNER_SELECTION_SIZE);
-    }
-    const popular = (recommendationShelf?.popular ?? []).filter((video) => video.poster_path || video.cover_path);
-    const merged = [...recommended];
-    for (const video of popular) {
-      if (merged.some((item) => item.id === video.id)) {
-        continue;
-      }
-      merged.push(video);
-      if (merged.length >= BANNER_SELECTION_SIZE) {
-        break;
-      }
-    }
-    if (merged.length > 0) {
-      return merged;
-    }
-    return pickBannerVideos(bannerSeed, filteredVideos);
-  }, [bannerSeed, filteredVideos, recommendationShelf]);
-  const continueWatchingVideos = recommendationShelf?.continue_watching ?? [];
+  const { fetchNextPage, hasNextPage, isFetchingNextPage } = videosQuery;
 
   useEffect(() => {
     if (!activeSecondaryTag) {
@@ -168,56 +107,39 @@ export function LibraryPage() {
     }
   }, [activeSecondaryTag, secondaryTagGroups]);
 
+  useEffect(() => {
+    const sentinel = loadMoreRef.current;
+    if (!sentinel || !hasNextPage || isFetchingNextPage) {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          void fetchNextPage();
+        }
+      },
+      { rootMargin: "240px 0px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
+
   if (session.isLoading || (session.data?.authenticated !== true && !session.isError)) {
     return <p className="state-text">正在检查登录状态...</p>;
   }
 
   return (
     <div className="library-page">
-      <div className="library-banner-shell">
-        {bannerVideos.length > 0 ? (
-          <BannerCarousel versionToken={artworkVersionToken} videos={bannerVideos} />
-        ) : (
-          <Surface>
-            <h1>局域网加密影库</h1>
-            <p className="muted">当前还没有可展示的视频，先去管理页导入吧。</p>
-          </Surface>
-        )}
-      </div>
-
       <div className="library-content-shell page-stack">
-        {continueWatchingVideos.length > 0 ? (
-          <>
-            <Surface>
-              <div className="section-head">
-                <div>
-                  <h2>继续观看</h2>
-                  <p className="muted">从上次停止的位置继续。</p>
-                </div>
-              </div>
-              <div className="video-grid">
-                {continueWatchingVideos.map((video) => (
-                  <Link className="video-card" key={`continue-${video.id}`} to={`/videos/${video.id}/play`}>
-                    <CoverCard artworkPath={video.poster_path ?? video.cover_path} title={video.title} versionToken={artworkVersionToken} />
-                    <div className="video-meta">
-                      <h2>{video.title}</h2>
-                      <p className="muted">
-                        续播到 {formatDuration(video.last_position_seconds)} · 完成度 {Math.round(video.avg_completion_ratio * 100)}%
-                      </p>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </Surface>
-            <div className="section-divider" />
-          </>
-        ) : null}
-
-        <div className="section-divider" />
-
         <Surface>
+          <div className="section-head">
+            <div>
+              <h1>媒体库</h1>
+              <p className="muted">移除推荐 Banner 后，这里只保留筛选、搜索和分批滚动加载的库视图。</p>
+            </div>
+          </div>
           {folders.length > 0 ? (
-            <div className="chip-row">
+            <div className="chip-row top-gap">
               {folders.map((folder) => (
                 <TagChip
                   key={folder.id}
@@ -261,44 +183,29 @@ export function LibraryPage() {
 
         <div className="section-divider" />
 
-        <div className="video-grid">
-          {filteredVideos.map((video) => (
-            <Link className="video-card" key={video.id} to={`/videos/${video.id}`}>
-              <CoverCard artworkPath={video.poster_path ?? video.cover_path} title={video.title} versionToken={artworkVersionToken} />
-              <div className="video-meta">
-                <h2>{video.title}</h2>
-                <p className="muted">{formatDuration(video.duration_seconds)} · {formatBytes(video.size)} · {video.segment_count} segments</p>
-                {groupedVideoTags.get(video.id)?.primaryTags.length || groupedVideoTags.get(video.id)?.secondaryTags.length ? (
-                  <div className="video-tag-lines">
-                    <div className="video-tag-line">
-                      {(groupedVideoTags.get(video.id)?.primaryTags ?? []).map((tag, index) => (
-                        <span className="mini-tag" key={`${video.id}-primary-${tag}-${index}`}>
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                    <div className="video-tag-line">
-                      {(groupedVideoTags.get(video.id)?.secondaryTags ?? []).map((tag, index) => (
-                        <span className="mini-tag" key={`${video.id}-secondary-${tag}-${index}`}>
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="chip-row compact">
-                    <span className="muted small-text">暂无标签</span>
-                  </div>
-                )}
-              </div>
-            </Link>
-          ))}
-        </div>
+        {filteredVideos.length > 0 ? (
+          <div className="video-grid">
+            {filteredVideos.map((video) => (
+              <VideoGridCard key={video.id} versionToken={artworkVersionToken} video={video} />
+            ))}
+          </div>
+        ) : null}
 
         {filteredVideos.length === 0 && !videosQuery.isLoading ? (
           <Surface>
             <p className="muted">当前筛选条件下没有视频。</p>
           </Surface>
+        ) : null}
+
+        {hasNextPage ? (
+          <div className="video-grid-footer">
+            <div className="load-more-sentinel" ref={loadMoreRef} />
+            <p className="muted small-text">{isFetchingNextPage ? "正在加载下一页..." : "继续向下滚动以加载更多 poster。"}</p>
+          </div>
+        ) : filteredVideos.length > 0 ? (
+          <div className="video-grid-footer">
+            <p className="muted small-text">媒体库已经全部加载完毕。</p>
+          </div>
         ) : null}
       </div>
     </div>

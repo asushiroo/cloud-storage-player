@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi import HTTPException, status
 
 from app.api.dependencies import require_authenticated
@@ -8,6 +8,7 @@ from app.api.schemas.imports import ImportJobResponse
 from app.api.schemas.library import (
     CatalogSyncResponse,
     FolderResponse,
+    VideoPageResponse,
     VideoRecommendationShelfResponse,
     VideoArtworkUpdateRequest,
     VideoWatchHeartbeatRequest,
@@ -35,6 +36,7 @@ from app.services.video_artwork import (
     VideoArtworkValidationError,
     replace_video_artwork,
 )
+from app.services.artwork_storage import read_artwork_bytes
 from app.services.video_delete import VideoDeleteNotFoundError, queue_video_delete_job
 from app.storage.baidu_api import BaiduApiError
 
@@ -89,6 +91,48 @@ async def get_video_recommendations(
             for video_id in shelf.popular_videos
             if video_id in videos
         ],
+    )
+
+
+@router.get("/videos/page", response_model=VideoPageResponse)
+async def get_video_page(
+    request: Request,
+    folder_id: int | None = None,
+    q: str | None = None,
+    tag: str | None = None,
+    offset: int = 0,
+    limit: int = 12,
+    _: None = Depends(require_authenticated),
+) -> VideoPageResponse:
+    settings = request.app.state.settings
+    if limit <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="limit must be greater than 0.")
+    if offset < 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="offset must be greater than or equal to 0.")
+
+    filtered_videos = list_videos(settings, folder_id=folder_id, q=q, tag=tag)
+    total = len(filtered_videos)
+    page = filtered_videos[offset : offset + limit]
+    return VideoPageResponse(
+        items=[VideoResponse.model_validate(video) for video in page],
+        offset=offset,
+        limit=limit,
+        total=total,
+        has_more=offset + limit < total,
+    )
+
+
+@router.get("/artwork/{artwork_name}")
+async def get_artwork(artwork_name: str, request: Request) -> Response:
+    settings = request.app.state.settings
+    try:
+        payload, media_type = read_artwork_bytes(settings, artwork_name=artwork_name)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Artwork not found.") from exc
+    return Response(
+        content=payload,
+        media_type=media_type,
+        headers={"Cache-Control": "private, max-age=3600"},
     )
 
 

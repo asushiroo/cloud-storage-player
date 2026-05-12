@@ -239,13 +239,13 @@ export function ManagementPage() {
       <Surface>
         <p className="eyebrow">管理页</p>
         <h1>导入与任务管理</h1>
-        <p className="muted">搜索媒体库已经移动到首页，这里专注导入、同步和任务控制。</p>
+        <p className="muted">搜索已经移动到独立媒体库页，这里只负责导入、同步和任务控制。</p>
         <div className="action-row">
           <button className="primary-button" disabled={syncMutation.isPending} onClick={() => syncMutation.mutate()} type="button">
             {syncMutation.isPending ? "同步中..." : "同步远端目录"}
           </button>
-          <Link className="secondary-button link-button" to="/">
-            返回首页媒体库
+          <Link className="secondary-button link-button" to="/library">
+            打开媒体库
           </Link>
         </div>
       </Surface>

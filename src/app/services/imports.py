@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from time import perf_counter
 
 from app.core.config import Settings
@@ -44,6 +45,10 @@ from app.services.remote_transfers import (
     TransferResult,
     measure_transfer,
     run_bounded_transfers,
+)
+from app.services.artwork_storage import (
+    build_poster_file_name,
+    store_encrypted_artwork_file,
 )
 from app.services.settings import get_upload_transfer_concurrency
 from app.services.video_fingerprint import build_video_content_fingerprint
@@ -318,14 +323,20 @@ def _create_video_from_probe(
 
 
 def _maybe_extract_cover(settings: Settings, *, source: Path, video: Video) -> Video:
-    poster_output_path = settings.covers_dir / f"{video.id}-poster.jpg"
-    poster_web_path = f"/covers/{video.id}-poster.jpg"
+    poster_file_name = build_poster_file_name(video.id)
     try:
-        extract_poster(
-            source,
-            poster_output_path,
-            ffmpeg_binary=settings.ffmpeg_binary,
-        )
+        with TemporaryDirectory() as temp_dir_name:
+            poster_output_path = Path(temp_dir_name) / poster_file_name
+            extract_poster(
+                source,
+                poster_output_path,
+                ffmpeg_binary=settings.ffmpeg_binary,
+            )
+            poster_web_path = store_encrypted_artwork_file(
+                settings,
+                file_name=poster_file_name,
+                source_path=poster_output_path,
+            )
     except CoverExtractionError:
         return video
 

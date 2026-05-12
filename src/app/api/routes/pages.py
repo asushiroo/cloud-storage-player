@@ -22,6 +22,8 @@ async def login_page(request: Request) -> HTMLResponse:
 
 
 @router.get("/", response_class=HTMLResponse)
+@router.get("/recommend", response_class=HTMLResponse)
+@router.get("/library", response_class=HTMLResponse)
 async def library_page(request: Request) -> HTMLResponse:
     if not is_authenticated(request):
         return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)

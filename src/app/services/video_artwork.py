@@ -1,13 +1,23 @@
 from __future__ import annotations
 
 import base64
+import binascii
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from app.core.config import Settings
 from app.models.library import Video
+from app.media.covers import CoverExtractionError, transcode_image_to_avif
 from app.repositories.videos import get_video, update_video_artwork_paths
+from app.services.artwork_storage import (
+    build_poster_file_name,
+    delete_video_artwork_files,
+    store_encrypted_artwork_file,
+)
 
 _IMAGE_EXTENSIONS = {
     "image/jpeg": "jpg",
+    "image/avif": "avif",
     "image/png": "png",
     "image/webp": "webp",
 }
@@ -39,26 +49,49 @@ def replace_video_artwork(
     if poster_source is None:
         raise VideoArtworkValidationError("At least one artwork image is required.")
 
-    _delete_existing_artwork_files(settings, video_id=video_id, kind="cover")
+    delete_video_artwork_files(settings, video_id=video_id, kind="cover")
     return update_video_artwork_paths(
         settings,
         video_id,
         cover_path=None,
-        poster_path=_write_artwork_file(settings, video_id=video_id, kind="poster", data_url=poster_source),
+        poster_path=_write_poster_artwork_file(settings, video_id=video_id, data_url=poster_source),
     )
 
 
-def _write_artwork_file(settings: Settings, *, video_id: int, kind: str, data_url: str) -> str:
+def _write_poster_artwork_file(settings: Settings, *, video_id: int, data_url: str) -> str:
     media_type, payload = _parse_data_url(data_url)
     extension = _IMAGE_EXTENSIONS.get(media_type)
     if extension is None:
         raise VideoArtworkValidationError(f"Unsupported artwork mime type: {media_type}")
 
-    _delete_existing_artwork_files(settings, video_id=video_id, kind=kind)
-    file_name = f"{video_id}-{kind}.{extension}"
-    output_path = settings.covers_dir / file_name
-    output_path.write_bytes(base64.b64decode(payload, validate=True))
-    return f"/covers/{file_name}"
+    delete_video_artwork_files(settings, video_id=video_id, kind="poster")
+    try:
+        decoded_bytes = base64.b64decode(payload, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise VideoArtworkValidationError("Artwork payload is not valid base64 data.") from exc
+
+    poster_file_name = build_poster_file_name(video_id)
+    with TemporaryDirectory() as temp_dir_name:
+        temp_dir = Path(temp_dir_name)
+        source_path = temp_dir / f"source.{extension}"
+        source_path.write_bytes(decoded_bytes)
+        transcoded_path = temp_dir / poster_file_name
+        if extension == "avif":
+            transcoded_path.write_bytes(decoded_bytes)
+        else:
+            try:
+                transcode_image_to_avif(
+                    source_path,
+                    transcoded_path,
+                    ffmpeg_binary=settings.ffmpeg_binary,
+                )
+            except CoverExtractionError as exc:
+                raise VideoArtworkValidationError(str(exc)) from exc
+        return store_encrypted_artwork_file(
+            settings,
+            file_name=poster_file_name,
+            source_path=transcoded_path,
+        )
 
 
 def _parse_data_url(data_url: str) -> tuple[str, str]:
@@ -72,9 +105,3 @@ def _parse_data_url(data_url: str) -> tuple[str, str]:
         raise VideoArtworkValidationError("Artwork payload must be base64 encoded.")
     media_type = header[len(prefix) : header.index(";")]
     return media_type, payload
-
-
-def _delete_existing_artwork_files(settings: Settings, *, video_id: int, kind: str) -> None:
-    for extension in _IMAGE_EXTENSIONS.values():
-        candidate = settings.covers_dir / f"{video_id}-{kind}.{extension}"
-        candidate.unlink(missing_ok=True)

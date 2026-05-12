@@ -18,6 +18,7 @@ from app.repositories.import_jobs import (
 )
 from app.repositories.video_segments import list_video_segments
 from app.repositories.videos import delete_video, get_video
+from app.services.artwork_storage import resolve_artwork_storage_paths
 from app.storage.factory import build_storage_backend
 
 
@@ -138,15 +139,15 @@ def _delete_local_artifacts(settings: Settings, video: Video) -> None:
 
 def _resolve_artwork_files(settings: Settings, video: Video) -> list[Path]:
     resolved: list[Path] = []
-    seen_names: set[str] = set()
+    seen_paths: set[Path] = set()
     for artwork_path in [video.cover_path, video.poster_path]:
         if not artwork_path:
             continue
-        file_name = Path(artwork_path).name
-        if not file_name or file_name in seen_names:
-            continue
-        seen_names.add(file_name)
-        resolved.append(settings.covers_dir / file_name)
+        for storage_path in resolve_artwork_storage_paths(settings, artwork_path=artwork_path):
+            if storage_path in seen_paths:
+                continue
+            seen_paths.add(storage_path)
+            resolved.append(storage_path)
     return resolved
 
 

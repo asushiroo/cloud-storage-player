@@ -73,6 +73,14 @@ class VideoArtworkUpdateRequest(BaseModel):
         return self
 
 
+class VideoPageResponse(BaseModel):
+    items: list[VideoResponse] = Field(default_factory=list)
+    offset: int = Field(ge=0)
+    limit: int = Field(ge=1)
+    total: int = Field(ge=0)
+    has_more: bool = False
+
+
 class CatalogSyncResponse(BaseModel):
     discovered_manifest_count: int
     created_video_count: int

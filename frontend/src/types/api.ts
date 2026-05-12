@@ -51,6 +51,14 @@ export interface VideoRecommendationShelf {
   popular: Video[];
 }
 
+export interface VideoPage {
+  items: Video[];
+  offset: number;
+  limit: number;
+  total: number;
+  has_more: boolean;
+}
+
 export interface VideoWatchHeartbeatResult {
   session_token: string;
   video: Video;
