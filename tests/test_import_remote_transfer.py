@@ -4,7 +4,9 @@ from app.core.config import Settings
 from app.core.security import hash_password
 from app.db.schema import initialize_database
 from app.media.probe import MediaProbeResult
+from app.repositories.settings import set_setting
 from app.services.imports import import_local_video
+from app.services.settings import UPLOAD_TRANSFER_CONCURRENCY_KEY
 from app.storage.baidu_api import BaiduFrequencyControlError
 
 
@@ -64,3 +66,44 @@ def test_import_retries_after_baidu_frequency_control(monkeypatch, tmp_path: Pat
     assert job.status == "completed"
     assert sum(sleep_calls) >= 1.0
     assert len(storage.calls) >= 2
+
+
+def test_import_uses_runtime_configured_upload_transfer_concurrency(monkeypatch, tmp_path: Path) -> None:
+    settings = build_settings(tmp_path)
+    set_setting(settings, key=UPLOAD_TRANSFER_CONCURRENCY_KEY, value="4")
+    source_path = tmp_path / "upload-concurrency.mp4"
+    source_path.write_bytes(b"x" * 1024)
+    max_inflight = {"value": 0}
+    active_uploads = {"value": 0}
+
+    class TrackingStorage:
+        def upload_file(self, local_path: Path, remote_path: str) -> None:
+            active_uploads["value"] += 1
+            if active_uploads["value"] > max_inflight["value"]:
+                max_inflight["value"] = active_uploads["value"]
+            try:
+                import time
+
+                time.sleep(0.05)
+            finally:
+                active_uploads["value"] -= 1
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr("app.services.imports.build_storage_backend", lambda _settings: TrackingStorage())
+    monkeypatch.setattr(
+        "app.services.imports.probe_video",
+        lambda source, ffprobe_binary: MediaProbeResult(
+            source_path=source,
+            format_name="mp4",
+            mime_type="video/mp4",
+            size=source.stat().st_size,
+            duration_seconds=1.0,
+        ),
+    )
+
+    job = import_local_video(settings, source_path=str(source_path))
+
+    assert job.status == "completed"
+    assert max_inflight["value"] >= 4

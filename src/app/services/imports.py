@@ -45,6 +45,7 @@ from app.services.remote_transfers import (
     measure_transfer,
     run_bounded_transfers,
 )
+from app.services.settings import get_upload_transfer_concurrency
 from app.services.video_fingerprint import build_video_content_fingerprint
 from app.services.video_delete import delete_library_video
 from app.storage.factory import build_storage_backend
@@ -480,6 +481,7 @@ def _upload_remote_artifacts(
                 job_id=job_id,
                 tasks=remote_artifacts,
                 transfer_func=upload_artifact,
+                concurrency=get_upload_transfer_concurrency(settings),
                 on_result=on_result,
                 on_exception=on_exception,
             )

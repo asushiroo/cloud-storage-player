@@ -10,7 +10,7 @@ from app.repositories.settings import set_setting
 from app.repositories.video_segments import NewVideoSegment, create_video_segments
 from app.repositories.videos import create_video
 from app.services.cache import process_cache_job
-from app.services.settings import REMOTE_TRANSFER_CONCURRENCY_KEY
+from app.services.settings import DOWNLOAD_TRANSFER_CONCURRENCY_KEY
 from app.storage.mock import MockStorageBackend
 
 
@@ -134,7 +134,7 @@ def test_process_cache_job_uses_runtime_configured_transfer_concurrency(monkeypa
             )
         )
     create_video_segments(settings, video_id=video.id, segments=segments)
-    set_setting(settings, key=REMOTE_TRANSFER_CONCURRENCY_KEY, value="4")
+    set_setting(settings, key=DOWNLOAD_TRANSFER_CONCURRENCY_KEY, value="4")
 
     job = create_cache_job(
         settings,

@@ -11,7 +11,7 @@ from typing import Generic, TypeVar
 from app.core.config import Settings
 from app.repositories.import_jobs import record_import_job_transfer
 from app.services.job_control import throw_if_cancel_requested
-from app.services.settings import get_remote_transfer_concurrency
+from app.services.settings import get_download_transfer_concurrency
 
 TTask = TypeVar("TTask")
 TResult = TypeVar("TResult")
@@ -48,7 +48,7 @@ def run_bounded_transfers(
         return []
     total_task_count = len(pending_tasks)
 
-    worker_count = max(1, concurrency or get_remote_transfer_concurrency(settings))
+    worker_count = max(1, concurrency or get_download_transfer_concurrency(settings))
     results: list[TransferResult[TResult]] = []
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
         in_flight: dict[Future[TransferResult[TResult]], TTask] = {}
