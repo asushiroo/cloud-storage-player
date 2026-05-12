@@ -25,6 +25,35 @@ export interface Video {
   cached_size_bytes: number;
   cached_segment_count: number;
   tags: string[];
+  valid_play_count: number;
+  total_session_count: number;
+  total_watch_seconds: number;
+  last_watched_at: string | null;
+  last_position_seconds: number;
+  avg_completion_ratio: number;
+  bounce_count: number;
+  bounce_rate: number;
+  rewatch_score: number;
+  interest_score: number;
+  popularity_score: number;
+  resume_score: number;
+  recommendation_score: number;
+  cache_priority: number;
+  highlight_start_seconds: number | null;
+  highlight_end_seconds: number | null;
+  highlight_bucket_count: number;
+  highlight_heatmap: number[];
+}
+
+export interface VideoRecommendationShelf {
+  recommended: Video[];
+  continue_watching: Video[];
+  popular: Video[];
+}
+
+export interface VideoWatchHeartbeatResult {
+  session_token: string;
+  video: Video;
 }
 
 export interface ImportJob {

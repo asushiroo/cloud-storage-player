@@ -8,7 +8,10 @@ from app.api.schemas.imports import ImportJobResponse
 from app.api.schemas.library import (
     CatalogSyncResponse,
     FolderResponse,
+    VideoRecommendationShelfResponse,
     VideoArtworkUpdateRequest,
+    VideoWatchHeartbeatRequest,
+    VideoWatchHeartbeatResponse,
     VideoMetadataUpdateRequest,
     VideoResponse,
     VideoTagsUpdateRequest,
@@ -19,6 +22,10 @@ from app.repositories.videos import get_video, list_videos
 from app.services.baidu_oauth import BaiduOAuthConfigurationError
 from app.services.cache import get_video_cache_status
 from app.services.catalog_sync import sync_remote_catalog
+from app.services.recommendations import (
+    build_recommendation_shelf,
+    record_watch_heartbeat,
+)
 from app.services.video_metadata import (
     VideoMetadataValidationError,
     update_video_metadata_and_rewrite_manifest,
@@ -58,6 +65,33 @@ async def get_videos(
     ]
 
 
+@router.get("/videos/recommendations", response_model=VideoRecommendationShelfResponse)
+async def get_video_recommendations(
+    request: Request,
+    _: None = Depends(require_authenticated),
+) -> VideoRecommendationShelfResponse:
+    settings = request.app.state.settings
+    videos = {video.id: video for video in list_videos(settings)}
+    shelf = build_recommendation_shelf(settings)
+    return VideoRecommendationShelfResponse(
+        recommended=[
+            VideoResponse.model_validate(videos[video_id])
+            for video_id in shelf.recommended_videos
+            if video_id in videos
+        ],
+        continue_watching=[
+            VideoResponse.model_validate(videos[video_id])
+            for video_id in shelf.continue_watching_videos
+            if video_id in videos
+        ],
+        popular=[
+            VideoResponse.model_validate(videos[video_id])
+            for video_id in shelf.popular_videos
+            if video_id in videos
+        ],
+    )
+
+
 @router.get("/videos/{video_id}", response_model=VideoResponse)
 async def get_video_detail(
     video_id: int,
@@ -74,6 +108,34 @@ async def get_video_detail(
     video.cached_segment_count = cache_status.cached_segment_count
 
     return VideoResponse.model_validate(video)
+
+
+@router.post("/videos/{video_id}/watch", response_model=VideoWatchHeartbeatResponse)
+async def report_video_watch_progress(
+    video_id: int,
+    payload: VideoWatchHeartbeatRequest,
+    request: Request,
+    _: None = Depends(require_authenticated),
+) -> VideoWatchHeartbeatResponse:
+    settings = request.app.state.settings
+    try:
+        result = record_watch_heartbeat(
+            settings,
+            video_id=video_id,
+            session_token=payload.session_token,
+            position_seconds=payload.position_seconds,
+            watched_seconds_delta=payload.watched_seconds_delta,
+            completed=payload.completed,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        status_code = status.HTTP_404_NOT_FOUND if detail.startswith("Video not found:") else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+
+    return VideoWatchHeartbeatResponse(
+        session_token=result.session_token,
+        video=VideoResponse.model_validate(result.video),
+    )
 
 
 @router.patch("/videos/{video_id}/tags", response_model=VideoResponse)

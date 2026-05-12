@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Event, Lock, Thread
 from time import perf_counter, time_ns
+from typing import Callable
 from uuid import uuid4
 
 from app.core.config import Settings
@@ -42,6 +43,7 @@ class SegmentPrefetchSession:
     settings: Settings
     video_id: int
     ordered_segments: list[VideoSegment]
+    storage_backend_factory: Callable[[], StorageBackend] | None = None
     stop_event: Event = field(default_factory=Event)
     lock: Lock = field(default_factory=Lock)
     thread: Thread | None = None
@@ -85,7 +87,11 @@ class SegmentPrefetchSession:
                 self.idle_since = perf_counter()
 
     def _run(self) -> None:
-        storage = build_storage_backend(self.settings)
+        storage = (
+            self.storage_backend_factory()
+            if self.storage_backend_factory is not None
+            else build_storage_backend(self.settings)
+        )
         try:
             while not self.stop_event.is_set():
                 batch = self._next_batch()
@@ -191,6 +197,7 @@ def acquire_prefetch_session(
     *,
     video_id: int,
     segments: list[VideoSegment],
+    storage_backend_factory: Callable[[], StorageBackend] | None = None,
 ) -> SegmentPrefetchSession | None:
     remote_segments = [segment for segment in segments if segment.cloud_path]
     if not remote_segments:
@@ -205,6 +212,7 @@ def acquire_prefetch_session(
             settings=settings,
             video_id=video_id,
             ordered_segments=sorted(remote_segments, key=lambda segment: segment.segment_index),
+            storage_backend_factory=storage_backend_factory,
         )
         session.acquire()
         _prefetch_sessions[video_id] = session

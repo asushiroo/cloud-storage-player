@@ -19,6 +19,7 @@ from app.repositories.videos import get_video
 from app.services.segment_prefetch import (
     acquire_prefetch_session,
     download_remote_segment_payload,
+    persist_segment_payload,
     queue_segment_cache_write,
     release_prefetch_session,
 )
@@ -183,7 +184,7 @@ def _prepare_segment_stream(
                 settings=settings,
                 storage_backend=storage_backend,
                 required=True,
-                queue_cache_write=False,
+                queue_cache_write=True,
             )
         except (FileNotFoundError, NotImplementedError, RuntimeError, ValueError) as exc:
             raise VideoStreamNotFoundError("Encrypted segment file is missing.") from exc
@@ -205,6 +206,7 @@ def _prepare_segment_stream(
             settings,
             video_id=prepared_reads[0].segment.video_id,
             segments=segments,
+            storage_backend_factory=(lambda: build_storage_backend(settings)),
         ),
     )
 
@@ -304,7 +306,11 @@ def _read_segment_payload(
 
     if prefetched_payload is not None:
         if queue_cache_write and settings is not None:
-            queue_segment_cache_write(settings, segment, prefetched_payload)
+            # The current response segment should be immediately available for reuse.
+            if required:
+                persist_segment_payload(settings, segment, prefetched_payload)
+            else:
+                queue_segment_cache_write(settings, segment, prefetched_payload)
         return prefetched_payload
 
     if storage_backend is not None and segment.cloud_path and settings is not None:
@@ -315,7 +321,10 @@ def _read_segment_payload(
                 storage_backend=storage_backend,
             )
             if queue_cache_write:
-                queue_segment_cache_write(settings, segment, downloaded.payload)
+                if required:
+                    persist_segment_payload(settings, segment, downloaded.payload)
+                else:
+                    queue_segment_cache_write(settings, segment, downloaded.payload)
             return downloaded.payload
         except BaiduApiError as exc:
             logger.warning(

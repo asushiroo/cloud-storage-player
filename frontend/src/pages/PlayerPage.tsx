@@ -1,14 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { fetchVideo, getStreamUrl, updateVideoArtwork } from "../api/client";
+import { fetchVideo, getStreamUrl, reportVideoWatchHeartbeat, updateVideoArtwork } from "../api/client";
 import { Surface } from "../components/Surface";
 import { useRequireSession } from "../hooks/session";
-import type { ApiError, Video } from "../types/api";
+import type { ApiError, Video, VideoRecommendationShelf } from "../types/api";
 import { formatBytes, formatDuration } from "../utils/format";
 
 const POSTER_TARGET = { width: 1280, height: 720 };
 const DEFAULT_CROP = { zoom: 1, offsetX: 0, offsetY: 0 };
+const WATCH_HEARTBEAT_MS = 10_000;
 
 type CropConfig = typeof DEFAULT_CROP;
 
@@ -115,11 +116,15 @@ export function PlayerPage() {
   const session = useRequireSession();
   const queryClient = useQueryClient();
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const lastHeartbeatAtRef = useRef<number | null>(null);
+  const lastPlaybackPositionRef = useRef(0);
   const [capturedDataUrl, setCapturedDataUrl] = useState<string | null>(null);
   const [posterPreviewDataUrl, setPosterPreviewDataUrl] = useState<string | null>(null);
   const [posterCrop, setPosterCrop] = useState<CropConfig>(DEFAULT_CROP);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [watchSessionToken, setWatchSessionToken] = useState<string | null>(null);
+
   const videoQuery = useQuery({
     queryKey: ["video", videoId],
     queryFn: () => fetchVideo(videoId),
@@ -133,6 +138,17 @@ export function PlayerPage() {
         return current;
       }
       return current.map((item) => (item.id === updatedVideo.id ? { ...item, ...updatedVideo } : item));
+    });
+    queryClient.setQueryData(["videos", "recommendations"], (current: VideoRecommendationShelf | undefined) => {
+      if (!current) {
+        return current;
+      }
+      const patch = (items: Video[]) => items.map((item) => (item.id === updatedVideo.id ? { ...item, ...updatedVideo } : item));
+      return {
+        recommended: patch(current.recommended),
+        continue_watching: patch(current.continue_watching),
+        popular: patch(current.popular),
+      };
     });
   };
 
@@ -174,6 +190,7 @@ export function PlayerPage() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["video", videoId] }),
         queryClient.invalidateQueries({ queryKey: ["videos"] }),
+        queryClient.invalidateQueries({ queryKey: ["videos", "recommendations"] }),
       ]);
     },
     onError: (exc: ApiError) => {
@@ -181,6 +198,80 @@ export function PlayerPage() {
       setFeedback(null);
     },
   });
+
+  const watchMutation = useMutation({
+    mutationFn: (payload: { positionSeconds: number; watchedSecondsDelta: number; completed?: boolean }) =>
+      reportVideoWatchHeartbeat({
+        videoId,
+        sessionToken: watchSessionToken,
+        positionSeconds: payload.positionSeconds,
+        watchedSecondsDelta: payload.watchedSecondsDelta,
+        completed: payload.completed,
+      }),
+    onSuccess: (result) => {
+      setWatchSessionToken(result.session_token);
+      refreshVideoCaches(result.video);
+    },
+  });
+
+  useEffect(() => {
+    const videoElement = videoRef.current;
+    if (!videoElement || !Number.isFinite(videoId)) {
+      return;
+    }
+
+    const sendHeartbeat = (completed: boolean) => {
+      const now = Date.now();
+      const previousAt = lastHeartbeatAtRef.current;
+      const previousPosition = lastPlaybackPositionRef.current;
+      const currentPosition = Math.max(videoElement.currentTime || 0, 0);
+      lastPlaybackPositionRef.current = currentPosition;
+      lastHeartbeatAtRef.current = now;
+      if (previousAt === null) {
+        return;
+      }
+      const elapsedSeconds = Math.max((now - previousAt) / 1000, 0);
+      const progressedSeconds = Math.max(currentPosition - previousPosition, 0);
+      const watchedSecondsDelta = Math.min(elapsedSeconds, progressedSeconds > 0 ? progressedSeconds : elapsedSeconds);
+      if (watchedSecondsDelta <= 0 && !completed) {
+        return;
+      }
+      watchMutation.mutate({
+        positionSeconds: currentPosition,
+        watchedSecondsDelta,
+        completed,
+      });
+    };
+
+    const handlePlay = () => {
+      lastHeartbeatAtRef.current = Date.now();
+      lastPlaybackPositionRef.current = Math.max(videoElement.currentTime || 0, 0);
+    };
+    const handlePause = () => sendHeartbeat(false);
+    const handleSeeked = () => {
+      lastPlaybackPositionRef.current = Math.max(videoElement.currentTime || 0, 0);
+      lastHeartbeatAtRef.current = Date.now();
+    };
+    const handleEnded = () => sendHeartbeat(true);
+    const heartbeatTimer = window.setInterval(() => {
+      if (!videoElement.paused && !videoElement.ended) {
+        sendHeartbeat(false);
+      }
+    }, WATCH_HEARTBEAT_MS);
+
+    videoElement.addEventListener("play", handlePlay);
+    videoElement.addEventListener("pause", handlePause);
+    videoElement.addEventListener("seeked", handleSeeked);
+    videoElement.addEventListener("ended", handleEnded);
+
+    return () => {
+      window.clearInterval(heartbeatTimer);
+      videoElement.removeEventListener("play", handlePlay);
+      videoElement.removeEventListener("pause", handlePause);
+      videoElement.removeEventListener("seeked", handleSeeked);
+      videoElement.removeEventListener("ended", handleEnded);
+    };
+  }, [videoId, watchMutation]);
 
   if (session.isLoading || (session.data?.authenticated !== true && !session.isError)) {
     return <p className="state-text">正在准备播放...</p>;
@@ -216,12 +307,33 @@ export function PlayerPage() {
     setError(null);
   };
 
+  const jumpToHighlight = () => {
+    const element = videoRef.current;
+    if (!element || !video || video.highlight_start_seconds === null) {
+      return;
+    }
+    element.currentTime = video.highlight_start_seconds;
+    void element.play().catch(() => undefined);
+    setFeedback(`已跳转到高光片段 ${formatDuration(video.highlight_start_seconds)}。`);
+    setError(null);
+  };
+
   return (
     <div className="page-stack">
       <Surface>
         <h1>{video?.title ?? `Video #${videoId}`}</h1>
-        {video ? <p className="muted">{formatDuration(video.duration_seconds)} · {formatBytes(video.size)} · {video.mime_type}</p> : null}
+        {video ? (
+          <>
+            <p className="muted">
+              {formatDuration(video.duration_seconds)} · {formatBytes(video.size)} · {video.mime_type}
+            </p>
+            <p className="muted small-text">
+              推荐分 {video.recommendation_score.toFixed(2)} · 兴趣分 {video.interest_score.toFixed(2)} · 热门分 {video.popularity_score.toFixed(2)}
+            </p>
+          </>
+        ) : null}
       </Surface>
+
       {error ? (
         <Surface>
           <p className="error-text">{error}</p>
@@ -232,9 +344,27 @@ export function PlayerPage() {
           <p>{feedback}</p>
         </Surface>
       ) : null}
+
       <div className="player-surface">
         <video autoPlay className="player-video" controls preload="metadata" ref={videoRef} src={getStreamUrl(videoId)} />
       </div>
+
+      {video && video.highlight_start_seconds !== null && video.highlight_end_seconds !== null ? (
+        <Surface>
+          <div className="section-head">
+            <div>
+              <h2>高光片段</h2>
+              <p className="muted">
+                {formatDuration(video.highlight_start_seconds)} - {formatDuration(video.highlight_end_seconds)}
+              </p>
+            </div>
+            <button className="primary-button" onClick={jumpToHighlight} type="button">
+              跳到高潮
+            </button>
+          </div>
+        </Surface>
+      ) : null}
+
       <Surface>
         <div className="section-head">
           <div>
@@ -275,6 +405,7 @@ export function PlayerPage() {
           </div>
         ) : null}
       </Surface>
+
       <div className="action-row">
         <Link className="secondary-button link-button" to={`/videos/${videoId}`}>
           返回详情

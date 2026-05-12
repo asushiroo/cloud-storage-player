@@ -12,6 +12,8 @@ import type {
   ImportJob,
   PublicSettings,
   Video,
+  VideoRecommendationShelf,
+  VideoWatchHeartbeatResult,
 } from "../types/api";
 
 export interface SettingsUpdatePayload {
@@ -118,6 +120,27 @@ export const fetchVideos = (params?: { folderId?: number; q?: string; tag?: stri
 };
 
 export const fetchVideo = (videoId: number): Promise<Video> => request(`/api/videos/${videoId}`);
+
+export const fetchVideoRecommendations = (): Promise<VideoRecommendationShelf> =>
+  request("/api/videos/recommendations");
+
+export const reportVideoWatchHeartbeat = (payload: {
+  videoId: number;
+  sessionToken?: string | null;
+  positionSeconds: number;
+  watchedSecondsDelta: number;
+  completed?: boolean;
+}): Promise<VideoWatchHeartbeatResult> =>
+  request(`/api/videos/${payload.videoId}/watch`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({
+      session_token: payload.sessionToken ?? null,
+      position_seconds: payload.positionSeconds,
+      watched_seconds_delta: payload.watchedSecondsDelta,
+      completed: payload.completed ?? false,
+    }),
+  });
 
 export const deleteVideo = (videoId: number): Promise<ImportJob> =>
   request(`/api/videos/${videoId}`, {

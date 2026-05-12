@@ -28,6 +28,24 @@ CREATE TABLE IF NOT EXISTS videos (
     content_fingerprint TEXT,
     manifest_sync_dirty INTEGER NOT NULL DEFAULT 0,
     manifest_sync_requested_at TEXT,
+    valid_play_count INTEGER NOT NULL DEFAULT 0,
+    total_session_count INTEGER NOT NULL DEFAULT 0,
+    total_watch_seconds REAL NOT NULL DEFAULT 0,
+    last_watched_at TEXT,
+    last_position_seconds REAL NOT NULL DEFAULT 0,
+    avg_completion_ratio REAL NOT NULL DEFAULT 0,
+    bounce_count INTEGER NOT NULL DEFAULT 0,
+    bounce_rate REAL NOT NULL DEFAULT 0,
+    rewatch_score REAL NOT NULL DEFAULT 0,
+    interest_score REAL NOT NULL DEFAULT 0,
+    popularity_score REAL NOT NULL DEFAULT 0,
+    resume_score REAL NOT NULL DEFAULT 0,
+    recommendation_score REAL NOT NULL DEFAULT 0,
+    cache_priority REAL NOT NULL DEFAULT 0,
+    highlight_start_seconds REAL,
+    highlight_end_seconds REAL,
+    highlight_bucket_count INTEGER NOT NULL DEFAULT 20,
+    highlight_heatmap_json TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -73,6 +91,32 @@ CREATE TABLE IF NOT EXISTS video_segments (
     local_staging_path TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS video_watch_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    session_token TEXT NOT NULL UNIQUE,
+    started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_activity_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TEXT,
+    accumulated_watch_seconds REAL NOT NULL DEFAULT 0,
+    last_position_seconds REAL NOT NULL DEFAULT 0,
+    max_position_seconds REAL NOT NULL DEFAULT 0,
+    valid_play_recorded INTEGER NOT NULL DEFAULT 0,
+    bounce_recorded INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS tag_preferences (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tag_value TEXT NOT NULL,
+    tag_level TEXT NOT NULL,
+    interest_sum REAL NOT NULL DEFAULT 0,
+    interest_count INTEGER NOT NULL DEFAULT 0,
+    preference_score REAL NOT NULL DEFAULT 0,
+    exposure_count INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(tag_value, tag_level)
+);
 """
 
 
@@ -85,6 +129,24 @@ def initialize_database(settings: Settings) -> None:
         _ensure_column(connection, "videos", "content_fingerprint", "TEXT")
         _ensure_column(connection, "videos", "manifest_sync_dirty", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(connection, "videos", "manifest_sync_requested_at", "TEXT")
+        _ensure_column(connection, "videos", "valid_play_count", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(connection, "videos", "total_session_count", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(connection, "videos", "total_watch_seconds", "REAL NOT NULL DEFAULT 0")
+        _ensure_column(connection, "videos", "last_watched_at", "TEXT")
+        _ensure_column(connection, "videos", "last_position_seconds", "REAL NOT NULL DEFAULT 0")
+        _ensure_column(connection, "videos", "avg_completion_ratio", "REAL NOT NULL DEFAULT 0")
+        _ensure_column(connection, "videos", "bounce_count", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(connection, "videos", "bounce_rate", "REAL NOT NULL DEFAULT 0")
+        _ensure_column(connection, "videos", "rewatch_score", "REAL NOT NULL DEFAULT 0")
+        _ensure_column(connection, "videos", "interest_score", "REAL NOT NULL DEFAULT 0")
+        _ensure_column(connection, "videos", "popularity_score", "REAL NOT NULL DEFAULT 0")
+        _ensure_column(connection, "videos", "resume_score", "REAL NOT NULL DEFAULT 0")
+        _ensure_column(connection, "videos", "recommendation_score", "REAL NOT NULL DEFAULT 0")
+        _ensure_column(connection, "videos", "cache_priority", "REAL NOT NULL DEFAULT 0")
+        _ensure_column(connection, "videos", "highlight_start_seconds", "REAL")
+        _ensure_column(connection, "videos", "highlight_end_seconds", "REAL")
+        _ensure_column(connection, "videos", "highlight_bucket_count", "INTEGER NOT NULL DEFAULT 20")
+        _ensure_column(connection, "videos", "highlight_heatmap_json", "TEXT NOT NULL DEFAULT '[]'")
         _ensure_column(connection, "import_jobs", "requested_tags_json", "TEXT NOT NULL DEFAULT '[]'")
         _ensure_column(connection, "import_jobs", "job_kind", "TEXT NOT NULL DEFAULT 'import'")
         _ensure_column(connection, "import_jobs", "task_name", "TEXT")

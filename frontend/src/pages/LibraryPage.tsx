@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { fetchFolders, fetchVideos } from "../api/client";
+import { fetchFolders, fetchVideoRecommendations, fetchVideos } from "../api/client";
 import { BannerCarousel } from "../components/BannerCarousel";
 import { CoverCard } from "../components/CoverCard";
 import { Surface } from "../components/Surface";
@@ -47,6 +47,11 @@ export function LibraryPage() {
     queryFn: () => fetchVideos({ folderId: selectedFolderId, q: appliedSearch }),
     enabled: session.data?.authenticated === true,
   });
+  const recommendationsQuery = useQuery({
+    queryKey: ["videos", "recommendations"],
+    queryFn: fetchVideoRecommendations,
+    enabled: session.data?.authenticated === true,
+  });
 
   useEffect(() => {
     const refreshTimer = window.setInterval(() => {
@@ -57,6 +62,7 @@ export function LibraryPage() {
 
   const folders = foldersQuery.data ?? [];
   const videos = videosQuery.data ?? [];
+  const recommendationShelf = recommendationsQuery.data;
   const artworkVersionToken = videosQuery.dataUpdatedAt;
   const primaryTagGroups = useMemo(() => {
     const groups = new Map<string, number>();
@@ -130,7 +136,28 @@ export function LibraryPage() {
       ),
     [filteredVideos],
   );
-  const bannerVideos = useMemo(() => pickBannerVideos(bannerSeed, filteredVideos), [bannerSeed, filteredVideos]);
+  const bannerVideos = useMemo(() => {
+    const recommended = (recommendationShelf?.recommended ?? []).filter((video) => video.poster_path || video.cover_path);
+    if (recommended.length >= 3) {
+      return recommended.slice(0, BANNER_SELECTION_SIZE);
+    }
+    const popular = (recommendationShelf?.popular ?? []).filter((video) => video.poster_path || video.cover_path);
+    const merged = [...recommended];
+    for (const video of popular) {
+      if (merged.some((item) => item.id === video.id)) {
+        continue;
+      }
+      merged.push(video);
+      if (merged.length >= BANNER_SELECTION_SIZE) {
+        break;
+      }
+    }
+    if (merged.length > 0) {
+      return merged;
+    }
+    return pickBannerVideos(bannerSeed, filteredVideos);
+  }, [bannerSeed, filteredVideos, recommendationShelf]);
+  const continueWatchingVideos = recommendationShelf?.continue_watching ?? [];
 
   useEffect(() => {
     if (!activeSecondaryTag) {
@@ -159,6 +186,33 @@ export function LibraryPage() {
       </div>
 
       <div className="library-content-shell page-stack">
+        {continueWatchingVideos.length > 0 ? (
+          <>
+            <Surface>
+              <div className="section-head">
+                <div>
+                  <h2>继续观看</h2>
+                  <p className="muted">从上次停止的位置继续。</p>
+                </div>
+              </div>
+              <div className="video-grid">
+                {continueWatchingVideos.map((video) => (
+                  <Link className="video-card" key={`continue-${video.id}`} to={`/videos/${video.id}/play`}>
+                    <CoverCard artworkPath={video.poster_path ?? video.cover_path} title={video.title} versionToken={artworkVersionToken} />
+                    <div className="video-meta">
+                      <h2>{video.title}</h2>
+                      <p className="muted">
+                        续播到 {formatDuration(video.last_position_seconds)} · 完成度 {Math.round(video.avg_completion_ratio * 100)}%
+                      </p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </Surface>
+            <div className="section-divider" />
+          </>
+        ) : null}
+
         <div className="section-divider" />
 
         <Surface>

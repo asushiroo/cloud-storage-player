@@ -194,3 +194,62 @@ def test_settings_repository_round_trip(tmp_path: Path) -> None:
     loaded = get_setting(settings, "baidu_root")
     assert loaded is not None
     assert loaded.value == "/CloudStoragePlayer"
+
+
+def test_video_watch_endpoint_updates_analytics_and_recommendation_shelves(tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    watched = create_video(
+        settings,
+        title="Watched Video",
+        mime_type="video/mp4",
+        size=100,
+        duration_seconds=100,
+        tags=["Actor A", "secondary:Action"],
+    )
+    create_video(
+        settings,
+        title="Similar Video",
+        mime_type="video/mp4",
+        size=100,
+        duration_seconds=120,
+        tags=["Actor A", "secondary:Action"],
+    )
+    login(client, password)
+
+    first = client.post(
+        f"/api/videos/{watched.id}/watch",
+        json={
+            "position_seconds": 15,
+            "watched_seconds_delta": 15,
+            "completed": False,
+        },
+    )
+    assert first.status_code == 200
+    session_token = first.json()["session_token"]
+
+    second = client.post(
+        f"/api/videos/{watched.id}/watch",
+        json={
+            "session_token": session_token,
+            "position_seconds": 55,
+            "watched_seconds_delta": 40,
+            "completed": True,
+        },
+    )
+    assert second.status_code == 200
+    payload = second.json()["video"]
+    assert payload["valid_play_count"] == 1
+    assert payload["total_session_count"] == 1
+    assert payload["interest_score"] > 0
+    assert payload["highlight_start_seconds"] is not None
+    assert payload["highlight_end_seconds"] is not None
+
+    detail = client.get(f"/api/videos/{watched.id}")
+    assert detail.status_code == 200
+    assert detail.json()["last_position_seconds"] == 55
+
+    shelf = client.get("/api/videos/recommendations")
+    assert shelf.status_code == 200
+    shelf_payload = shelf.json()
+    assert any(item["id"] == watched.id for item in shelf_payload["continue_watching"])
+    assert any(item["title"] == "Similar Video" for item in shelf_payload["recommended"])
