@@ -14,6 +14,15 @@ import type {
   Video,
 } from "../types/api";
 
+export interface SettingsUpdatePayload {
+  baidu_root_path?: string;
+  cache_limit_bytes?: number;
+  storage_backend?: string;
+  upload_transfer_concurrency?: number;
+  download_transfer_concurrency?: number;
+  remote_transfer_concurrency?: number;
+}
+
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
 const jsonHeaders = {
@@ -216,7 +225,7 @@ export const createVideoCacheJob = (videoId: number): Promise<ImportJob> =>
     method: "POST",
   });
 
-export const updateSettings = (payload: Partial<PublicSettings>): Promise<PublicSettings> =>
+export const updateSettings = (payload: SettingsUpdatePayload): Promise<PublicSettings> =>
   request("/api/settings", {
     method: "POST",
     headers: jsonHeaders,

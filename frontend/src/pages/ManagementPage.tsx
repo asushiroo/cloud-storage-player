@@ -23,6 +23,7 @@ import { buildAssetUrl } from "../api/client";
 import { formatBytes, parseTagInput } from "../utils/format";
 
 const ACTIVE_JOB_STATUSES = new Set(["queued", "running", "cancelling"]);
+const ERROR_MESSAGE_PREVIEW_MAX_LENGTH = 240;
 
 function canCancelJob(job: ImportJob) {
   return job.job_kind !== "delete" && ACTIVE_JOB_STATUSES.has(job.status);
@@ -36,6 +37,10 @@ function describeJob(job: ImportJob) {
     return `缓存任务 · ${job.status} · ${job.progress_percent}%`;
   }
   return `导入任务 · ${job.status} · ${job.progress_percent}%`;
+}
+
+function shouldCollapseErrorMessage(message: string) {
+  return message.length > ERROR_MESSAGE_PREVIEW_MAX_LENGTH || message.includes("\n");
 }
 
 export function ManagementPage() {
@@ -414,52 +419,85 @@ export function ManagementPage() {
         ) : (
           <div className="job-list">
             {importJobs.map((job) => (
-              <article className="job-card" key={job.id}>
-                <div className="job-head">
-                  <div className="job-head-main">
-                    <strong>#{job.id} · {job.task_name}</strong>
-                    <span className="muted small-text">{describeJob(job)}</span>
-                  </div>
-                  {canCancelJob(job) ? (
-                    <button
-                      className="secondary-button danger-button"
-                      disabled={cancelJobMutation.isPending}
-                      onClick={() => cancelJobMutation.mutate(job.id)}
-                      type="button"
-                    >
-                      {job.status === "cancelling" ? "取消中..." : "取消"}
-                    </button>
-                  ) : null}
-                </div>
-                <p className="muted small-text">{job.source_path || "无源路径"}</p>
-                {job.transfer_speed_bytes_per_second ? (
-                  <p className="muted small-text top-gap">
-                    网速：{formatBytes(job.transfer_speed_bytes_per_second)}/s · 已传输 {formatBytes(job.remote_bytes_transferred)}
-                  </p>
-                ) : null}
-                {job.requested_tags.length > 0 ? (
-                  <div className="chip-row compact top-gap">
-                    {job.requested_tags.map((tag) => (
-                      <span className="mini-tag" key={`${job.id}-${tag}`}>
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-                {job.video_id ? (
-                  <div className="top-gap">
-                    <Link className="secondary-button link-button" to={`/videos/${job.video_id}`}>
-                      查看视频
-                    </Link>
-                  </div>
-                ) : null}
-                {job.error_message ? <p className="error-text top-gap">{job.error_message}</p> : null}
-              </article>
+              <JobCard
+                cancelJobMutation={cancelJobMutation}
+                job={job}
+                key={job.id}
+              />
             ))}
           </div>
         )}
       </Surface>
     </div>
+  );
+}
+
+interface JobCardProps {
+  job: ImportJob;
+  cancelJobMutation: ReturnType<typeof useMutation<ImportJob, ApiError, number>>;
+}
+
+function JobCard({ job, cancelJobMutation }: JobCardProps) {
+  const [showFullError, setShowFullError] = useState(false);
+  const canCollapseError = job.error_message ? shouldCollapseErrorMessage(job.error_message) : false;
+
+  return (
+    <article className="job-card">
+      <div className="job-head">
+        <div className="job-head-main">
+          <strong>#{job.id} · {job.task_name}</strong>
+          <span className="muted small-text">{describeJob(job)}</span>
+        </div>
+        <div className="job-head-actions">
+          {job.video_id ? (
+            <Link className="secondary-button link-button" to={`/videos/${job.video_id}`}>
+              查看视频
+            </Link>
+          ) : null}
+          {canCancelJob(job) ? (
+            <button
+              className="secondary-button danger-button"
+              disabled={cancelJobMutation.isPending}
+              onClick={() => cancelJobMutation.mutate(job.id)}
+              type="button"
+            >
+              {job.status === "cancelling" ? "取消中..." : "取消"}
+            </button>
+          ) : null}
+        </div>
+      </div>
+      <p className="muted small-text job-path">{job.source_path || "无源路径"}</p>
+      {job.transfer_speed_bytes_per_second ? (
+        <p className="muted small-text top-gap">
+          网速：{formatBytes(job.transfer_speed_bytes_per_second)}/s · 已传输 {formatBytes(job.remote_bytes_transferred)}
+        </p>
+      ) : null}
+      {job.requested_tags.length > 0 ? (
+        <div className="chip-row compact top-gap">
+          {job.requested_tags.map((tag) => (
+            <span className="mini-tag" key={`${job.id}-${tag}`}>
+              {tag}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {job.error_message ? (
+        <div className="job-error-block top-gap">
+          <p className={`error-text job-error-message${showFullError ? " is-expanded" : ""}`}>
+            {job.error_message}
+          </p>
+          {canCollapseError ? (
+            <button
+              className="job-error-toggle"
+              onClick={() => setShowFullError((value) => !value)}
+              type="button"
+            >
+              {showFullError ? "收起详情" : "展开详情"}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </article>
   );
 }
 
