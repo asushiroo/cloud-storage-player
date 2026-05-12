@@ -31,3 +31,18 @@ async def library_page(request: Request) -> HTMLResponse:
         "library.html",
         {},
     )
+
+
+@router.get("/manage", response_class=HTMLResponse)
+@router.get("/settings", response_class=HTMLResponse)
+@router.get("/videos/{video_id}", response_class=HTMLResponse)
+@router.get("/videos/{video_id}/play", response_class=HTMLResponse)
+async def spa_protected_page(request: Request) -> HTMLResponse:
+    if not is_authenticated(request):
+        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+
+    return templates.TemplateResponse(
+        request,
+        "library.html",
+        {},
+    )
