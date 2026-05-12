@@ -49,7 +49,8 @@ def test_settings_api_returns_defaults(monkeypatch, tmp_path: Path) -> None:
         "baidu_root_path": "/apps/CloudStoragePlayer",
         "cache_limit_bytes": 2147483648,
         "storage_backend": "mock",
-        "remote_transfer_concurrency": 5,
+        "upload_transfer_concurrency": 5,
+        "download_transfer_concurrency": 5,
         "baidu_authorize_url": None,
         "baidu_has_refresh_token": False,
     }
@@ -84,7 +85,8 @@ def test_settings_api_updates_values(monkeypatch, tmp_path: Path) -> None:
             "baidu_root_path": "/apps/CloudStoragePlayer-dev",
             "cache_limit_bytes": 1048576,
             "storage_backend": "mock",
-            "remote_transfer_concurrency": 7,
+            "upload_transfer_concurrency": 7,
+            "download_transfer_concurrency": 9,
         },
     )
 
@@ -93,7 +95,8 @@ def test_settings_api_updates_values(monkeypatch, tmp_path: Path) -> None:
         "baidu_root_path": "/apps/CloudStoragePlayer-dev",
         "cache_limit_bytes": 1048576,
         "storage_backend": "mock",
-        "remote_transfer_concurrency": 7,
+        "upload_transfer_concurrency": 7,
+        "download_transfer_concurrency": 9,
         "baidu_authorize_url": None,
         "baidu_has_refresh_token": False,
     }
@@ -104,13 +107,14 @@ def test_settings_api_updates_values(monkeypatch, tmp_path: Path) -> None:
         "baidu_root_path": "/apps/CloudStoragePlayer-dev",
         "cache_limit_bytes": 1048576,
         "storage_backend": "mock",
-        "remote_transfer_concurrency": 7,
+        "upload_transfer_concurrency": 7,
+        "download_transfer_concurrency": 9,
         "baidu_authorize_url": None,
         "baidu_has_refresh_token": False,
     }
 
 
-def test_settings_api_uses_runtime_default_remote_transfer_concurrency(tmp_path: Path) -> None:
+def test_settings_api_uses_runtime_default_transfer_concurrency(tmp_path: Path) -> None:
     settings = Settings(
         session_secret="test-session-secret-123456",
         password_hash=hash_password("shared-secret"),
@@ -123,7 +127,20 @@ def test_settings_api_uses_runtime_default_remote_transfer_concurrency(tmp_path:
     response = client.get("/api/settings")
 
     assert response.status_code == 200
-    assert response.json()["remote_transfer_concurrency"] == 9
+    assert response.json()["upload_transfer_concurrency"] == 9
+    assert response.json()["download_transfer_concurrency"] == 9
+
+
+def test_settings_api_reads_legacy_remote_transfer_concurrency_for_both_values(tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    login(client, password)
+    set_setting(settings, key="remote_transfer_concurrency", value="6")
+
+    response = client.get("/api/settings")
+
+    assert response.status_code == 200
+    assert response.json()["upload_transfer_concurrency"] == 6
+    assert response.json()["download_transfer_concurrency"] == 6
 
 
 def test_settings_api_rejects_non_apps_root_for_baidu_backend(tmp_path: Path) -> None:

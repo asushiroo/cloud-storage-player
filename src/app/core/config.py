@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     segment_size_bytes: int = 4 * 1024 * 1024
     storage_backend: str = "mock"
     remote_transfer_concurrency: int = Field(default=5, ge=1, le=32)
+    upload_transfer_concurrency: int | None = Field(default=None, ge=1, le=32)
+    download_transfer_concurrency: int | None = Field(default=None, ge=1, le=32)
     baidu_upload_resume_poll_interval_seconds: int = Field(default=3600, ge=1)
     baidu_oauth_redirect_uri: str = "oob"
     cors_allowed_origins_raw: str = "http://127.0.0.1:5173,http://localhost:5173"
@@ -99,6 +101,14 @@ class Settings(BaseSettings):
             for origin in self.cors_allowed_origins_raw.split(",")
             if origin.strip()
         ]
+
+    @property
+    def effective_upload_transfer_concurrency(self) -> int:
+        return self.upload_transfer_concurrency or self.remote_transfer_concurrency
+
+    @property
+    def effective_download_transfer_concurrency(self) -> int:
+        return self.download_transfer_concurrency or self.remote_transfer_concurrency
 
 
 @lru_cache(maxsize=1)

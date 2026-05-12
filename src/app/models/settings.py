@@ -15,6 +15,7 @@ class PublicSettings:
     baidu_root_path: str
     cache_limit_bytes: int
     storage_backend: str
-    remote_transfer_concurrency: int
+    upload_transfer_concurrency: int
+    download_transfer_concurrency: int
     baidu_authorize_url: str | None
     baidu_has_refresh_token: bool
