@@ -5,6 +5,7 @@ __pycache__/
 *.egg-info/
 *.db
 data/
+node_modules/
 frontend/node_modules/
 frontend/dist/
 *.tsbuildinfo
@@ -12,3 +13,4 @@ tmp/
 **/tmp/
 third/
 Problem.md
+start.bat

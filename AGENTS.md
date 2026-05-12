@@ -78,5 +78,4 @@ Detailed frontend architecture lives in [frontend/AGENTS.md](/root/cloud-storage
 在生成代码的同时要同步在README.md中更新进度，docs文档只有我让更新时再更新，避免每轮都更新浪费token
 由于该项目会有视频解码编码的操作，python 的速度绝对是不够的，必要时使用 rust 异步操作提高速度。
 需要极限也可以使用 cpp。
-在完成一个阶段时就用 git 进行 commit，分阶段 push 代码。
-我是将前端部署在windows上的，不在当前文件夹，如果前端更改了记得提醒我去pull一下，不然效果不会变
+在完成一个阶段时就用 git 进行 commit

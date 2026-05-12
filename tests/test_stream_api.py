@@ -222,7 +222,6 @@ def test_stream_remote_fallback_caches_downloaded_segments_without_full_exists_s
             time.sleep(0.05)
         assert len(download_calls) >= 2
 
-
 def test_stream_logs_warning_when_baidu_remote_segment_returns_404(
     monkeypatch,
     caplog,
