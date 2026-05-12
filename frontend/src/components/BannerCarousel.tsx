@@ -1,9 +1,7 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { buildAssetUrl } from "../api/client";
 import type { Video } from "../types/api";
-
-const DRAG_TRIGGER_PX = 32;
 
 interface BannerCarouselProps {
   videos: Video[];
@@ -17,10 +15,6 @@ function getWrappedIndex(index: number, length: number): number {
 export function BannerCarousel({ videos, versionToken }: BannerCarouselProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [transitionDirection, setTransitionDirection] = useState<1 | -1 | 0>(0);
-  const dragRef = useRef<{ pointerId: number | null; startX: number }>({
-    pointerId: null,
-    startX: 0,
-  });
 
   const visibleVideos = useMemo(() => {
     if (videos.length === 0) {
@@ -53,36 +47,6 @@ export function BannerCarousel({ videos, versionToken }: BannerCarouselProps) {
     setTransitionDirection(direction);
   };
 
-  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (transitionDirection !== 0) {
-      return;
-    }
-    dragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-    };
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
-
-  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (dragRef.current.pointerId !== event.pointerId || transitionDirection !== 0) {
-      return;
-    }
-    const deltaX = event.clientX - dragRef.current.startX;
-    if (Math.abs(deltaX) < DRAG_TRIGGER_PX) {
-      return;
-    }
-    dragRef.current.pointerId = null;
-    rotate(deltaX < 0 ? 1 : -1);
-  };
-
-  const handlePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (dragRef.current.pointerId !== event.pointerId) {
-      return;
-    }
-    dragRef.current.pointerId = null;
-  };
-
   const handleAnimationEnd = (event: React.AnimationEvent<HTMLDivElement>) => {
     if (transitionDirection === 0) {
       return;
@@ -101,12 +65,7 @@ export function BannerCarousel({ videos, versionToken }: BannerCarouselProps) {
 
   return (
     <section className="banner-carousel">
-      <div
-        className={`banner-carousel-shell ${transitionDirection !== 0 ? "banner-carousel-shell-animating" : ""}`}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-      >
+      <div className="banner-carousel-shell">
         <button
           aria-label="Previous banner"
           className="banner-carousel-arrow banner-carousel-arrow-left"
@@ -127,20 +86,53 @@ export function BannerCarousel({ videos, versionToken }: BannerCarouselProps) {
           onAnimationEnd={handleAnimationEnd}
         >
           {visibleVideos.map(({ slot, video, renderKey }) => (
-            <Link
-              aria-label={`Open ${video.title}`}
-              className={`banner-carousel-card banner-carousel-card-${slot}`}
-              key={renderKey}
-              to={`/videos/${video.id}`}
-            >
-              <img
-                alt={video.title}
-                className="banner-carousel-image"
-                draggable={false}
-                src={buildAssetUrl(video.poster_path ?? video.cover_path, versionToken) ?? ""}
-              />
-              <span className="banner-carousel-title">{video.title}</span>
-            </Link>
+            slot === "center" ? (
+              <Link
+                aria-label={`Open ${video.title}`}
+                className={`banner-carousel-card banner-carousel-card-${slot}`}
+                key={renderKey}
+                to={`/videos/${video.id}`}
+              >
+                <img
+                  alt={video.title}
+                  className="banner-carousel-image"
+                  draggable={false}
+                  src={buildAssetUrl(video.poster_path ?? video.cover_path, versionToken) ?? ""}
+                />
+                <span className="banner-carousel-title">{video.title}</span>
+              </Link>
+            ) : slot === "left" || slot === "right" ? (
+              <button
+                aria-label={`${slot === "left" ? "Show previous banner" : "Show next banner"}: ${video.title}`}
+                className={`banner-carousel-card banner-carousel-card-${slot} banner-carousel-card-button`}
+                disabled={transitionDirection !== 0 || videos.length <= 1}
+                key={renderKey}
+                onClick={() => rotate(slot === "left" ? -1 : 1)}
+                type="button"
+              >
+                <img
+                  alt={video.title}
+                  className="banner-carousel-image"
+                  draggable={false}
+                  src={buildAssetUrl(video.poster_path ?? video.cover_path, versionToken) ?? ""}
+                />
+                <span className="banner-carousel-title">{video.title}</span>
+              </button>
+            ) : (
+              <div
+                aria-hidden="true"
+                className={`banner-carousel-card banner-carousel-card-${slot}`}
+                key={renderKey}
+              >
+                <img
+                  alt=""
+                  className="banner-carousel-image"
+                  draggable={false}
+                  src={buildAssetUrl(video.poster_path ?? video.cover_path, versionToken) ?? ""}
+                />
+                <span className="banner-carousel-title">{video.title}</span>
+              </div>
+            )
           ))}
         </div>
         <button
