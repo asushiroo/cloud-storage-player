@@ -25,6 +25,7 @@ from app.repositories.videos import get_video, list_videos
 from app.services.job_control import JobCancelledError, throw_if_cancel_requested
 from app.services.manifests import local_segment_path
 from app.services.remote_transfers import TransferResult, run_bounded_transfers
+from app.services.segment_local_paths import resolve_segment_local_staging_path, serialize_local_staging_path
 from app.services.segment_prefetch import cache_remote_segment
 from app.storage.factory import build_storage_backend
 
@@ -116,13 +117,27 @@ def clear_video_cache(settings: Settings, *, video_id: int) -> None:
     video = get_video(settings, video_id)
     if video is None:
         raise VideoCacheNotFoundError(f"Video not found: {video_id}")
-    shutil.rmtree(settings.segment_staging_dir / str(video_id) / "segments", ignore_errors=True)
+    segments = list_video_segments(settings, video_id=video_id)
+    cache_dirs = {
+        _resolve_local_segment_path(
+            settings,
+            segment.video_id,
+            segment.segment_index,
+            segment.local_staging_path,
+        )
+        .parent
+        for segment in segments
+    }
+    cache_dirs.add(local_segment_path(settings, video_id=video_id, segment_index=0).parent)
+    for cache_dir in sorted(cache_dirs, key=lambda item: len(item.resolve(strict=False).parts), reverse=True):
+        if cache_dir.exists():
+            shutil.rmtree(cache_dir)
 
 
 def clear_all_cache(settings: Settings) -> int:
     cached_videos = list_cached_videos(settings)
     for video in cached_videos:
-        shutil.rmtree(settings.segment_staging_dir / str(video.id) / "segments", ignore_errors=True)
+        clear_video_cache(settings, video_id=video.id)
     return len(cached_videos)
 
 
@@ -185,13 +200,14 @@ def process_cache_job(settings: Settings, job_id: int) -> ImportJob:
                 segment.segment_index,
                 segment.local_staging_path,
             )
-            if not segment.local_staging_path:
+            stored_path = serialize_local_staging_path(settings, segment_path)
+            if segment.local_staging_path != stored_path:
                 update_video_segment_local_staging_path(
                     settings,
                     segment.id,
-                    local_staging_path=str(segment_path),
+                    local_staging_path=stored_path,
                 )
-                segment.local_staging_path = str(segment_path)
+                segment.local_staging_path = stored_path
             if segment_path.exists() and segment_path.is_file():
                 completed_segments += 1
                 continue
@@ -246,9 +262,12 @@ def _resolve_local_segment_path(
     segment_index: int,
     local_staging_path: str | None,
 ) -> Path:
-    if local_staging_path:
-        return Path(local_staging_path)
-    return local_segment_path(settings, video_id=video_id, segment_index=segment_index)
+    return resolve_segment_local_staging_path(
+        settings,
+        video_id=video_id,
+        segment_index=segment_index,
+        local_staging_path=local_staging_path,
+    )
 
 
 def _build_video_cache_status(settings: Settings, *, segments: list) -> VideoCacheStatus:

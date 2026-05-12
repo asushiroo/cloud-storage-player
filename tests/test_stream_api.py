@@ -10,6 +10,7 @@ from app.models.segments import VideoSegment
 from app.repositories.videos import get_video
 from app.repositories.video_segments import list_video_segments
 from app.services.imports import import_local_video
+from app.services.segment_local_paths import resolve_segment_local_staging_path
 from app.storage.baidu_api import BaiduApiError
 from app.storage.mock import MockStorageBackend
 
@@ -215,7 +216,12 @@ def test_stream_remote_fallback_caches_downloaded_segments_without_full_exists_s
     assert download_calls[0] == segments[0].cloud_path
     first_segment = segments[0]
     assert first_segment.local_staging_path is not None
-    assert Path(first_segment.local_staging_path).exists()
+    assert resolve_segment_local_staging_path(
+        settings,
+        video_id=first_segment.video_id,
+        segment_index=first_segment.segment_index,
+        local_staging_path=first_segment.local_staging_path,
+    ).exists()
     if len(segments) > 1:
         deadline = time.time() + 2
         while time.time() < deadline and len(download_calls) < 2:

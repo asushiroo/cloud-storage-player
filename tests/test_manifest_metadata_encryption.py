@@ -66,7 +66,7 @@ def sample_segments(settings: Settings, key: bytes) -> list[VideoSegment]:
                 segment_index=0,
                 key=key,
             ),
-            local_staging_path="/tmp/segments/000000.cspseg",
+            local_staging_path="7/segments/000000.cspseg",
             created_at="2026-05-10T00:00:00+00:00",
         )
     ]

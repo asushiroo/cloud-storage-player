@@ -26,7 +26,7 @@ from app.services.segment_prefetch import (
 from app.storage.baidu_api import BaiduApiError
 from app.storage.base import StorageBackend
 from app.storage.factory import build_storage_backend
-from app.services.manifests import local_segment_path
+from app.services.segment_local_paths import resolve_segment_local_staging_path
 
 logger = logging.getLogger(__name__)
 
@@ -345,12 +345,11 @@ def _segment_cache_path(
     *,
     settings: Settings,
 ) -> Path:
-    if segment.local_staging_path:
-        return Path(segment.local_staging_path)
-    return local_segment_path(
+    return resolve_segment_local_staging_path(
         settings,
         video_id=segment.video_id,
         segment_index=segment.segment_index,
+        local_staging_path=segment.local_staging_path,
     )
 
 

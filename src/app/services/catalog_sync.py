@@ -19,6 +19,7 @@ from app.services.manifests import (
     decrypt_manifest_payload,
     local_segment_path,
 )
+from app.services.segment_local_paths import serialize_local_staging_path
 from app.services.settings import get_public_settings
 from app.storage.baidu_api import BaiduApiError
 from app.storage.factory import build_storage_backend
@@ -134,7 +135,8 @@ def sync_remote_catalog(settings: Settings) -> CatalogSyncResult:
                         nonce_b64=segment.nonce_b64,
                         tag_b64=segment.tag_b64,
                         cloud_path=segment.remote_path,
-                        local_staging_path=str(
+                        local_staging_path=serialize_local_staging_path(
+                            settings,
                             local_segment_path(settings, video_id=video.id, segment_index=segment.index)
                         ),
                     )

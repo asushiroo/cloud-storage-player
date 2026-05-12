@@ -1,12 +1,15 @@
 from __future__ import annotations
 
-from app.core.config import Settings
+from pathlib import Path
+
+from app.core.config import PROJECT_ROOT, Settings
 from app.models.settings import PublicSettings
 from app.repositories.settings import get_setting, set_setting
 from app.services.baidu_oauth import build_baidu_authorize_url, has_baidu_refresh_token
 
 BAIDU_ROOT_PATH_KEY = "baidu_root_path"
 CACHE_LIMIT_BYTES_KEY = "cache_limit_bytes"
+SEGMENT_CACHE_ROOT_PATH_KEY = "segment_cache_root_path"
 STORAGE_BACKEND_KEY = "storage_backend"
 REMOTE_TRANSFER_CONCURRENCY_KEY = "remote_transfer_concurrency"
 UPLOAD_TRANSFER_CONCURRENCY_KEY = "upload_transfer_concurrency"
@@ -25,6 +28,7 @@ def get_public_settings(settings: Settings) -> PublicSettings:
     return PublicSettings(
         baidu_root_path=baidu_root.value if baidu_root else DEFAULT_BAIDU_ROOT_PATH,
         cache_limit_bytes=_parse_cache_limit(cache_limit.value) if cache_limit else DEFAULT_CACHE_LIMIT_BYTES,
+        segment_cache_root_path=str(get_segment_cache_root(settings)),
         storage_backend=(storage_backend.value if storage_backend else settings.storage_backend).strip().lower(),
         upload_transfer_concurrency=_resolve_upload_transfer_concurrency(
             settings,
@@ -44,6 +48,7 @@ def update_public_settings(
     *,
     baidu_root_path: str | None = None,
     cache_limit_bytes: int | None = None,
+    segment_cache_root_path: str | None = None,
     storage_backend: str | None = None,
     upload_transfer_concurrency: int | None = None,
     download_transfer_concurrency: int | None = None,
@@ -57,6 +62,11 @@ def update_public_settings(
     )
     next_cache_limit_bytes = (
         cache_limit_bytes if cache_limit_bytes is not None else current.cache_limit_bytes
+    )
+    next_segment_cache_root_path = (
+        segment_cache_root_path.strip()
+        if segment_cache_root_path is not None
+        else current.segment_cache_root_path
     )
     next_upload_transfer_concurrency = (
         upload_transfer_concurrency
@@ -81,6 +91,11 @@ def update_public_settings(
         raise ValueError("baidu_root_path must start with '/apps/' when storage_backend is baidu.")
     if next_cache_limit_bytes <= 0:
         raise ValueError("cache_limit_bytes must be greater than 0.")
+    if not next_segment_cache_root_path:
+        raise ValueError("segment_cache_root_path must not be empty.")
+    resolved_segment_cache_root = resolve_segment_cache_root_path(next_segment_cache_root_path)
+    if resolved_segment_cache_root.exists() and not resolved_segment_cache_root.is_dir():
+        raise ValueError("segment_cache_root_path must point to a directory.")
     if next_upload_transfer_concurrency < 1 or next_upload_transfer_concurrency > 32:
         raise ValueError("upload_transfer_concurrency must be between 1 and 32.")
     if next_download_transfer_concurrency < 1 or next_download_transfer_concurrency > 32:
@@ -88,6 +103,11 @@ def update_public_settings(
 
     set_setting(settings, key=BAIDU_ROOT_PATH_KEY, value=next_baidu_root_path)
     set_setting(settings, key=CACHE_LIMIT_BYTES_KEY, value=str(next_cache_limit_bytes))
+    set_setting(
+        settings,
+        key=SEGMENT_CACHE_ROOT_PATH_KEY,
+        value=serialize_segment_cache_root_path(resolved_segment_cache_root),
+    )
     set_setting(settings, key=STORAGE_BACKEND_KEY, value=next_storage_backend)
     set_setting(
         settings,
@@ -102,12 +122,40 @@ def update_public_settings(
     return PublicSettings(
         baidu_root_path=next_baidu_root_path,
         cache_limit_bytes=next_cache_limit_bytes,
+        segment_cache_root_path=str(resolved_segment_cache_root),
         storage_backend=next_storage_backend,
         upload_transfer_concurrency=next_upload_transfer_concurrency,
         download_transfer_concurrency=next_download_transfer_concurrency,
         baidu_authorize_url=build_baidu_authorize_url(settings),
         baidu_has_refresh_token=has_baidu_refresh_token(settings),
     )
+
+
+def get_segment_cache_root(settings: Settings) -> Path:
+    stored = get_setting(settings, SEGMENT_CACHE_ROOT_PATH_KEY)
+    if stored is None:
+        return settings.segment_staging_dir.resolve(strict=False)
+    return resolve_segment_cache_root_path(stored.value)
+
+
+def resolve_segment_cache_root_path(path_value: str) -> Path:
+    normalized = path_value.strip()
+    if not normalized:
+        raise ValueError("segment_cache_root_path must not be empty.")
+
+    configured = Path(normalized)
+    if configured.is_absolute():
+        return configured.resolve(strict=False)
+    return (PROJECT_ROOT / configured).resolve(strict=False)
+
+
+def serialize_segment_cache_root_path(path: Path) -> str:
+    resolved_path = path.resolve(strict=False)
+    project_root = PROJECT_ROOT.resolve(strict=False)
+    try:
+        return resolved_path.relative_to(project_root).as_posix()
+    except ValueError:
+        return str(resolved_path)
 
 
 def get_upload_transfer_concurrency(settings: Settings) -> int:

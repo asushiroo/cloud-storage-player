@@ -11,7 +11,8 @@ from app.core.config import Settings
 from app.media.crypto import TAG_SIZE_BYTES, decrypt_segment, encrypt_segment
 from app.models.library import Video
 from app.models.segments import VideoSegment
-from app.services.settings import get_public_settings
+from app.services.segment_local_paths import build_segment_local_staging_path
+from app.services.settings import get_public_settings, get_segment_cache_root
 
 ENCRYPTED_MANIFEST_MAGIC = b"CSPMETA1"
 VIDEO_DIR_LABEL_PREFIX = "video-dir"
@@ -74,15 +75,19 @@ def write_encrypted_remote_manifest(
 
 
 def local_manifest_path(settings: Settings, *, video_id: int) -> Path:
-    return settings.segment_staging_dir / str(video_id) / "manifest.json"
+    return get_segment_cache_root(settings) / str(video_id) / "manifest.json"
 
 
 def encrypted_remote_manifest_upload_path(settings: Settings, *, video_id: int) -> Path:
-    return settings.segment_staging_dir / str(video_id) / "manifest.remote.bin"
+    return get_segment_cache_root(settings) / str(video_id) / "manifest.remote.bin"
 
 
 def local_segment_path(settings: Settings, *, video_id: int, segment_index: int) -> Path:
-    return settings.segment_staging_dir / str(video_id) / "segments" / f"{segment_index:06d}.cspseg"
+    return build_segment_local_staging_path(
+        settings,
+        video_id=video_id,
+        segment_index=segment_index,
+    )
 
 
 def build_manifest_payload(

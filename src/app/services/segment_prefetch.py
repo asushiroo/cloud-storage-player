@@ -14,6 +14,10 @@ from app.models.segments import VideoSegment
 from app.repositories.video_segments import update_video_segment_local_staging_path
 from app.services.manifests import local_segment_path
 from app.services.remote_transfers import TransferResult, run_bounded_transfers
+from app.services.segment_local_paths import (
+    resolve_segment_local_staging_path,
+    serialize_local_staging_path,
+)
 from app.services.settings import get_download_transfer_concurrency
 from app.storage.base import StorageBackend
 from app.storage.factory import build_storage_backend
@@ -342,24 +346,27 @@ def _ensure_segment_local_staging_path(
     segment: VideoSegment,
     segment_path: Path,
 ) -> None:
-    resolved_path = str(segment_path)
-    if segment.local_staging_path == resolved_path:
+    stored_path = serialize_local_staging_path(settings, segment_path)
+    if segment.local_staging_path == stored_path:
         return
-    update_video_segment_local_staging_path(
-        settings,
-        segment.id,
-        local_staging_path=resolved_path,
-    )
-    segment.local_staging_path = resolved_path
+    try:
+        update_video_segment_local_staging_path(
+            settings,
+            segment.id,
+            local_staging_path=stored_path,
+        )
+    except ValueError:
+        segment.local_staging_path = stored_path
+        return
+    segment.local_staging_path = stored_path
 
 
 def _resolve_segment_cache_path(settings: Settings, segment: VideoSegment) -> Path:
-    if segment.local_staging_path:
-        return Path(segment.local_staging_path)
-    return local_segment_path(
+    return resolve_segment_local_staging_path(
         settings,
         video_id=segment.video_id,
         segment_index=segment.segment_index,
+        local_staging_path=segment.local_staging_path,
     )
 
 

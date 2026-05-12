@@ -39,7 +39,7 @@ def test_settings_api_requires_authentication(tmp_path: Path) -> None:
 def test_settings_api_returns_defaults(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("BAIDU_APP_KEY", raising=False)
     monkeypatch.delenv("BAIDU_SECRET_KEY", raising=False)
-    client, _, password = build_client(tmp_path)
+    client, settings, password = build_client(tmp_path)
     login(client, password)
 
     response = client.get("/api/settings")
@@ -48,6 +48,7 @@ def test_settings_api_returns_defaults(monkeypatch, tmp_path: Path) -> None:
     assert response.json() == {
         "baidu_root_path": "/apps/CloudStoragePlayer",
         "cache_limit_bytes": 2147483648,
+        "segment_cache_root_path": str(settings.segment_staging_dir),
         "storage_backend": "mock",
         "upload_transfer_concurrency": 5,
         "download_transfer_concurrency": 5,
@@ -78,12 +79,14 @@ def test_settings_api_updates_values(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("BAIDU_SECRET_KEY", raising=False)
     client, _, password = build_client(tmp_path)
     login(client, password)
+    custom_cache_root = tmp_path / "custom-segments"
 
     response = client.post(
         "/api/settings",
         json={
             "baidu_root_path": "/apps/CloudStoragePlayer-dev",
             "cache_limit_bytes": 1048576,
+            "segment_cache_root_path": str(custom_cache_root),
             "storage_backend": "mock",
             "upload_transfer_concurrency": 7,
             "download_transfer_concurrency": 9,
@@ -94,6 +97,7 @@ def test_settings_api_updates_values(monkeypatch, tmp_path: Path) -> None:
     assert response.json() == {
         "baidu_root_path": "/apps/CloudStoragePlayer-dev",
         "cache_limit_bytes": 1048576,
+        "segment_cache_root_path": str(custom_cache_root),
         "storage_backend": "mock",
         "upload_transfer_concurrency": 7,
         "download_transfer_concurrency": 9,
@@ -106,6 +110,7 @@ def test_settings_api_updates_values(monkeypatch, tmp_path: Path) -> None:
     assert read_back.json() == {
         "baidu_root_path": "/apps/CloudStoragePlayer-dev",
         "cache_limit_bytes": 1048576,
+        "segment_cache_root_path": str(custom_cache_root),
         "storage_backend": "mock",
         "upload_transfer_concurrency": 7,
         "download_transfer_concurrency": 9,

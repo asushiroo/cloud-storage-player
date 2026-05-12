@@ -35,6 +35,7 @@ async def update_settings_view(
             settings,
             baidu_root_path=payload.baidu_root_path,
             cache_limit_bytes=payload.cache_limit_bytes,
+            segment_cache_root_path=payload.segment_cache_root_path,
             storage_backend=payload.storage_backend,
             upload_transfer_concurrency=payload.upload_transfer_concurrency,
             download_transfer_concurrency=payload.download_transfer_concurrency,

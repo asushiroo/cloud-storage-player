@@ -37,8 +37,10 @@ export function SettingsPage() {
     queryFn: fetchSettings,
     enabled: session.data?.authenticated === true,
   });
+
   const [storageBackend, setStorageBackend] = useState("mock");
   const [baiduRootPath, setBaiduRootPath] = useState("");
+  const [segmentCacheRootPath, setSegmentCacheRootPath] = useState("");
   const [cacheLimitBytes, setCacheLimitBytes] = useState("0");
   const [uploadTransferConcurrency, setUploadTransferConcurrency] = useState(DEFAULT_TRANSFER_CONCURRENCY);
   const [downloadTransferConcurrency, setDownloadTransferConcurrency] = useState(DEFAULT_TRANSFER_CONCURRENCY);
@@ -49,6 +51,7 @@ export function SettingsPage() {
   const applySettingsToForm = (settings: PublicSettings) => {
     setStorageBackend(settings.storage_backend);
     setBaiduRootPath(settings.baidu_root_path);
+    setSegmentCacheRootPath(settings.segment_cache_root_path);
     setCacheLimitBytes(String(settings.cache_limit_bytes));
     setUploadTransferConcurrency((current) =>
       resolveTransferConcurrency(
@@ -78,6 +81,7 @@ export function SettingsPage() {
       const payload: SettingsUpdatePayload = {
         storage_backend: storageBackend,
         baidu_root_path: baiduRootPath,
+        segment_cache_root_path: segmentCacheRootPath,
         cache_limit_bytes: Number(cacheLimitBytes),
         upload_transfer_concurrency: uploadConcurrency,
         download_transfer_concurrency: downloadConcurrency,
@@ -85,11 +89,12 @@ export function SettingsPage() {
 
       if (!hasSplitConcurrencyFields(settingsQuery.data) && hasLegacyConcurrencyField(settingsQuery.data)) {
         if (uploadConcurrency !== downloadConcurrency) {
-          const error: ApiError = {
+          const conflict: ApiError = {
             status: 409,
-            message: "当前连接的后端进程还是旧版本，只支持单一并发数。请先重启后端，再分别保存上传并发和下载并发。",
+            message:
+              "当前后端进程仍是旧版本，只支持单一并发字段。请先重启后端，再分别保存上传并发和下载并发。",
           };
-          throw error;
+          throw conflict;
         }
         payload.remote_transfer_concurrency = uploadConcurrency;
       }
@@ -140,6 +145,7 @@ export function SettingsPage() {
   );
   const backendIsLegacyConcurrencyOnly =
     !hasSplitConcurrencyFields(settings) && hasLegacyConcurrencyField(settings);
+
   return (
     <div className="page-stack">
       {error ? (
@@ -156,9 +162,31 @@ export function SettingsPage() {
       <Surface>
         <h2>运行配置</h2>
         <div className="form-stack">
-          <input className="text-input" onChange={(event) => setStorageBackend(event.target.value)} placeholder="mock 或 baidu" value={storageBackend} />
-          <input className="text-input" onChange={(event) => setBaiduRootPath(event.target.value)} placeholder="Baidu root path" value={baiduRootPath} />
-          <input className="text-input" inputMode="numeric" onChange={(event) => setCacheLimitBytes(event.target.value)} placeholder="缓存字节数" value={cacheLimitBytes} />
+          <input
+            className="text-input"
+            onChange={(event) => setStorageBackend(event.target.value)}
+            placeholder="mock 或 baidu"
+            value={storageBackend}
+          />
+          <input
+            className="text-input"
+            onChange={(event) => setBaiduRootPath(event.target.value)}
+            placeholder="Baidu root path"
+            value={baiduRootPath}
+          />
+          <input
+            className="text-input"
+            onChange={(event) => setSegmentCacheRootPath(event.target.value)}
+            placeholder="缓存目录（示例：D:\\cache\\segments）"
+            value={segmentCacheRootPath}
+          />
+          <input
+            className="text-input"
+            inputMode="numeric"
+            onChange={(event) => setCacheLimitBytes(event.target.value)}
+            placeholder="缓存字节上限"
+            value={cacheLimitBytes}
+          />
           <input
             className="text-input"
             inputMode="numeric"
@@ -179,36 +207,61 @@ export function SettingsPage() {
             type="number"
             value={downloadTransferConcurrency}
           />
-          <button className="primary-button" disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()} type="button">
+          <button
+            className="primary-button"
+            disabled={saveMutation.isPending}
+            onClick={() => saveMutation.mutate()}
+            type="button"
+          >
             {saveMutation.isPending ? "保存中..." : "保存设置"}
           </button>
         </div>
         {settings ? (
           <p className="muted" style={{ marginTop: "1rem" }}>
-            当前缓存上限：{formatBytes(settings.cache_limit_bytes)} 
+            当前缓存上限：{formatBytes(settings.cache_limit_bytes)} · 当前缓存目录：
+            {settings.segment_cache_root_path} · 当前后端：{settings.storage_backend} · 上传并发：
+            {currentUploadConcurrency} · 下载并发：{currentDownloadConcurrency}
           </p>
         ) : null}
+        {backendIsLegacyConcurrencyOnly ? (
+          <p className="error-text">
+            当前连接到的后端仍只支持旧的单并发字段。要分别保存上传并发和下载并发，请先重启后端到最新代码。
+          </p>
+        ) : null}
+        <p className="muted">上传并发影响导入上传；下载并发影响手动缓存下载和播放预取，范围都为 1 到 32。</p>
       </Surface>
 
       <div className="section-divider" />
 
       <Surface>
         <h2>百度授权</h2>
-        <p className="muted">首次接入百度仍然需要管理员手工完成一次 OAuth 授权码流程。</p>
+        <p className="muted">首次接入百度仍需管理员手动完成一次 OAuth 授权码流程。</p>
         {settings?.baidu_authorize_url ? (
           <a className="primary-button link-button" href={settings.baidu_authorize_url} rel="noreferrer" target="_blank">
             打开百度授权页
           </a>
         ) : (
-          <p className="muted">当前还没有可用的授权链接，请先配置环境变量。</p>
+          <p className="muted">当前没有可用授权链接，请先配置环境变量。</p>
         )}
         <div className="form-stack top-gap">
-          <input className="text-input" onChange={(event) => setOauthCode(event.target.value)} placeholder="粘贴百度返回的 code" value={oauthCode} />
-          <button className="primary-button" disabled={oauthMutation.isPending || oauthCode.trim().length === 0} onClick={() => oauthMutation.mutate()} type="button">
+          <input
+            className="text-input"
+            onChange={(event) => setOauthCode(event.target.value)}
+            placeholder="粘贴百度返回的 code"
+            value={oauthCode}
+          />
+          <button
+            className="primary-button"
+            disabled={oauthMutation.isPending || oauthCode.trim().length === 0}
+            onClick={() => oauthMutation.mutate()}
+            type="button"
+          >
             {oauthMutation.isPending ? "提交中..." : "提交 OAuth code"}
           </button>
         </div>
-        <p className="muted" style={{ marginTop: "1rem" }}>Refresh Token 状态：{settings?.baidu_has_refresh_token ? "已存在" : "未配置"}</p>
+        <p className="muted" style={{ marginTop: "1rem" }}>
+          Refresh Token 状态：{settings?.baidu_has_refresh_token ? "已存在" : "未配置"}
+        </p>
       </Surface>
     </div>
   );

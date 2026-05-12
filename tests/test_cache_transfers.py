@@ -10,6 +10,7 @@ from app.repositories.settings import set_setting
 from app.repositories.video_segments import NewVideoSegment, create_video_segments
 from app.repositories.videos import create_video
 from app.services.cache import process_cache_job
+from app.services.segment_local_paths import serialize_local_staging_path
 from app.services.settings import DOWNLOAD_TRANSFER_CONCURRENCY_KEY
 from app.storage.mock import MockStorageBackend
 
@@ -56,8 +57,9 @@ def test_process_cache_job_downloads_multiple_segments_concurrently(monkeypatch,
                 nonce_b64=f"nonce-{index}",
                 tag_b64=f"tag-{index}",
                 cloud_path=remote_path,
-                local_staging_path=str(
-                    settings.segment_staging_dir / str(video.id) / "segments" / f"{index:06d}.cspseg"
+                local_staging_path=serialize_local_staging_path(
+                    settings,
+                    settings.segment_staging_dir / str(video.id) / "segments" / f"{index:06d}.cspseg",
                 ),
             )
         )
@@ -128,8 +130,9 @@ def test_process_cache_job_uses_runtime_configured_transfer_concurrency(monkeypa
                 nonce_b64=f"nonce-{index}",
                 tag_b64=f"tag-{index}",
                 cloud_path=remote_path,
-                local_staging_path=str(
-                    settings.segment_staging_dir / str(video.id) / "segments" / f"{index:06d}.cspseg"
+                local_staging_path=serialize_local_staging_path(
+                    settings,
+                    settings.segment_staging_dir / str(video.id) / "segments" / f"{index:06d}.cspseg",
                 ),
             )
         )

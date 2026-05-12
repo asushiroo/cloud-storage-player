@@ -14,6 +14,7 @@ from app.repositories.import_jobs import create_cache_job, get_import_job
 from app.repositories.video_segments import NewVideoSegment, create_video_segments
 from app.repositories.videos import create_video
 from app.services.cache import process_cache_job
+from app.services.segment_local_paths import serialize_local_staging_path
 from app.storage.mock import MockStorageBackend
 
 
@@ -111,8 +112,9 @@ def _run_cache_benchmark(
                 nonce_b64=f"nonce-{index}",
                 tag_b64=f"tag-{index}",
                 cloud_path=remote_path,
-                local_staging_path=str(
-                    settings.segment_staging_dir / str(video.id) / "segments" / f"{index:06d}.cspseg"
+                local_staging_path=serialize_local_staging_path(
+                    settings,
+                    settings.segment_staging_dir / str(video.id) / "segments" / f"{index:06d}.cspseg",
                 ),
             )
         )

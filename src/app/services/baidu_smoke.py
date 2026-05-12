@@ -20,7 +20,7 @@ from app.services.baidu_oauth import (
 )
 from app.services.catalog_sync import sync_remote_catalog
 from app.services.imports import import_local_video
-from app.services.settings import update_public_settings
+from app.services.settings import get_segment_cache_root, update_public_settings
 from app.services.streaming import iter_video_stream, prepare_video_stream
 from app.storage.factory import build_storage_backend
 
@@ -88,7 +88,10 @@ def run_baidu_smoke(
             raise RuntimeError(f"Remote manifest was not uploaded: {writer_video.manifest_path}")
 
         smoke_source_path.unlink(missing_ok=True)
-        shutil.rmtree(runtime.writer_settings.segment_staging_dir / str(writer_video.id), ignore_errors=True)
+        shutil.rmtree(
+            get_segment_cache_root(runtime.writer_settings) / str(writer_video.id),
+            ignore_errors=True,
+        )
 
         sync_result = sync_remote_catalog(runtime.reader_settings)
         reader_videos = list_videos(runtime.reader_settings)
@@ -236,7 +239,7 @@ def clone_settings(
 def prepare_runtime_settings(settings: Settings) -> None:
     initialize_database(settings)
     settings.covers_dir.mkdir(parents=True, exist_ok=True)
-    settings.segment_staging_dir.mkdir(parents=True, exist_ok=True)
+    get_segment_cache_root(settings).mkdir(parents=True, exist_ok=True)
     settings.mock_storage_dir.mkdir(parents=True, exist_ok=True)
     settings.content_key_file.parent.mkdir(parents=True, exist_ok=True)
 

@@ -20,6 +20,7 @@ import type {
 export interface SettingsUpdatePayload {
   baidu_root_path?: string;
   cache_limit_bytes?: number;
+  segment_cache_root_path?: string;
   storage_backend?: string;
   upload_transfer_concurrency?: number;
   download_transfer_concurrency?: number;

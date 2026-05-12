@@ -19,6 +19,8 @@ from app.repositories.import_jobs import (
 from app.repositories.video_segments import list_video_segments
 from app.repositories.videos import delete_video, get_video
 from app.services.artwork_storage import resolve_artwork_storage_paths
+from app.services.manifests import local_segment_path
+from app.services.segment_local_paths import resolve_segment_local_staging_path
 from app.storage.factory import build_storage_backend
 
 
@@ -132,7 +134,20 @@ def _delete_remote_paths_best_effort(
 
 
 def _delete_local_artifacts(settings: Settings, video: Video) -> None:
-    shutil.rmtree(settings.segment_staging_dir / str(video.id), ignore_errors=True)
+    segment_dirs = {
+        resolve_segment_local_staging_path(
+            settings,
+            video_id=segment.video_id,
+            segment_index=segment.segment_index,
+            local_staging_path=segment.local_staging_path,
+        )
+        .parent
+        for segment in list_video_segments(settings, video_id=video.id)
+    }
+    segment_dirs.add(local_segment_path(settings, video_id=video.id, segment_index=0).parent.parent)
+    for segment_dir in sorted(segment_dirs, key=lambda item: len(item.resolve(strict=False).parts), reverse=True):
+        if segment_dir.exists():
+            shutil.rmtree(segment_dir, ignore_errors=True)
     for cover_file in _resolve_artwork_files(settings, video):
         cover_file.unlink(missing_ok=True)
 

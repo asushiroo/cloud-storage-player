@@ -14,6 +14,7 @@ class Setting:
 class PublicSettings:
     baidu_root_path: str
     cache_limit_bytes: int
+    segment_cache_root_path: str
     storage_backend: str
     upload_transfer_concurrency: int
     download_transfer_concurrency: int

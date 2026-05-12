@@ -9,6 +9,12 @@ from app.core.security import hash_password
 from app.main import create_app
 from app.repositories.video_segments import NewVideoSegment, create_video_segments
 from app.repositories.videos import create_video
+from app.services.manifests import (
+    encrypted_remote_manifest_upload_path,
+    local_manifest_path,
+    local_segment_path,
+)
+from app.services.segment_local_paths import serialize_local_staging_path
 
 
 def build_client(tmp_path: Path, password: str = "shared-secret") -> tuple[TestClient, Settings, str]:
@@ -69,9 +75,10 @@ def test_cache_summary_lists_and_clears_local_segments(tmp_path: Path) -> None:
     completed_job = wait_for_job_status(client, create_response.json()["id"], expected_status="completed")
     video_id = completed_job["video_id"]
     assert video_id is not None
-    assert (settings.segment_staging_dir / str(video_id)).exists()
-    assert (settings.segment_staging_dir / str(video_id) / "manifest.json").exists()
-    assert (settings.segment_staging_dir / str(video_id) / "manifest.remote.bin").exists()
+    stage_dir = local_manifest_path(settings, video_id=video_id).parent
+    assert stage_dir.exists()
+    assert local_manifest_path(settings, video_id=video_id).exists()
+    assert encrypted_remote_manifest_upload_path(settings, video_id=video_id).exists()
 
     summary_response = client.get("/api/cache")
     assert summary_response.status_code == 200
@@ -88,9 +95,9 @@ def test_cache_summary_lists_and_clears_local_segments(tmp_path: Path) -> None:
     clear_response = client.delete(f"/api/cache/videos/{video_id}")
     assert clear_response.status_code == 200
     assert clear_response.json() == {"cleared_video_count": 1}
-    assert not (settings.segment_staging_dir / str(video_id) / "segments").exists()
-    assert (settings.segment_staging_dir / str(video_id) / "manifest.json").exists()
-    assert (settings.segment_staging_dir / str(video_id) / "manifest.remote.bin").exists()
+    assert not local_segment_path(settings, video_id=video_id, segment_index=0).parent.exists()
+    assert local_manifest_path(settings, video_id=video_id).exists()
+    assert encrypted_remote_manifest_upload_path(settings, video_id=video_id).exists()
 
     summary_after_clear = client.get("/api/cache")
     assert summary_after_clear.status_code == 200
@@ -107,7 +114,7 @@ def test_manual_cache_job_restores_local_cache_and_reports_transfer_speed(tmp_pa
     video_id = completed_import["video_id"]
     assert video_id is not None
 
-    stage_dir = settings.segment_staging_dir / str(video_id)
+    stage_dir = local_manifest_path(settings, video_id=video_id).parent
     segments_dir = stage_dir / "segments"
     for path in sorted(segments_dir.rglob("*"), reverse=True):
         if path.is_file():
@@ -147,8 +154,8 @@ def test_video_detail_includes_cache_status_and_cache_endpoint_rejects_fully_cac
         source_path=str(tmp_path / "cached-detail.mp4"),
     )
     segment_paths = [
-        settings.segment_staging_dir / str(video.id) / "segments" / "0.cspseg",
-        settings.segment_staging_dir / str(video.id) / "segments" / "1.cspseg",
+        local_segment_path(settings, video_id=video.id, segment_index=0).with_name("0.cspseg"),
+        local_segment_path(settings, video_id=video.id, segment_index=1).with_name("1.cspseg"),
     ]
     for index, segment_path in enumerate(segment_paths):
         segment_path.parent.mkdir(parents=True, exist_ok=True)
@@ -167,7 +174,7 @@ def test_video_detail_includes_cache_status_and_cache_endpoint_rejects_fully_cac
                 nonce_b64=f"nonce-{index}",
                 tag_b64=f"tag-{index}",
                 cloud_path=f"/apps/CloudStoragePlayer/mock/{video.id}/{index}.bin",
-                local_staging_path=str(segment_path),
+                local_staging_path=serialize_local_staging_path(settings, segment_path),
             )
             for index, segment_path in enumerate(segment_paths)
         ],

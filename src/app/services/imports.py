@@ -40,16 +40,14 @@ from app.services.manifests import (
     write_encrypted_remote_manifest,
     write_local_manifest,
 )
+from app.services.segment_local_paths import resolve_segment_local_staging_path, serialize_local_staging_path
 from app.services.remote_transfers import (
     DeferredTransferRetry,
     TransferResult,
     measure_transfer,
     run_bounded_transfers,
 )
-from app.services.artwork_storage import (
-    build_poster_file_name,
-    store_encrypted_artwork_file,
-)
+from app.services.artwork_storage import build_poster_file_name, store_encrypted_artwork_file
 from app.services.settings import get_upload_transfer_concurrency
 from app.services.video_fingerprint import build_video_content_fingerprint
 from app.services.video_delete import delete_library_video
@@ -356,7 +354,11 @@ def _materialize_encrypted_segments(
     job_id: int,
 ) -> list[VideoSegment]:
     content_key = load_or_create_content_key(settings)
-    video_segment_dir = settings.segment_staging_dir / str(video.id) / "segments"
+    video_segment_dir = local_segment_path(
+        settings,
+        video_id=video.id,
+        segment_index=0,
+    ).parent
     video_segment_dir.mkdir(parents=True, exist_ok=True)
 
     segments_to_insert: list[NewVideoSegment] = []
@@ -380,7 +382,7 @@ def _materialize_encrypted_segments(
                     segment_index=chunk.index,
                     key=content_key,
                 ),
-                local_staging_path=str(segment_path),
+                local_staging_path=serialize_local_staging_path(settings, segment_path),
             )
         )
 
@@ -433,7 +435,12 @@ def _upload_remote_artifacts(
             raise ValueError("Segment staging path is missing.")
         if not segment.cloud_path:
             raise ValueError("Segment cloud path is missing.")
-        local_path = Path(segment.local_staging_path)
+        local_path = resolve_segment_local_staging_path(
+            settings,
+            video_id=segment.video_id,
+            segment_index=segment.segment_index,
+            local_staging_path=segment.local_staging_path,
+        )
         remote_artifacts.append(
             _UploadArtifact(
                 local_path=local_path,

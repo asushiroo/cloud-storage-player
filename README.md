@@ -8,6 +8,11 @@
 - 前端：`frontend/` 下的 React + TypeScript + Vite
 - `third/`：参考代码，不参与当前运行时
 
+## 2026-05 Cache Path Update
+- Added configurable cache root path in settings API and settings page (`segment_cache_root_path`).
+- New local segment writes now store `video_segments.local_staging_path` as cache-root-relative suffix only (example: `77/segments/000000.cspseg`).
+- Existing local database values were migrated from absolute paths to suffix-only values after creating a DB backup.
+
 ## 当前已实现
 
 - UV 管理 Python 项目与依赖

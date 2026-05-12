@@ -15,7 +15,8 @@ from app.repositories.videos import create_video
 from app.repositories.import_jobs import create_import_job
 from app.repositories.settings import set_setting
 from app.repositories.video_segments import list_video_segments
-from app.services.manifests import decrypt_manifest_payload
+from app.services.manifests import decrypt_manifest_payload, local_manifest_path
+from app.services.segment_local_paths import resolve_segment_local_staging_path
 from app.storage.mock import MockStorageBackend
 
 
@@ -171,8 +172,16 @@ def test_import_video_creates_queued_job_and_completes_in_background(tmp_path: P
 
     segments = list_video_segments(settings, video_id=completed_payload["video_id"])
     assert len(segments) == video_payload["segment_count"]
-    assert all(Path(segment.local_staging_path).exists() for segment in segments)
-    manifest_file = settings.segment_staging_dir / str(completed_payload["video_id"]) / "manifest.json"
+    assert all(
+        resolve_segment_local_staging_path(
+            settings,
+            video_id=segment.video_id,
+            segment_index=segment.segment_index,
+            local_staging_path=segment.local_staging_path,
+        ).exists()
+        for segment in segments
+    )
+    manifest_file = local_manifest_path(settings, video_id=completed_payload["video_id"])
     assert manifest_file.exists()
 
     storage = MockStorageBackend(settings.mock_storage_dir)
@@ -296,7 +305,7 @@ def test_delete_video_removes_catalog_row_and_local_and_mock_remote_artifacts(tm
     video_response = client.get(f"/api/videos/{video_id}")
     assert video_response.status_code == 200
     video_payload = video_response.json()
-    stage_dir = settings.segment_staging_dir / str(video_id)
+    stage_dir = local_manifest_path(settings, video_id=video_id).parent
     assert stage_dir.exists()
 
     storage = MockStorageBackend(settings.mock_storage_dir)

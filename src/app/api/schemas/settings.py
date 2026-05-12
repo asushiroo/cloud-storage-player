@@ -10,6 +10,7 @@ class SettingsResponse(BaseModel):
 
     baidu_root_path: str
     cache_limit_bytes: int
+    segment_cache_root_path: str
     storage_backend: str
     upload_transfer_concurrency: int
     download_transfer_concurrency: int
@@ -20,6 +21,7 @@ class SettingsResponse(BaseModel):
 class SettingsUpdateRequest(BaseModel):
     baidu_root_path: str | None = Field(default=None, min_length=1)
     cache_limit_bytes: int | None = Field(default=None, gt=0)
+    segment_cache_root_path: str | None = Field(default=None, min_length=1)
     storage_backend: Literal["mock", "baidu"] | None = None
     upload_transfer_concurrency: int | None = Field(default=None, ge=1, le=32)
     download_transfer_concurrency: int | None = Field(default=None, ge=1, le=32)

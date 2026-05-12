@@ -5,6 +5,7 @@ from app.core.security import hash_password
 from app.main import create_app
 from app.repositories.video_segments import list_video_segments
 from app.services.imports import import_local_video
+from app.services.segment_local_paths import resolve_segment_local_staging_path
 
 
 def create_sample_video(output_path: Path) -> Path:
@@ -51,4 +52,12 @@ def test_import_persists_encrypted_segment_metadata(tmp_path: Path) -> None:
     assert all(segment.original_length > 0 for segment in segments)
     assert all(segment.ciphertext_size >= segment.original_length for segment in segments)
     assert all(segment.local_staging_path is not None for segment in segments)
-    assert all(Path(segment.local_staging_path).exists() for segment in segments)
+    assert all(
+        resolve_segment_local_staging_path(
+            settings,
+            video_id=segment.video_id,
+            segment_index=segment.segment_index,
+            local_staging_path=segment.local_staging_path,
+        ).exists()
+        for segment in segments
+    )

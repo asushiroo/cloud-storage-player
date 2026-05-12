@@ -111,6 +111,7 @@ export interface CatalogSyncResult {
 export interface PublicSettings {
   baidu_root_path: string;
   cache_limit_bytes: number;
+  segment_cache_root_path: string;
   storage_backend: "mock" | "baidu" | string;
   upload_transfer_concurrency?: number;
   download_transfer_concurrency?: number;

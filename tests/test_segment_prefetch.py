@@ -7,6 +7,7 @@ from app.db.schema import initialize_database
 from app.models.segments import VideoSegment
 from app.repositories.settings import set_setting
 from app.services.segment_prefetch import acquire_prefetch_session, release_prefetch_session
+from app.services.segment_local_paths import serialize_local_staging_path
 from app.services.settings import DOWNLOAD_TRANSFER_CONCURRENCY_KEY
 from app.storage.mock import MockStorageBackend
 
@@ -40,7 +41,7 @@ def build_segment(settings: Settings, *, video_id: int, segment_index: int) -> V
         nonce_b64=f"nonce-{segment_index}",
         tag_b64=f"tag-{segment_index}",
         cloud_path=remote_path,
-        local_staging_path=str(local_path),
+        local_staging_path=serialize_local_staging_path(settings, local_path),
         created_at="2026-05-11 00:00:00",
     )
 
