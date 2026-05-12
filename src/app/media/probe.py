@@ -37,15 +37,15 @@ def probe_video(source_path: Path, *, ffprobe_binary: str = "ffprobe") -> MediaP
     completed = subprocess.run(
         command,
         capture_output=True,
-        text=True,
+        text=False,
         check=False,
     )
     if completed.returncode != 0:
-        error_message = completed.stderr.strip() or "ffprobe failed."
+        error_message = _decode_process_output(completed.stderr).strip() or "ffprobe failed."
         raise MediaProbeError(error_message)
 
     try:
-        payload = json.loads(completed.stdout or "{}")
+        payload = json.loads(_decode_process_output(completed.stdout) or "{}")
     except json.JSONDecodeError as exc:
         raise MediaProbeError("ffprobe returned invalid JSON.") from exc
 
@@ -69,3 +69,16 @@ def probe_video(source_path: Path, *, ffprobe_binary: str = "ffprobe") -> MediaP
         size=source_path.stat().st_size,
         duration_seconds=duration_seconds,
     )
+
+
+def _decode_process_output(payload: bytes | str | None) -> str:
+    if payload is None:
+        return ""
+    if isinstance(payload, str):
+        return payload
+    for encoding in ("utf-8", "utf-8-sig", "gb18030", "cp936"):
+        try:
+            return payload.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return payload.decode("utf-8", errors="replace")

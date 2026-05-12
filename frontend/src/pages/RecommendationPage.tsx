@@ -72,7 +72,7 @@ export function RecommendationPage() {
         ) : (
           <Surface>
             <h1>推荐页</h1>
-            <p className="muted">先上传视频或同步一下吧ᕙ༼ຈلﻝ͜ ຈ༽ᕗ</p>
+            <p className="muted">先上传视频或同步一下吧。</p>
           </Surface>
         )}
       </div>
@@ -95,12 +95,12 @@ export function RecommendationPage() {
               ))}
             </div>
           ) : (
-            <p className="muted top-gap">你还啥也没看吗? ┓(;´_｀)┏</p>
+            <p className="muted top-gap">还没有最近观看记录。</p>
           )}
         </Surface>
 
-      <div className="section-divider" />
-      
+        <div className="section-divider" />
+
         {secondaryVideos.length > 0 ? (
           <div className="video-grid">
             {secondaryVideos.map((video) => (
@@ -109,7 +109,7 @@ export function RecommendationPage() {
           </div>
         ) : (
           <Surface>
-            <p className="muted">没啥好推荐的(▼ヘ▼#)</p>
+            <p className="muted">推荐位还没有足够的数据，先去媒体库播放几部视频。</p>
           </Surface>
         )}
       </div>

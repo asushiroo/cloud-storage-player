@@ -37,7 +37,6 @@ class ImportJobResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    source_path: str
     folder_id: int | None
     requested_title: str | None
     requested_tags: list[str] = Field(default_factory=list)

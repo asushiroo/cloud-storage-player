@@ -66,7 +66,6 @@ export interface VideoWatchHeartbeatResult {
 
 export interface ImportJob {
   id: number;
-  source_path: string;
   folder_id: number | null;
   requested_title: string | null;
   requested_tags: string[];

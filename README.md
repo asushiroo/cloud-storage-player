@@ -15,6 +15,14 @@
 
 ## 当前已实现
 
+- 问题修复（2026-05 Problem.md）
+  - 修复 Windows/GBK 环境下 `ffprobe`/`ffmpeg` 子进程输出解码导致的 `UnicodeDecodeError`：改为字节读取 + UTF-8/GB18030 回退解码
+  - 导入封面抽帧改为按视频 `1/3` 时长位置生成，保持 `AVIF` + 本地加密存储
+  - 新增批量重建封面 CLI：`cloud-storage-player-rebuild-posters`（对有源文件的视频按 1/3 帧重建 poster）
+  - 导入任务列表响应移除 `source_path` 字段，任务栏不再展示源路径
+  - 推荐页 3D 轮播标题改为独立固定左下角叠层，避免动画阶段标题跳位
+  - 上传分片新增远端完整性保护：`mock` 后端下按远端文件尺寸校验，尺寸不一致会强制重传；manifest 始终重传避免元数据滞后
+  - 导入完成后增加缓存上限淘汰：优先清理旧缓存，且保护当前新上传视频不被优先淘汰
 - UV 管理 Python 项目与依赖
 - FastAPI 应用入口与 SQLite bootstrap
 - 基于 Cookie Session 的单密码认证

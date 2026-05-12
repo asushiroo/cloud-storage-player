@@ -465,7 +465,6 @@ function JobCard({ job, cancelJobMutation }: JobCardProps) {
           ) : null}
         </div>
       </div>
-      <p className="muted small-text job-path">{job.source_path || "无源路径"}</p>
       {job.transfer_speed_bytes_per_second ? (
         <p className="muted small-text top-gap">
           网速：{formatBytes(job.transfer_speed_bytes_per_second)}/s · 已传输 {formatBytes(job.remote_bytes_transferred)}

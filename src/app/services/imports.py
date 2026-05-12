@@ -8,7 +8,7 @@ from app.core.config import Settings
 from app.core.keys import load_content_key, load_or_create_content_key
 from app.core.tags import normalize_tags
 from app.media.chunker import iter_file_chunks
-from app.media.covers import CoverExtractionError, extract_poster
+from app.media.covers import CoverExtractionError, extract_poster_at_ratio
 from app.media.crypto import encrypt_segment
 from app.media.probe import MediaProbeError, probe_video
 from app.models.imports import ImportJob
@@ -48,6 +48,7 @@ from app.services.remote_transfers import (
     run_bounded_transfers,
 )
 from app.services.artwork_storage import build_poster_file_name, store_encrypted_artwork_file
+from app.services.cache_eviction import enforce_cache_limit
 from app.services.settings import get_upload_transfer_concurrency
 from app.services.video_fingerprint import build_video_content_fingerprint
 from app.services.video_delete import delete_library_video
@@ -221,7 +222,13 @@ def process_import_job(settings: Settings, job_id: int) -> ImportJob:
         )
         throw_if_cancel_requested(settings, job.id)
         update_import_job_progress(settings, job.id, progress_percent=95)
-        video = _maybe_extract_cover(settings, source=source, video=video)
+        video = _maybe_extract_cover(
+            settings,
+            source=source,
+            video=video,
+            duration_seconds=metadata.duration_seconds,
+        )
+        _enforce_post_import_cache_limit(settings, current_video_id=video.id)
         throw_if_cancel_requested(settings, job.id)
     except JobCancelledError as exc:
         if video is not None:
@@ -320,14 +327,22 @@ def _create_video_from_probe(
     )
 
 
-def _maybe_extract_cover(settings: Settings, *, source: Path, video: Video) -> Video:
+def _maybe_extract_cover(
+    settings: Settings,
+    *,
+    source: Path,
+    video: Video,
+    duration_seconds: float | None,
+) -> Video:
     poster_file_name = build_poster_file_name(video.id)
     try:
         with TemporaryDirectory() as temp_dir_name:
             poster_output_path = Path(temp_dir_name) / poster_file_name
-            extract_poster(
+            extract_poster_at_ratio(
                 source,
                 poster_output_path,
+                duration_seconds=duration_seconds,
+                position_ratio=1 / 3,
                 ffmpeg_binary=settings.ffmpeg_binary,
             )
             poster_web_path = store_encrypted_artwork_file(
@@ -445,6 +460,8 @@ def _upload_remote_artifacts(
             _UploadArtifact(
                 local_path=local_path,
                 remote_path=segment.cloud_path,
+                video_id=segment.video_id,
+                segment_index=segment.segment_index,
                 progress_percent=None,
             )
         )
@@ -454,6 +471,8 @@ def _upload_remote_artifacts(
     manifest_artifact = _UploadArtifact(
         local_path=manifest_path,
         remote_path=video.manifest_path,
+        video_id=video.id,
+        segment_index=None,
         progress_percent=95,
     )
 
@@ -461,11 +480,19 @@ def _upload_remote_artifacts(
         completed_segment_count = 0
 
         def upload_artifact(task: _UploadArtifact) -> TransferResult[_UploadArtifact]:
+            expected_size = task.local_path.stat().st_size
+            if _remote_artifact_matches_size(storage, task, expected_size=expected_size):
+                return measure_transfer(
+                    task,
+                    byte_count=0,
+                    started_at=perf_counter(),
+                )
             started_at = perf_counter()
             storage.upload_file(task.local_path, task.remote_path)
+            _assert_remote_artifact_uploaded(storage, task, expected_size=expected_size)
             return measure_transfer(
                 task,
-                byte_count=task.local_path.stat().st_size,
+                byte_count=expected_size,
                 started_at=started_at,
             )
 
@@ -521,9 +548,56 @@ def _upload_remote_artifacts(
 
 
 class _UploadArtifact:
-    __slots__ = ("local_path", "remote_path", "progress_percent")
+    __slots__ = ("local_path", "remote_path", "video_id", "segment_index", "progress_percent")
 
-    def __init__(self, *, local_path: Path, remote_path: str, progress_percent: int | None) -> None:
+    def __init__(
+        self,
+        *,
+        local_path: Path,
+        remote_path: str,
+        video_id: int,
+        segment_index: int | None,
+        progress_percent: int | None,
+    ) -> None:
         self.local_path = local_path
         self.remote_path = remote_path
+        self.video_id = video_id
+        self.segment_index = segment_index
         self.progress_percent = progress_percent
+
+
+def _remote_artifact_matches_size(storage, task: _UploadArtifact, *, expected_size: int) -> bool:
+    if task.progress_percent is not None:
+        return False
+    local_path_for = getattr(storage, "local_path_for", None)
+    if not callable(local_path_for):
+        return False
+    try:
+        remote_path = local_path_for(task.remote_path)
+    except Exception:
+        return False
+    return remote_path.exists() and remote_path.is_file() and remote_path.stat().st_size == expected_size
+
+
+def _assert_remote_artifact_uploaded(storage, task: _UploadArtifact, *, expected_size: int) -> None:
+    local_path_for = getattr(storage, "local_path_for", None)
+    if callable(local_path_for):
+        remote_path = local_path_for(task.remote_path)
+        if not remote_path.exists() or not remote_path.is_file():
+            raise ValueError(f"Uploaded artifact is missing on remote: {task.remote_path}")
+        if remote_path.stat().st_size != expected_size:
+            raise ValueError(
+                "Uploaded artifact size mismatch: "
+                f"video_id={task.video_id}, segment_index={task.segment_index}, "
+                f"expected={expected_size}, actual={remote_path.stat().st_size}, remote_path={task.remote_path}"
+            )
+        return
+    if not storage.exists(task.remote_path):
+        raise ValueError(f"Uploaded artifact is missing on remote: {task.remote_path}")
+
+
+def _enforce_post_import_cache_limit(settings: Settings, *, current_video_id: int) -> None:
+    enforce_cache_limit(
+        settings,
+        protect_video_ids={current_video_id},
+    )

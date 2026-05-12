@@ -801,6 +801,18 @@ h2 {
   will-change: transform, opacity, filter;
 }
 
+.banner-carousel-title-shell {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--banner-card-width);
+  aspect-ratio: 16 / 9;
+  pointer-events: none;
+  z-index: 5;
+  transform: var(--banner-center-transform);
+  transform-origin: center center;
+}
+
 .banner-carousel-card-button {
   padding: 0;
   cursor: pointer;
@@ -989,7 +1001,7 @@ h2 {
 .banner-carousel-title {
   position: absolute;
   left: 1.2rem;
-  right: 1.2rem;
+  max-width: calc(100% - 2.4rem);
   bottom: 0.95rem;
   z-index: 1;
   font-size: clamp(1rem, 2vw, 1.45rem);

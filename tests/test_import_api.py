@@ -142,6 +142,7 @@ def test_import_video_creates_queued_job_and_completes_in_background(tmp_path: P
     assert payload["progress_percent"] == 0
     assert payload["video_id"] is None
     assert payload["requested_tags"] == ["动画", "治愈"]
+    assert "source_path" not in payload
 
     completed_payload = wait_for_job_status(
         client,
@@ -227,6 +228,7 @@ def test_import_job_list_and_detail_endpoints_work(tmp_path: Path) -> None:
     assert detail_response.status_code == 200
     assert detail_response.json()["id"] == job_id
     assert detail_response.json()["status"] in {"queued", "running", "completed"}
+    assert "source_path" not in detail_response.json()
 
     completed_payload = wait_for_job_status(client, job_id, expected_status="completed")
     assert completed_payload["video_id"] is not None

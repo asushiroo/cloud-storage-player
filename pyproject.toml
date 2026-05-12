@@ -27,6 +27,7 @@ dev = [
 [project.scripts]
 cloud-storage-player = "app.main:main"
 cloud-storage-player-baidu-smoke = "app.cli.baidu_smoke:main"
+cloud-storage-player-rebuild-posters = "app.cli.poster_rebuild:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

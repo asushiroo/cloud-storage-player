@@ -35,12 +35,17 @@ def test_import_retries_after_baidu_frequency_control(monkeypatch, tmp_path: Pat
         def __init__(self) -> None:
             self.calls: list[str] = []
             self.failed_once = False
+            self.uploaded_paths: set[str] = set()
 
         def upload_file(self, local_path: Path, remote_path: str) -> None:
             self.calls.append(remote_path)
             if not self.failed_once:
                 self.failed_once = True
                 raise BaiduFrequencyControlError("Baidu API error 9013: hit frequence control")
+            self.uploaded_paths.add(remote_path)
+
+        def exists(self, remote_path: str) -> bool:
+            return remote_path in self.uploaded_paths
 
         def close(self) -> None:
             return None
@@ -77,6 +82,9 @@ def test_import_uses_runtime_configured_upload_transfer_concurrency(monkeypatch,
     active_uploads = {"value": 0}
 
     class TrackingStorage:
+        def __init__(self) -> None:
+            self.uploaded_paths: set[str] = set()
+
         def upload_file(self, local_path: Path, remote_path: str) -> None:
             active_uploads["value"] += 1
             if active_uploads["value"] > max_inflight["value"]:
@@ -87,6 +95,10 @@ def test_import_uses_runtime_configured_upload_transfer_concurrency(monkeypatch,
                 time.sleep(0.05)
             finally:
                 active_uploads["value"] -= 1
+            self.uploaded_paths.add(remote_path)
+
+        def exists(self, remote_path: str) -> bool:
+            return remote_path in self.uploaded_paths
 
         def close(self) -> None:
             return None
