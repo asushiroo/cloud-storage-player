@@ -42,8 +42,6 @@ export function BannerCarousel({ videos, versionToken }: BannerCarouselProps) {
     ];
   }, [activeIndex, videos]);
 
-  const activeVideo = videos.length > 0 ? videos[getWrappedIndex(activeIndex, videos.length)] : null;
-
   useEffect(() => {
     if (videos.length <= 1 || transitionDirection !== 0) {
       return;
@@ -99,11 +97,6 @@ export function BannerCarousel({ videos, versionToken }: BannerCarouselProps) {
           }`}
           onAnimationEnd={handleAnimationEnd}
         >
-          {activeVideo ? (
-            <div className="banner-carousel-title-shell" aria-hidden="true">
-              <span className="banner-carousel-title">{activeVideo.title}</span>
-            </div>
-          ) : null}
           {visibleVideos.map(({ slot, video, renderKey }) => (
             slot === "center" ? (
               <Link
@@ -118,6 +111,9 @@ export function BannerCarousel({ videos, versionToken }: BannerCarouselProps) {
                   draggable={false}
                   src={buildAssetUrl(video.poster_path ?? video.cover_path, versionToken) ?? ""}
                 />
+                <span className="banner-carousel-card-title" aria-hidden="true">
+                  {video.title}
+                </span>
               </Link>
             ) : slot === "left" || slot === "right" ? (
               <button
@@ -134,6 +130,9 @@ export function BannerCarousel({ videos, versionToken }: BannerCarouselProps) {
                   draggable={false}
                   src={buildAssetUrl(video.poster_path ?? video.cover_path, versionToken) ?? ""}
                 />
+                <span className="banner-carousel-card-title" aria-hidden="true">
+                  {video.title}
+                </span>
               </button>
             ) : (
               <div
@@ -147,6 +146,9 @@ export function BannerCarousel({ videos, versionToken }: BannerCarouselProps) {
                   draggable={false}
                   src={buildAssetUrl(video.poster_path ?? video.cover_path, versionToken) ?? ""}
                 />
+                <span className="banner-carousel-card-title" aria-hidden="true">
+                  {video.title}
+                </span>
               </div>
             )
           ))}

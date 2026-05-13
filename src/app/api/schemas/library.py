@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import PurePosixPath
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -51,6 +53,12 @@ class VideoResponse(BaseModel):
     highlight_end_seconds: float | None = None
     highlight_bucket_count: int = 20
     highlight_heatmap: list[float] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def normalize_legacy_artwork_paths(self) -> "VideoResponse":
+        self.cover_path = _normalize_artwork_path(self.cover_path)
+        self.poster_path = _normalize_artwork_path(self.poster_path)
+        return self
 
 
 class VideoTagsUpdateRequest(BaseModel):
@@ -105,3 +113,14 @@ class VideoWatchHeartbeatRequest(BaseModel):
 class VideoWatchHeartbeatResponse(BaseModel):
     session_token: str
     video: VideoResponse
+
+
+def _normalize_artwork_path(path: str | None) -> str | None:
+    if not path:
+        return path
+    if not path.startswith("/covers/"):
+        return path
+    file_name = PurePosixPath(path).name
+    if not file_name:
+        return path
+    return f"/api/artwork/{file_name}"

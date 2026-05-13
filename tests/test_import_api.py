@@ -487,3 +487,24 @@ def test_update_video_artwork_replaces_cover_and_poster(tmp_path: Path) -> None:
     assert payload["cover_path"] is None
     assert payload["poster_path"].endswith("-poster.avif")
     assert client.get(payload["poster_path"]).status_code == 200
+
+
+def test_video_api_normalizes_legacy_covers_artwork_paths(tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    login(client, password)
+
+    video = create_video(
+        settings,
+        title="Legacy artwork",
+        mime_type="video/mp4",
+        size=123,
+        cover_path="/covers/legacy-cover.jpg",
+        poster_path="/covers/legacy-poster.avif",
+    )
+
+    response = client.get(f"/api/videos/{video.id}")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["cover_path"] == "/api/artwork/legacy-cover.jpg"
+    assert payload["poster_path"] == "/api/artwork/legacy-poster.avif"

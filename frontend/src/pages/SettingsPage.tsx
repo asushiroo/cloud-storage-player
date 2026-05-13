@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+﻿import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { authorizeBaidu, fetchSettings, updateSettings, type SettingsUpdatePayload } from "../api/client";
 import { Surface } from "../components/Surface";
@@ -7,6 +7,9 @@ import type { ApiError, PublicSettings } from "../types/api";
 import { formatBytes } from "../utils/format";
 
 const DEFAULT_TRANSFER_CONCURRENCY = "5";
+const DEFAULT_BAIDU_ROOT_PATH = "/apps/CloudStoragePlayer";
+const DEFAULT_SEGMENT_CACHE_ROOT_PATH = "data/segments";
+const DEFAULT_CACHE_LIMIT_BYTES = String(2 * 1024 * 1024 * 1024);
 
 const resolveTransferConcurrency = (
   primary: number | undefined,
@@ -29,6 +32,35 @@ const hasSplitConcurrencyFields = (settings: PublicSettings | undefined): boolea
 const hasLegacyConcurrencyField = (settings: PublicSettings | undefined): boolean =>
   typeof settings?.remote_transfer_concurrency === "number";
 
+interface SettingInputFieldProps {
+  value: string;
+  hint: string;
+  onChange: (value: string) => void;
+  inputMode?: "text" | "numeric";
+  type?: "text" | "number";
+  min?: number;
+  max?: number;
+}
+
+function SettingInputField({ value, hint, onChange, inputMode, type = "text", min, max }: SettingInputFieldProps) {
+  return (
+    <label className="setting-input-shell">
+      <input
+        className="text-input"
+        inputMode={inputMode}
+        max={max}
+        min={min}
+        onChange={(event) => onChange(event.target.value)}
+        type={type}
+        value={value}
+      />
+      <span className="setting-input-hint" role="note">
+        {hint}
+      </span>
+    </label>
+  );
+}
+
 export function SettingsPage() {
   const session = useRequireSession();
   const queryClient = useQueryClient();
@@ -39,9 +71,9 @@ export function SettingsPage() {
   });
 
   const [storageBackend, setStorageBackend] = useState("mock");
-  const [baiduRootPath, setBaiduRootPath] = useState("");
-  const [segmentCacheRootPath, setSegmentCacheRootPath] = useState("");
-  const [cacheLimitBytes, setCacheLimitBytes] = useState("0");
+  const [baiduRootPath, setBaiduRootPath] = useState(DEFAULT_BAIDU_ROOT_PATH);
+  const [segmentCacheRootPath, setSegmentCacheRootPath] = useState(DEFAULT_SEGMENT_CACHE_ROOT_PATH);
+  const [cacheLimitBytes, setCacheLimitBytes] = useState(DEFAULT_CACHE_LIMIT_BYTES);
   const [uploadTransferConcurrency, setUploadTransferConcurrency] = useState(DEFAULT_TRANSFER_CONCURRENCY);
   const [downloadTransferConcurrency, setDownloadTransferConcurrency] = useState(DEFAULT_TRANSFER_CONCURRENCY);
   const [oauthCode, setOauthCode] = useState("");
@@ -131,6 +163,9 @@ export function SettingsPage() {
   if (session.isLoading || (session.data?.authenticated !== true && !session.isError)) {
     return <p className="state-text">正在加载设置...</p>;
   }
+  if (settingsQuery.isLoading && !settingsQuery.data) {
+    return <p className="state-text">正在加载设置...</p>;
+  }
 
   const settings = settingsQuery.data;
   const currentUploadConcurrency = resolveTransferConcurrency(
@@ -162,48 +197,42 @@ export function SettingsPage() {
       <Surface>
         <h2>运行配置</h2>
         <div className="form-stack">
-          <input
-            className="text-input"
-            onChange={(event) => setStorageBackend(event.target.value)}
-            placeholder="mock 或 baidu"
+          <SettingInputField
+            hint="mock 或 baidu"
+            onChange={setStorageBackend}
             value={storageBackend}
           />
-          <input
-            className="text-input"
-            onChange={(event) => setBaiduRootPath(event.target.value)}
-            placeholder="Baidu root path"
+          <SettingInputField
+            hint="Baidu 根路径，例如 /apps/CloudStoragePlayer"
+            onChange={setBaiduRootPath}
             value={baiduRootPath}
           />
-          <input
-            className="text-input"
-            onChange={(event) => setSegmentCacheRootPath(event.target.value)}
-            placeholder="缓存目录（示例：D:\\cache\\segments）"
+          <SettingInputField
+            hint="缓存目录，例如 D:\\cache\\segments"
+            onChange={setSegmentCacheRootPath}
             value={segmentCacheRootPath}
           />
-          <input
-            className="text-input"
+          <SettingInputField
+            hint="缓存字节上限"
             inputMode="numeric"
-            onChange={(event) => setCacheLimitBytes(event.target.value)}
-            placeholder="缓存字节上限"
+            onChange={setCacheLimitBytes}
             value={cacheLimitBytes}
           />
-          <input
-            className="text-input"
+          <SettingInputField
+            hint="上传并发数，范围 1 到 32"
             inputMode="numeric"
             max={32}
             min={1}
-            onChange={(event) => setUploadTransferConcurrency(event.target.value)}
-            placeholder="上传并发数"
+            onChange={setUploadTransferConcurrency}
             type="number"
             value={uploadTransferConcurrency}
           />
-          <input
-            className="text-input"
+          <SettingInputField
+            hint="下载并发数，范围 1 到 32"
             inputMode="numeric"
             max={32}
             min={1}
-            onChange={(event) => setDownloadTransferConcurrency(event.target.value)}
-            placeholder="下载并发数"
+            onChange={setDownloadTransferConcurrency}
             type="number"
             value={downloadTransferConcurrency}
           />

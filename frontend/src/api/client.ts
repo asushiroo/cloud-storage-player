@@ -81,7 +81,11 @@ export const buildAssetUrl = (path: string | null, versionToken?: string | numbe
   if (!path) {
     return null;
   }
-  const url = buildUrl(path);
+  let normalizedPath = path;
+  if (normalizedPath.startsWith("/covers/")) {
+    normalizedPath = `/api/artwork/${normalizedPath.slice("/covers/".length)}`;
+  }
+  const url = buildUrl(normalizedPath);
   if (versionToken === undefined || versionToken === null || versionToken === "") {
     return url;
   }

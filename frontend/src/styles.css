@@ -801,18 +801,6 @@ h2 {
   will-change: transform, opacity, filter;
 }
 
-.banner-carousel-title-shell {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: var(--banner-card-width);
-  aspect-ratio: 16 / 9;
-  pointer-events: none;
-  z-index: 5;
-  transform: var(--banner-center-transform);
-  transform-origin: center center;
-}
-
 .banner-carousel-card-button {
   padding: 0;
   cursor: pointer;
@@ -998,7 +986,7 @@ h2 {
   object-fit: cover;
 }
 
-.banner-carousel-title {
+.banner-carousel-card-title {
   position: absolute;
   left: 1.2rem;
   max-width: calc(100% - 2.4rem);
@@ -1030,6 +1018,10 @@ h2 {
 
 .banner-carousel-arrow:hover {
   color: white;
+}
+
+.recommendation-secondary-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .management-grid {
@@ -1064,6 +1056,31 @@ h2 {
 .detail-cover-link {
   display: block;
   width: 100%;
+}
+
+.setting-input-shell {
+  position: relative;
+  display: block;
+}
+
+.setting-input-hint {
+  position: absolute;
+  top: 50%;
+  right: 1rem;
+  max-width: calc(100% - 2rem);
+  transform: translateY(-50%);
+  color: rgba(238, 242, 255, 0);
+  font-size: 0.78rem;
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 140ms ease;
+}
+
+.setting-input-shell:hover .setting-input-hint,
+.setting-input-shell:focus-within .setting-input-hint {
+  color: rgba(174, 183, 214, 0.85);
 }
 
 .editable-tag-panel {
@@ -1178,7 +1195,8 @@ h2 {
     --banner-incoming-right-transform: translate(42%, -50%) rotateY(-54deg) scale(0.66);
   }
 
-  .video-grid {
+  .video-grid,
+  .recommendation-secondary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

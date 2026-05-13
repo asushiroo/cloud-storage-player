@@ -8,7 +8,7 @@ import { useRequireSession } from "../hooks/session";
 import type { Video, VideoRecommendationShelf } from "../types/api";
 
 const HERO_BANNER_LIMIT = 5;
-const SECONDARY_RECOMMENDATION_LIMIT = 12;
+const SECONDARY_RECOMMENDATION_LIMIT = 6;
 const RECENT_WATCH_LIMIT = 5;
 
 function mergeUniqueVideos(...groups: Video[][]): Video[] {
@@ -102,7 +102,7 @@ export function RecommendationPage() {
         <div className="section-divider" />
 
         {secondaryVideos.length > 0 ? (
-          <div className="video-grid">
+          <div className="video-grid recommendation-secondary-grid">
             {secondaryVideos.map((video) => (
               <VideoGridCard key={`secondary-${video.id}`} versionToken={artworkVersionToken} video={video} />
             ))}
