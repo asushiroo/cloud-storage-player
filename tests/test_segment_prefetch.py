@@ -46,7 +46,7 @@ def build_segment(settings: Settings, *, video_id: int, segment_index: int) -> V
     )
 
 
-def test_prefetch_session_stops_at_current_window(monkeypatch, tmp_path: Path) -> None:
+def test_prefetch_session_downloads_in_rolling_batches(monkeypatch, tmp_path: Path) -> None:
     settings = build_settings(tmp_path)
     video_id = 42
     storage = MockStorageBackend(settings.mock_storage_dir)
@@ -72,13 +72,12 @@ def test_prefetch_session_stops_at_current_window(monkeypatch, tmp_path: Path) -
     try:
         session.request_prefetch(current_segment_index=0)
         deadline = time.time() + 3
-        while time.time() < deadline and len(download_calls) < 5:
+        while time.time() < deadline and len(download_calls) < 7:
             time.sleep(0.05)
-        time.sleep(0.2)
     finally:
         release_prefetch_session(video_id)
 
-    assert len(download_calls) == 5
+    assert len(download_calls) >= 7
 
 
 def test_prefetch_session_uses_runtime_configured_transfer_concurrency(monkeypatch, tmp_path: Path) -> None:
@@ -159,3 +158,37 @@ def test_prefetch_session_stops_soon_after_release(monkeypatch, tmp_path: Path) 
 
     # Current in-flight tasks may finish, but it should not keep draining the full list.
     assert len(download_calls) <= 6
+
+
+def test_prefetch_session_downloads_next_batch_when_consumer_stays_active(monkeypatch, tmp_path: Path) -> None:
+    settings = build_settings(tmp_path)
+    video_id = 91
+    storage = MockStorageBackend(settings.mock_storage_dir)
+    segments = [build_segment(settings, video_id=video_id, segment_index=index) for index in range(10)]
+    download_calls: list[str] = []
+
+    for segment in segments:
+        storage.upload_bytes(f"segment-{segment.segment_index}".encode("utf-8"), segment.cloud_path or "")
+
+    class TrackingStorage:
+        def download_bytes(self, remote_path: str) -> bytes:
+            download_calls.append(remote_path)
+            time.sleep(0.03)
+            return storage.download_bytes(remote_path)
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr("app.services.segment_prefetch.build_storage_backend", lambda _settings: TrackingStorage())
+    session = acquire_prefetch_session(settings, video_id=video_id, segments=segments)
+    assert session is not None
+
+    try:
+        session.request_prefetch(current_segment_index=0)
+        deadline = time.time() + 3
+        while time.time() < deadline and len(download_calls) < 7:
+            time.sleep(0.05)
+    finally:
+        release_prefetch_session(video_id)
+
+    assert len(download_calls) >= 7

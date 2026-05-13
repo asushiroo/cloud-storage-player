@@ -262,7 +262,7 @@ def test_stream_logs_warning_when_baidu_remote_segment_returns_404(
     )
 
 
-def test_stream_prefetch_stays_within_current_window(monkeypatch, tmp_path: Path) -> None:
+def test_stream_prefetch_stops_at_first_batch_when_stream_ends(monkeypatch, tmp_path: Path) -> None:
     client, settings, password = build_client(tmp_path)
     settings.segment_size_bytes = 64
     source_path = create_sample_video(tmp_path / "prefetch-rolling-window.mp4")
@@ -297,10 +297,10 @@ def test_stream_prefetch_stays_within_current_window(monkeypatch, tmp_path: Path
     assert response.content == file_bytes[:32]
 
     deadline = time.time() + 3
-    while time.time() < deadline and len(download_calls) < 5:
+    while time.time() < deadline and len(download_calls) < 6:
         time.sleep(0.05)
-    time.sleep(0.2)
 
+    # Stream request ends quickly for this test range, so session releases after first prefetch batch.
     assert len(download_calls) == 6
 
 

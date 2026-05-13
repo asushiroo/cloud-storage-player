@@ -51,6 +51,7 @@ class SegmentPrefetchSession:
     lock: Lock = field(default_factory=Lock)
     thread: Thread | None = None
     active_segment_index: int = -1
+    next_segment_index: int = 0
     consumer_count: int = 0
     completed_segment_indexes: set[int] = field(default_factory=set)
     inflight_segment_indexes: set[int] = field(default_factory=set)
@@ -72,6 +73,7 @@ class SegmentPrefetchSession:
     def request_prefetch(self, *, current_segment_index: int) -> None:
         with self.lock:
             self.active_segment_index = max(self.active_segment_index, current_segment_index)
+            self.next_segment_index = max(self.next_segment_index, self.active_segment_index + 1)
         self.start()
 
     def acquire(self) -> None:
@@ -135,18 +137,17 @@ class SegmentPrefetchSession:
         with self.lock:
             if self.active_segment_index < 0:
                 return []
+            if self.inflight_segment_indexes:
+                return []
             remaining_capacity = _PREFETCH_WINDOW_SIZE - len(self.inflight_segment_indexes)
             if remaining_capacity <= 0:
                 return []
 
-            window_start = self.active_segment_index + 1
-            window_end = self.active_segment_index + _PREFETCH_WINDOW_SIZE
+            window_start = max(self.next_segment_index, self.active_segment_index + 1)
             batch: list[VideoSegment] = []
             for segment in self.ordered_segments:
                 if segment.segment_index < window_start:
                     continue
-                if segment.segment_index > window_end:
-                    break
                 if segment.segment_index in self.completed_segment_indexes:
                     continue
                 if segment.segment_index in self.inflight_segment_indexes:
@@ -160,6 +161,8 @@ class SegmentPrefetchSession:
                 batch.append(segment)
                 if len(batch) >= remaining_capacity:
                     break
+            if batch:
+                self.next_segment_index = batch[-1].segment_index + 1
             return batch
 
     def _mark_completed(
@@ -176,18 +179,14 @@ class SegmentPrefetchSession:
         with self.lock:
             if self.active_segment_index < 0:
                 return True
-
-            window_start = self.active_segment_index + 1
-            window_end = self.active_segment_index + _PREFETCH_WINDOW_SIZE
+            if self.inflight_segment_indexes:
+                return False
+            window_start = max(self.next_segment_index, self.active_segment_index + 1)
             for segment in self.ordered_segments:
                 if segment.segment_index < window_start:
                     continue
-                if segment.segment_index > window_end:
-                    break
                 if not segment.cloud_path:
                     continue
-                if segment.segment_index in self.inflight_segment_indexes:
-                    return False
                 if segment.segment_index in self.completed_segment_indexes:
                     continue
                 if _resolve_segment_cache_path(self.settings, segment).exists():
