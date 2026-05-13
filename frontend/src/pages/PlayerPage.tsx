@@ -284,12 +284,8 @@ export function PlayerPage() {
       videoElement.removeEventListener("pause", handlePause);
       videoElement.removeEventListener("seeked", handleSeeked);
       videoElement.removeEventListener("ended", handleEnded);
-      // Explicitly detach media src on route leave so browser aborts stream request quickly.
-      videoElement.pause();
-      videoElement.removeAttribute("src");
-      videoElement.load();
     };
-  }, [videoId, watchMutation]);
+  }, [videoId, watchMutation.mutate]);
 
   if (session.isLoading || (session.data?.authenticated !== true && !session.isError)) {
     return <p className="state-text">正在准备播放...</p>;
@@ -359,7 +355,15 @@ export function PlayerPage() {
       ) : null}
 
       <div className="player-surface">
-        <video autoPlay className="player-video" controls preload="metadata" ref={videoRef} src={getStreamUrl(videoId)} />
+        <video
+          autoPlay
+          className="player-video"
+          controls
+          crossOrigin="use-credentials"
+          preload="metadata"
+          ref={videoRef}
+          src={getStreamUrl(videoId)}
+        />
       </div>
 
       {video && video.highlight_start_seconds !== null && video.highlight_end_seconds !== null ? (

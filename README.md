@@ -13,6 +13,9 @@
 - New local segment writes now store `video_segments.local_staging_path` as cache-root-relative suffix only (example: `77/segments/000000.cspseg`).
 - Existing local database values were migrated from absolute paths to suffix-only values after creating a DB backup.
 
+## 2026-05-13 Playback Fix
+- Playback now keeps the video element source intact across React StrictMode remounts and uses credentialed media requests.
+
 ## 当前已实现
 
 - 问题修复（2026-05 Problem.md）
