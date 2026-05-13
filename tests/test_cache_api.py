@@ -234,3 +234,44 @@ def test_cache_videos_api_normalizes_legacy_artwork_paths(tmp_path: Path) -> Non
     assert payload_json[0]["id"] == video.id
     assert payload_json[0]["cover_path"] == "/api/artwork/cache-cover.jpg"
     assert payload_json[0]["poster_path"] == "/api/artwork/cache-poster.avif"
+
+
+def test_cache_videos_api_normalizes_legacy_jpg_poster_path_to_avif(tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    login(client, password)
+
+    video = create_video(
+        settings,
+        title="Legacy cache jpg poster",
+        mime_type="video/mp4",
+        size=456,
+        poster_path="/covers/cache-poster.jpg",
+    )
+    segment_path = local_segment_path(settings, video_id=video.id, segment_index=0).with_name("0.cspseg")
+    segment_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = b"cache-segment"
+    segment_path.write_bytes(payload)
+    create_video_segments(
+        settings,
+        video_id=video.id,
+        segments=[
+            NewVideoSegment(
+                segment_index=0,
+                original_offset=0,
+                original_length=len(payload),
+                ciphertext_size=len(payload),
+                plaintext_sha256="sha-cache",
+                nonce_b64="nonce-cache",
+                tag_b64="tag-cache",
+                cloud_path=f"/apps/CloudStoragePlayer/mock/{video.id}/0.bin",
+                local_staging_path=serialize_local_staging_path(settings, segment_path),
+            )
+        ],
+    )
+
+    response = client.get("/api/cache/videos")
+
+    assert response.status_code == 200
+    payload_json = response.json()
+    assert len(payload_json) == 1
+    assert payload_json[0]["poster_path"] == "/api/artwork/cache-poster.avif"

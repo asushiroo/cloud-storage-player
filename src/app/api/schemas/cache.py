@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
@@ -40,4 +40,6 @@ def _normalize_artwork_path(path: str | None) -> str | None:
     file_name = PurePosixPath(path).name
     if not file_name:
         return path
+    if file_name.endswith("-poster.jpg"):
+        file_name = f"{Path(file_name).stem}.avif"
     return f"/api/artwork/{file_name}"

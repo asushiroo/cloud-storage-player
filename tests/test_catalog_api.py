@@ -8,7 +8,11 @@ from app.main import create_app
 from app.repositories.folders import create_folder
 from app.repositories.settings import get_setting, set_setting
 from app.repositories.videos import create_video
-from app.services.artwork_storage import build_poster_file_name, store_encrypted_artwork_bytes
+from app.services.artwork_storage import (
+    build_poster_file_name,
+    read_artwork_bytes,
+    store_encrypted_artwork_bytes,
+)
 
 
 def build_client(tmp_path: Path, password: str = "shared-secret") -> tuple[TestClient, Settings, str]:
@@ -218,6 +222,26 @@ def test_artwork_api_returns_decrypted_avif_payload(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/avif"
     assert response.content == payload
+
+
+def test_artwork_api_can_serve_legacy_jpg_poster_request_from_avif_storage(tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    login(client, password)
+
+    stored_path = store_encrypted_artwork_bytes(
+        settings,
+        file_name="9-poster.avif",
+        payload=b"fake-avif-payload",
+    )
+    assert stored_path == "/api/artwork/9-poster.avif"
+
+    response = client.get("/api/artwork/9-poster.jpg")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/avif"
+    expected_payload, expected_type = read_artwork_bytes(settings, artwork_name="9-poster.avif")
+    assert expected_type == "image/avif"
+    assert response.content == expected_payload
 
 
 def test_video_tags_endpoint_updates_saved_tags(tmp_path: Path) -> None:

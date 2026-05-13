@@ -61,24 +61,25 @@ def store_encrypted_artwork_file(
 
 def read_artwork_bytes(settings: Settings, *, artwork_name: str) -> tuple[bytes, str]:
     file_name = _validate_artwork_name(artwork_name)
-    media_type = guess_artwork_media_type(file_name)
-    encrypted_path = encrypted_artwork_path(settings, file_name=file_name)
+    resolved_file_name = _resolve_existing_artwork_file_name(settings, file_name=file_name)
+    media_type = guess_artwork_media_type(resolved_file_name)
+    encrypted_path = encrypted_artwork_path(settings, file_name=resolved_file_name)
     if encrypted_path.exists():
         encrypted_bytes = encrypted_path.read_bytes()
         return (
             crypt_artwork_bytes(
                 encrypted_bytes,
                 load_content_key(settings),
-                artwork_name=file_name,
+                artwork_name=resolved_file_name,
             ),
             media_type,
         )
 
-    plain_path = settings.covers_dir / file_name
+    plain_path = settings.covers_dir / resolved_file_name
     if plain_path.exists():
         return plain_path.read_bytes(), media_type
 
-    raise FileNotFoundError(file_name)
+    raise FileNotFoundError(resolved_file_name)
 
 
 def encrypted_artwork_path(settings: Settings, *, file_name: str) -> Path:
@@ -110,6 +111,23 @@ def guess_artwork_media_type(file_name: str) -> str:
     if media_type is None:
         raise FileNotFoundError(file_name)
     return media_type
+
+
+def _resolve_existing_artwork_file_name(settings: Settings, *, file_name: str) -> str:
+    encrypted = encrypted_artwork_path(settings, file_name=file_name)
+    plain = settings.covers_dir / file_name
+    if encrypted.exists() or plain.exists():
+        return file_name
+
+    # Backward-compatibility: legacy poster URLs may still reference *.jpg while storage is AVIF.
+    if file_name.endswith("-poster.jpg"):
+        candidate = f"{Path(file_name).stem}.avif"
+        candidate_encrypted = encrypted_artwork_path(settings, file_name=candidate)
+        candidate_plain = settings.covers_dir / candidate
+        if candidate_encrypted.exists() or candidate_plain.exists():
+            return candidate
+
+    return file_name
 
 
 def _validate_artwork_name(file_name: str) -> str:
