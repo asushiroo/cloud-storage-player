@@ -284,6 +284,10 @@ export function PlayerPage() {
       videoElement.removeEventListener("pause", handlePause);
       videoElement.removeEventListener("seeked", handleSeeked);
       videoElement.removeEventListener("ended", handleEnded);
+      // Explicitly detach media src on route leave so browser aborts stream request quickly.
+      videoElement.pause();
+      videoElement.removeAttribute("src");
+      videoElement.load();
     };
   }, [videoId, watchMutation]);
 

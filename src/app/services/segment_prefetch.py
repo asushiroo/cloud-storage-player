@@ -25,7 +25,6 @@ from app.storage.factory import build_storage_backend
 logger = logging.getLogger(__name__)
 
 _PREFETCH_WINDOW_SIZE = 5
-_PREFETCH_IDLE_GRACE_SECONDS = 15.0
 _CACHE_WRITE_WORKER_COUNT = 4
 _sessions_lock = Lock()
 _prefetch_sessions: dict[int, "SegmentPrefetchSession"] = {}
@@ -51,10 +50,8 @@ class SegmentPrefetchSession:
     stop_event: Event = field(default_factory=Event)
     lock: Lock = field(default_factory=Lock)
     thread: Thread | None = None
-    next_segment_index: int = 0
     active_segment_index: int = -1
     consumer_count: int = 0
-    idle_since: float | None = None
     completed_segment_indexes: set[int] = field(default_factory=set)
     inflight_segment_indexes: set[int] = field(default_factory=set)
 
@@ -75,20 +72,17 @@ class SegmentPrefetchSession:
     def request_prefetch(self, *, current_segment_index: int) -> None:
         with self.lock:
             self.active_segment_index = max(self.active_segment_index, current_segment_index)
-            self.next_segment_index = max(self.next_segment_index, current_segment_index + 1)
-            self.idle_since = None
         self.start()
 
     def acquire(self) -> None:
         with self.lock:
             self.consumer_count += 1
-            self.idle_since = None
 
     def release(self) -> None:
         with self.lock:
             self.consumer_count = max(0, self.consumer_count - 1)
             if self.consumer_count == 0:
-                self.idle_since = perf_counter()
+                self.stop_event.set()
 
     def _run(self) -> None:
         storage = (
@@ -100,7 +94,7 @@ class SegmentPrefetchSession:
             while not self.stop_event.is_set():
                 batch = self._next_batch()
                 if not batch:
-                    if self._is_finished() or self._is_idle_expired():
+                    if self._is_finished():
                         return
                     self.stop_event.wait(0.1)
                     continue
@@ -139,16 +133,20 @@ class SegmentPrefetchSession:
 
     def _next_batch(self) -> list[VideoSegment]:
         with self.lock:
+            if self.active_segment_index < 0:
+                return []
             remaining_capacity = _PREFETCH_WINDOW_SIZE - len(self.inflight_segment_indexes)
             if remaining_capacity <= 0:
                 return []
 
+            window_start = self.active_segment_index + 1
+            window_end = self.active_segment_index + _PREFETCH_WINDOW_SIZE
             batch: list[VideoSegment] = []
             for segment in self.ordered_segments:
-                if segment.segment_index <= self.active_segment_index:
+                if segment.segment_index < window_start:
                     continue
-                if segment.segment_index < self.next_segment_index:
-                    continue
+                if segment.segment_index > window_end:
+                    break
                 if segment.segment_index in self.completed_segment_indexes:
                     continue
                 if segment.segment_index in self.inflight_segment_indexes:
@@ -162,9 +160,6 @@ class SegmentPrefetchSession:
                 batch.append(segment)
                 if len(batch) >= remaining_capacity:
                     break
-
-            if batch:
-                self.next_segment_index = batch[-1].segment_index + 1
             return batch
 
     def _mark_completed(
@@ -179,21 +174,27 @@ class SegmentPrefetchSession:
 
     def _is_finished(self) -> bool:
         with self.lock:
-            return all(
-                (
-                    segment.segment_index <= self.active_segment_index
-                    or not segment.cloud_path
-                    or segment.segment_index in self.completed_segment_indexes
-                    or _resolve_segment_cache_path(self.settings, segment).exists()
-                )
-                for segment in self.ordered_segments
-            )
+            if self.active_segment_index < 0:
+                return True
 
-    def _is_idle_expired(self) -> bool:
-        with self.lock:
-            if self.consumer_count > 0 or self.idle_since is None:
+            window_start = self.active_segment_index + 1
+            window_end = self.active_segment_index + _PREFETCH_WINDOW_SIZE
+            for segment in self.ordered_segments:
+                if segment.segment_index < window_start:
+                    continue
+                if segment.segment_index > window_end:
+                    break
+                if not segment.cloud_path:
+                    continue
+                if segment.segment_index in self.inflight_segment_indexes:
+                    return False
+                if segment.segment_index in self.completed_segment_indexes:
+                    continue
+                if _resolve_segment_cache_path(self.settings, segment).exists():
+                    self.completed_segment_indexes.add(segment.segment_index)
+                    continue
                 return False
-            return (perf_counter() - self.idle_since) >= _PREFETCH_IDLE_GRACE_SECONDS
+            return True
 
 
 def acquire_prefetch_session(
@@ -210,8 +211,11 @@ def acquire_prefetch_session(
     with _sessions_lock:
         existing = _prefetch_sessions.get(video_id)
         if existing is not None:
-            existing.acquire()
-            return existing
+            if existing.stop_event.is_set():
+                _prefetch_sessions.pop(video_id, None)
+            else:
+                existing.acquire()
+                return existing
         session = SegmentPrefetchSession(
             settings=settings,
             video_id=video_id,
