@@ -55,7 +55,7 @@ def list_videos(
     tag: str | None = None,
 ) -> list[Video]:
     query = VIDEO_SELECT_SQL
-    query += " GROUP BY videos.id ORDER BY videos.title COLLATE NOCASE, videos.id"
+    query += " GROUP BY videos.id ORDER BY videos.created_at DESC, videos.id DESC"
 
     with connect_database(settings) as connection:
         rows = connection.execute(query).fetchall()

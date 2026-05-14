@@ -158,7 +158,7 @@ def test_video_page_endpoint_paginates_results(tmp_path: Path) -> None:
     assert first_payload["total"] == 15
     assert first_payload["has_more"] is True
     assert len(first_payload["items"]) == 12
-    assert first_payload["items"][0]["title"] == "Episode 00"
+    assert first_payload["items"][0]["title"] == "Episode 14"
 
     assert second_page.status_code == 200
     second_payload = second_page.json()
@@ -166,7 +166,7 @@ def test_video_page_endpoint_paginates_results(tmp_path: Path) -> None:
     assert second_payload["limit"] == 12
     assert second_payload["total"] == 15
     assert second_payload["has_more"] is False
-    assert [item["title"] for item in second_payload["items"]] == ["Episode 12", "Episode 13", "Episode 14"]
+    assert [item["title"] for item in second_payload["items"]] == ["Episode 02", "Episode 01", "Episode 00"]
 
 
 def test_artwork_api_returns_decrypted_avif_payload(tmp_path: Path) -> None:

@@ -392,3 +392,8 @@ uv run cloud-storage-player-baidu-smoke --source-path tmp/rieri.mp4
 - [docs/technical-overview.md](docs/technical-overview.md)
 - [docs/storage-backend-and-remote-fallback.md](docs/storage-backend-and-remote-fallback.md)
 - [docs/baidu-openapi-integration.md](docs/baidu-openapi-integration.md)
+
+## 2026-05-14 UI Follow-Up
+- Removed the player cache visualization overlay from the playback page to avoid misleading range rendering.
+- Library listing now defaults to newest imported videos first (by `created_at` descending, then `id` descending).
+- Recommendation secondary grid now switches from 3 columns to 2 columns earlier on medium-width viewports to prevent overflow.

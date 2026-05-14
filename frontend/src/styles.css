@@ -660,42 +660,6 @@ h2 {
   color: #9cc8ff;
 }
 
-.player-cache-hud {
-  position: absolute;
-  left: 1rem;
-  right: 1rem;
-  bottom: 1rem;
-  display: flex;
-  justify-content: center;
-  pointer-events: none;
-  opacity: 0;
-  transform: translateY(0.35rem);
-  transition: opacity 180ms ease, transform 180ms ease;
-}
-
-.player-cache-hud.is-visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.player-cache-track {
-  position: relative;
-  width: min(100%, 32rem);
-  height: 0.22rem;
-  border-radius: 999px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.14);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04);
-}
-
-.player-cache-segment {
-  position: absolute;
-  top: 0;
-  height: 100%;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.7);
-}
-
 .top-gap {
   margin-top: 1rem;
 }
@@ -1124,6 +1088,12 @@ h2 {
 
 .recommendation-secondary-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 980px) {
+  .recommendation-secondary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .management-grid {
