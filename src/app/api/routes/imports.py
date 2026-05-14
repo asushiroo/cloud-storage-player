@@ -8,8 +8,6 @@ from app.api.dependencies import require_authenticated
 from app.api.schemas.imports import (
     CancelAllImportJobsResponse,
     ClearedImportJobsResponse,
-    ImportFolderRequest,
-    ImportFolderResponse,
     ImportJobResponse,
     ImportRequest,
 )
@@ -22,11 +20,7 @@ from app.repositories.import_jobs import (
     request_cancel_all_active_jobs,
     request_cancel_job,
 )
-from app.services.imports import (
-    ImportValidationError,
-    queue_import_directory,
-    queue_import_job,
-)
+from app.services.imports import ImportValidationError, queue_import_job
 
 router = APIRouter(prefix="/api/imports", tags=["imports"])
 
@@ -43,7 +37,6 @@ async def create_import(
         job = queue_import_job(
             settings,
             source_path=payload.source_path,
-            folder_id=payload.folder_id,
             title=payload.title,
             tags=payload.tags,
             worker=worker,
@@ -52,32 +45,6 @@ async def create_import(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     return ImportJobResponse.model_validate(job)
-
-
-@router.post("/folder", response_model=ImportFolderResponse, status_code=status.HTTP_201_CREATED)
-async def create_folder_import(
-    payload: ImportFolderRequest,
-    request: Request,
-    _: None = Depends(require_authenticated),
-) -> ImportFolderResponse:
-    settings = request.app.state.settings
-    worker = request.app.state.import_worker
-    try:
-        jobs = queue_import_directory(
-            settings,
-            source_path=payload.source_path,
-            folder_id=payload.folder_id,
-            tags=payload.tags,
-            worker=worker,
-        )
-    except ImportValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-
-    return ImportFolderResponse(
-        source_path=payload.source_path,
-        created_job_count=len(jobs),
-        created_job_ids=[job.id for job in jobs],
-    )
 
 
 @router.post("/{job_id}/cancel", response_model=ImportJobResponse)

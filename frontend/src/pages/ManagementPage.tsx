@@ -7,16 +7,13 @@ import {
   clearAllCachedVideos,
   clearCachedVideo,
   clearFinishedImportJobs,
-  createFolderImport,
   createImport,
   fetchCacheSummary,
   fetchCachedVideos,
-  fetchFolders,
   fetchImportJobs,
   syncRemoteCatalog,
 } from "../api/client";
 import { Surface } from "../components/Surface";
-import { TagChip } from "../components/TagChip";
 import { useRequireSession } from "../hooks/session";
 import type { ApiError, CachedVideo, ImportJob } from "../types/api";
 import { buildAssetUrl } from "../api/client";
@@ -47,13 +44,9 @@ export function ManagementPage() {
   const session = useRequireSession();
   const queryClient = useQueryClient();
   const location = useLocation();
-  const [importMode, setImportMode] = useState<"video" | "folder">("video");
-  const [selectedFolderId, setSelectedFolderId] = useState<number | undefined>();
   const [sourcePath, setSourcePath] = useState("");
   const [title, setTitle] = useState("");
   const [tagInput, setTagInput] = useState("");
-  const [folderSourcePath, setFolderSourcePath] = useState("");
-  const [folderTagInput, setFolderTagInput] = useState("");
   const [showCachePanel, setShowCachePanel] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -66,11 +59,6 @@ export function ManagementPage() {
     setFeedback(message);
   }, [location.state]);
 
-  const foldersQuery = useQuery({
-    queryKey: ["folders"],
-    queryFn: fetchFolders,
-    enabled: session.data?.authenticated === true,
-  });
   const importsQuery = useQuery({
     queryKey: ["imports"],
     queryFn: fetchImportJobs,
@@ -81,7 +69,6 @@ export function ManagementPage() {
     },
   });
 
-  const folders = foldersQuery.data ?? [];
   const importJobs = importsQuery.data ?? [];
   const cacheSummaryQuery = useQuery({
     queryKey: ["cache-summary"],
@@ -102,24 +89,6 @@ export function ManagementPage() {
       setSourcePath("");
       setTitle("");
       setTagInput("");
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["imports"] }),
-        queryClient.invalidateQueries({ queryKey: ["videos"] }),
-      ]);
-    },
-    onError: (exc: ApiError) => {
-      setError(exc.message);
-      setFeedback(null);
-    },
-  });
-
-  const folderImportMutation = useMutation({
-    mutationFn: createFolderImport,
-    onSuccess: async (result) => {
-      setFeedback(`文件夹导入已入队，共创建 ${result.created_job_count} 个任务。`);
-      setError(null);
-      setFolderSourcePath("");
-      setFolderTagInput("");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["imports"] }),
         queryClient.invalidateQueries({ queryKey: ["videos"] }),
@@ -173,7 +142,7 @@ export function ManagementPage() {
   const clearFailedJobsMutation = useMutation({
     mutationFn: () => clearFinishedImportJobs("failed"),
     onSuccess: async (result) => {
-      setFeedback(`已清理 ${result.deleted_job_count} 条失败 / 已取消任务。`);
+      setFeedback(`已清理 ${result.deleted_job_count} 条失败/取消任务。`);
       setError(null);
       await queryClient.invalidateQueries({ queryKey: ["imports"] });
     },
@@ -236,7 +205,6 @@ export function ManagementPage() {
 
   return (
     <div className="page-stack">
-
       {error ? (
         <Surface>
           <p className="error-text">{error}</p>
@@ -306,80 +274,61 @@ export function ManagementPage() {
           </div>
         ) : null}
       </Surface>
-      
+
       <div className="section-divider" />
-      
+
       <Surface>
         <div className="action-row">
-          <button className="primary-button" style={{ width: "100%" }}
-            disabled={syncMutation.isPending} onClick={() => syncMutation.mutate()} type="button">
+          <button
+            className="primary-button"
+            style={{ width: "100%" }}
+            disabled={syncMutation.isPending}
+            onClick={() => syncMutation.mutate()}
+            type="button"
+          >
             {syncMutation.isPending ? "同步中..." : "同步远端目录"}
           </button>
         </div>
       </Surface>
-      
-      <div className="section-divider" />
 
-      <Surface>
-        <h2>导入目录</h2>
-        <p className="muted">新导入的视频会写入当前选中的目录；不选则为未分类。</p>
-        <div className="chip-row top-gap">
-          <TagChip active={selectedFolderId === undefined} label="未分类" onClick={() => setSelectedFolderId(undefined)} />
-          {folders.map((folder) => (
-            <TagChip key={folder.id} active={selectedFolderId === folder.id} label={folder.name} onClick={() => setSelectedFolderId(folder.id)} />
-          ))}
-        </div>
-      </Surface>
+      <div className="section-divider" />
 
       <div className="management-grid management-grid-single">
         <Surface>
-          <h2>导入资源</h2>
-          <div className="chip-row top-gap">
-            <TagChip active={importMode === "video"} label="导入视频" onClick={() => setImportMode("video")} />
-            <TagChip active={importMode === "folder"} label="导入文件夹" onClick={() => setImportMode("folder")} />
-          </div>
+          <h2>导入视频</h2>
           <div className="form-stack top-gap">
-            {importMode === "video" ? (
-              <>
-                <input className="text-input" onChange={(event) => setSourcePath(event.target.value)} placeholder="例如：D:\Videos\movie.mp4" value={sourcePath} />
-                <input className="text-input" onChange={(event) => setTitle(event.target.value)} placeholder="可选：显示标题" value={title} />
-                <input className="text-input" onChange={(event) => setTagInput(event.target.value)} placeholder="可选：标签，逗号分隔" value={tagInput} />
-                <button
-                  className="primary-button"
-                  disabled={importMutation.isPending || sourcePath.trim().length === 0}
-                  onClick={() =>
-                    importMutation.mutate({
-                      source_path: sourcePath,
-                      title: title || null,
-                      folder_id: selectedFolderId ?? null,
-                      tags: parseTagInput(tagInput),
-                    })
-                  }
-                  type="button"
-                >
-                  {importMutation.isPending ? "创建中..." : "创建单文件导入任务"}
-                </button>
-              </>
-            ) : (
-              <>
-                <input className="text-input" onChange={(event) => setFolderSourcePath(event.target.value)} placeholder="例如：D:\Anime\Season1" value={folderSourcePath} />
-                <input className="text-input" onChange={(event) => setFolderTagInput(event.target.value)} placeholder="可选：给整个文件夹导入统一打标签" value={folderTagInput} />
-                <button
-                  className="primary-button"
-                  disabled={folderImportMutation.isPending || folderSourcePath.trim().length === 0}
-                  onClick={() =>
-                    folderImportMutation.mutate({
-                      source_path: folderSourcePath,
-                      folder_id: selectedFolderId ?? null,
-                      tags: parseTagInput(folderTagInput),
-                    })
-                  }
-                  type="button"
-                >
-                  {folderImportMutation.isPending ? "批量入队中..." : "导入整个文件夹"}
-                </button>
-              </>
-            )}
+            <input
+              className="text-input"
+              onChange={(event) => setSourcePath(event.target.value)}
+              placeholder="例如：D:\\Videos\\movie.mp4"
+              value={sourcePath}
+            />
+            <input
+              className="text-input"
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="可选：显示标题"
+              value={title}
+            />
+            <input
+              className="text-input"
+              onChange={(event) => setTagInput(event.target.value)}
+              placeholder="可选：标签，逗号分隔"
+              value={tagInput}
+            />
+            <button
+              className="primary-button"
+              disabled={importMutation.isPending || sourcePath.trim().length === 0}
+              onClick={() =>
+                importMutation.mutate({
+                  source_path: sourcePath,
+                  title: title || null,
+                  tags: parseTagInput(tagInput),
+                })
+              }
+              type="button"
+            >
+              {importMutation.isPending ? "创建中..." : "创建导入任务"}
+            </button>
           </div>
         </Surface>
       </div>
@@ -519,7 +468,7 @@ function CachedVideoCard({ video, disabled, onClear }: CachedVideoCardProps) {
           onClick={onClear}
           type="button"
         >
-          ✕
+          ×
         </button>
       </div>
       <div className="cache-card-meta">

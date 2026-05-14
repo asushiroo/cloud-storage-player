@@ -13,7 +13,6 @@ from app.models.imports import ImportJob
 JOB_SELECT_SQL = """
     SELECT id,
            source_path,
-           folder_id,
            requested_title,
            requested_tags_json,
            job_kind,
@@ -51,7 +50,6 @@ def create_import_job(
     settings: Settings,
     *,
     source_path: str,
-    folder_id: int | None = None,
     requested_title: str | None = None,
     requested_tags: list[str] | None = None,
     task_name: str | None = None,
@@ -66,7 +64,6 @@ def create_import_job(
             """
             INSERT INTO import_jobs (
                 source_path,
-                folder_id,
                 requested_title,
                 requested_tags_json,
                 job_kind,
@@ -75,11 +72,10 @@ def create_import_job(
                 progress_percent,
                 cancel_requested
             )
-            VALUES (?, ?, ?, ?, 'import', ?, 'queued', 0, 0)
+            VALUES (?, ?, ?, 'import', ?, 'queued', 0, 0)
             """,
             (
                 source_path,
-                folder_id,
                 requested_title,
                 encode_tags(requested_tags),
                 resolved_task_name,
@@ -528,7 +524,6 @@ def _row_to_import_job(row: sqlite3.Row) -> ImportJob:
     return ImportJob(
         id=row["id"],
         source_path=row["source_path"],
-        folder_id=row["folder_id"],
         requested_title=row["requested_title"],
         requested_tags=decode_tags(row["requested_tags_json"]),
         job_kind=row["job_kind"] or "import",

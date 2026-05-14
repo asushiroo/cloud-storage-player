@@ -5,7 +5,6 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings
 from app.core.security import hash_password
 from app.main import create_app
-from app.repositories.folders import create_folder
 from app.repositories.settings import get_setting, set_setting
 from app.repositories.videos import create_video
 from app.services.artwork_storage import (
@@ -36,7 +35,7 @@ def login(client: TestClient, password: str) -> None:
 def test_catalog_api_requires_authentication(tmp_path: Path) -> None:
     client, _, _ = build_client(tmp_path)
 
-    response = client.get("/api/folders")
+    response = client.get("/api/videos")
 
     assert response.status_code == 401
     assert response.json() == {"detail": "Authentication required."}
@@ -46,12 +45,9 @@ def test_empty_catalog_endpoints_return_empty_lists(tmp_path: Path) -> None:
     client, _, password = build_client(tmp_path)
     login(client, password)
 
-    folders_response = client.get("/api/folders")
     videos_response = client.get("/api/videos")
     paged_videos_response = client.get("/api/videos/page")
 
-    assert folders_response.status_code == 200
-    assert folders_response.json() == []
     assert videos_response.status_code == 200
     assert videos_response.json() == []
     assert paged_videos_response.status_code == 200
@@ -66,10 +62,8 @@ def test_empty_catalog_endpoints_return_empty_lists(tmp_path: Path) -> None:
 
 def test_catalog_endpoints_return_inserted_rows(tmp_path: Path) -> None:
     client, settings, password = build_client(tmp_path)
-    folder = create_folder(settings, name="Movies", cover_path="covers/movies.jpg")
     create_video(
         settings,
-        folder_id=folder.id,
         title="Demo Video",
         cover_path="covers/demo.jpg",
         mime_type="video/mp4",
@@ -80,44 +74,12 @@ def test_catalog_endpoints_return_inserted_rows(tmp_path: Path) -> None:
     )
     login(client, password)
 
-    folders_response = client.get("/api/folders")
     videos_response = client.get("/api/videos")
-
-    assert folders_response.status_code == 200
-    assert folders_response.json()[0]["name"] == "Movies"
-    assert folders_response.json()[0]["cover_path"] == "covers/movies.jpg"
 
     assert videos_response.status_code == 200
     assert videos_response.json()[0]["title"] == "Demo Video"
-    assert videos_response.json()[0]["folder_id"] == folder.id
     assert videos_response.json()[0]["mime_type"] == "video/mp4"
     assert videos_response.json()[0]["tags"] == ["收藏", "示例"]
-
-
-def test_videos_endpoint_can_filter_by_folder(tmp_path: Path) -> None:
-    client, settings, password = build_client(tmp_path)
-    movies = create_folder(settings, name="Movies")
-    anime = create_folder(settings, name="Anime")
-    create_video(
-        settings,
-        folder_id=movies.id,
-        title="Movie A",
-        mime_type="video/mp4",
-        size=100,
-    )
-    create_video(
-        settings,
-        folder_id=anime.id,
-        title="Anime B",
-        mime_type="video/mp4",
-        size=200,
-    )
-    login(client, password)
-
-    response = client.get(f"/api/videos?folder_id={anime.id}")
-
-    assert response.status_code == 200
-    assert [item["title"] for item in response.json()] == ["Anime B"]
 
 
 def test_videos_endpoint_can_filter_by_exact_tag(tmp_path: Path) -> None:
@@ -338,3 +300,21 @@ def test_video_watch_endpoint_updates_analytics_and_recommendation_shelves(tmp_p
     shelf_payload = shelf.json()
     assert any(item["id"] == watched.id for item in shelf_payload["continue_watching"])
     assert any(item["title"] == "Similar Video" for item in shelf_payload["recommended"])
+
+
+def test_video_like_endpoint_caps_at_99_and_updates_payload(tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    video = create_video(
+        settings,
+        title="Liked Video",
+        mime_type="video/mp4",
+        size=100,
+    )
+    login(client, password)
+
+    for _ in range(120):
+        response = client.post(f"/api/videos/{video.id}/like")
+        assert response.status_code == 200
+
+    payload = client.get(f"/api/videos/{video.id}").json()
+    assert payload["like_count"] == 99

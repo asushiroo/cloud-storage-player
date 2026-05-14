@@ -82,6 +82,7 @@ def delete_library_video(settings: Settings, video_id: int, *, job_id: int | Non
     _update_delete_job_progress(settings, job_id, progress_percent=70)
     _update_delete_job_progress(settings, job_id, progress_percent=90)
     delete_video(settings, video_id)
+    _refresh_cache_entry(settings, video_id=video_id)
 
 
 def _collect_remote_paths(settings: Settings, video: Video) -> list[str]:
@@ -170,3 +171,9 @@ def _update_delete_job_progress(settings: Settings, job_id: int | None, *, progr
     if job_id is None:
         return
     update_import_job_progress(settings, job_id, progress_percent=progress_percent)
+
+
+def _refresh_cache_entry(settings: Settings, *, video_id: int) -> None:
+    from app.repositories.video_cache_entries import delete_video_cache_entry
+
+    delete_video_cache_entry(settings, video_id=video_id)

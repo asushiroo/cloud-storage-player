@@ -139,6 +139,7 @@ def recalculate_video_analytics(settings: Settings, *, video_id: int) -> Video:
         valid_play_count=valid_play_count,
         resume_score=resume_score,
         recommendation_score=recommendation_score,
+        like_count=video.like_count,
     )
 
     updated_video = update_video_analytics(
@@ -158,6 +159,7 @@ def recalculate_video_analytics(settings: Settings, *, video_id: int) -> Video:
         resume_score=resume_score,
         recommendation_score=recommendation_score,
         cache_priority=cache_priority,
+        like_count=video.like_count,
         highlight_start_seconds=highlight_start_seconds,
         highlight_end_seconds=highlight_end_seconds,
         highlight_bucket_count=highlight_bucket_count,
@@ -276,9 +278,10 @@ def _refresh_all_recommendation_scores(settings: Settings) -> None:
         secondary_explore = _average_exploration(secondary_tags, secondary_preferences)
         exploration_score = PRIMARY_TAG_WEIGHT * primary_explore + SECONDARY_TAG_WEIGHT * secondary_explore
         base_recommendation_score = (
-            0.70 * tag_match_score
+            0.65 * tag_match_score
             + 0.20 * exploration_score
             + 0.10 * video.popularity_score
+            + 0.05 * _clamp(video.like_count / 99.0, 0.0, 1.0)
         )
         novelty_factor = _novelty_factor(video.valid_play_count)
         recommendation_score = _clamp(base_recommendation_score * novelty_factor, 0.0, 1.0)
@@ -286,6 +289,7 @@ def _refresh_all_recommendation_scores(settings: Settings) -> None:
             valid_play_count=video.valid_play_count,
             resume_score=video.resume_score,
             recommendation_score=recommendation_score,
+            like_count=video.like_count,
         )
         update_video_analytics(
             settings,
@@ -304,6 +308,7 @@ def _refresh_all_recommendation_scores(settings: Settings) -> None:
             resume_score=video.resume_score,
             recommendation_score=recommendation_score,
             cache_priority=cache_priority,
+            like_count=video.like_count,
             highlight_start_seconds=video.highlight_start_seconds,
             highlight_end_seconds=video.highlight_end_seconds,
             highlight_bucket_count=video.highlight_bucket_count,
@@ -406,9 +411,11 @@ def _compute_cache_priority(
     valid_play_count: int,
     resume_score: float,
     recommendation_score: float,
+    like_count: int,
 ) -> float:
     watched_penalty = min(valid_play_count * 0.25, 0.8)
-    return _clamp(0.55 * recommendation_score + 0.45 * resume_score - watched_penalty, 0.0, 1.0)
+    like_boost = _clamp(like_count / 99.0, 0.0, 1.0) * 0.15
+    return _clamp(0.50 * recommendation_score + 0.35 * resume_score + like_boost - watched_penalty, 0.0, 1.0)
 
 
 def _build_highlight_heatmap(

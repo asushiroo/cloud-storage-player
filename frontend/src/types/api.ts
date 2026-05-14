@@ -2,16 +2,13 @@ export interface AuthSession {
   authenticated: boolean;
 }
 
-export interface Folder {
-  id: number;
-  name: string;
-  cover_path: string | null;
-  created_at: string;
+export interface CachedByteRange {
+  start: number;
+  end: number;
 }
 
 export interface Video {
   id: number;
-  folder_id: number | null;
   title: string;
   cover_path: string | null;
   poster_path: string | null;
@@ -39,10 +36,12 @@ export interface Video {
   resume_score: number;
   recommendation_score: number;
   cache_priority: number;
+  like_count: number;
   highlight_start_seconds: number | null;
   highlight_end_seconds: number | null;
   highlight_bucket_count: number;
   highlight_heatmap: number[];
+  cached_byte_ranges: CachedByteRange[];
 }
 
 export interface VideoRecommendationShelf {
@@ -66,7 +65,6 @@ export interface VideoWatchHeartbeatResult {
 
 export interface ImportJob {
   id: number;
-  folder_id: number | null;
   requested_title: string | null;
   requested_tags: string[];
   job_kind: string;
@@ -82,12 +80,6 @@ export interface ImportJob {
   transfer_speed_bytes_per_second: number | null;
   created_at: string;
   updated_at: string;
-}
-
-export interface ImportFolderResult {
-  source_path: string;
-  created_job_count: number;
-  created_job_ids: number[];
 }
 
 export interface ClearedImportJobsResult {

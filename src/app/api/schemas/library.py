@@ -5,20 +5,17 @@ from pathlib import Path, PurePosixPath
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-class FolderResponse(BaseModel):
+class CachedByteRangeResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
-    name: str
-    cover_path: str | None
-    created_at: str
+    start: int
+    end: int
 
 
 class VideoResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    folder_id: int | None
     title: str
     cover_path: str | None
     poster_path: str | None
@@ -49,10 +46,12 @@ class VideoResponse(BaseModel):
     resume_score: float = 0
     recommendation_score: float = 0
     cache_priority: float = 0
+    like_count: int = 0
     highlight_start_seconds: float | None = None
     highlight_end_seconds: float | None = None
     highlight_bucket_count: int = 20
     highlight_heatmap: list[float] = Field(default_factory=list)
+    cached_byte_ranges: list[CachedByteRangeResponse] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def normalize_legacy_artwork_paths(self) -> "VideoResponse":

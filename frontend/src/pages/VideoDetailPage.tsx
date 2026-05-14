@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { createVideoCacheJob, deleteVideo, fetchVideo, updateVideoMetadata, updateVideoTags } from "../api/client";
+import { createVideoCacheJob, deleteVideo, fetchVideo, likeVideo, updateVideoMetadata, updateVideoTags } from "../api/client";
 import { CoverCard } from "../components/CoverCard";
 import { EditableTagList } from "../components/EditableTagList";
 import { Surface } from "../components/Surface";
@@ -89,6 +89,21 @@ export function VideoDetailPage() {
       setFeedback(`已创建任务：${job.task_name}`);
       setError(null);
       await queryClient.invalidateQueries({ queryKey: ["imports"] });
+    },
+    onError: (exc: ApiError) => {
+      setError(exc.message);
+      setFeedback(null);
+    },
+  });
+
+  const likeMutation = useMutation({
+    mutationFn: () => likeVideo(videoId),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["video", videoId] }),
+        queryClient.invalidateQueries({ queryKey: ["videos"] }),
+        queryClient.invalidateQueries({ queryKey: ["videos", "recommendations"] }),
+      ]);
     },
     onError: (exc: ApiError) => {
       setError(exc.message);
@@ -185,12 +200,21 @@ export function VideoDetailPage() {
                 <p>创建时间：{formatDateTime(video.created_at)}</p>
                 <p>分片数量：{video.segment_count}</p>
                 <p>本地缓存：{video.cached_segment_count}/{video.segment_count} 分片 · {formatBytes(video.cached_size_bytes)}</p>
+                <p>点赞：{video.like_count}/99</p>
                 <p>Poster：{video.poster_path ?? video.cover_path ?? "未设置"}</p>
               </div>
               <div className="action-row">
                 <Link className="primary-button link-button" to={`/videos/${video.id}/play`}>
                   播放
                 </Link>
+                <button
+                  className="secondary-button"
+                  disabled={likeMutation.isPending || video.like_count >= 99}
+                  onClick={() => likeMutation.mutate()}
+                  type="button"
+                >
+                  {likeMutation.isPending ? "点赞中..." : video.like_count >= 99 ? "已达上限" : "点赞"}
+                </button>
                 {!isFullyCached ? (
                   <button
                     aria-label="缓存"

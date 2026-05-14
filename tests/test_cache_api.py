@@ -186,6 +186,9 @@ def test_video_detail_includes_cache_status_and_cache_endpoint_rejects_fully_cac
     assert detail_payload["segment_count"] == 2
     assert detail_payload["cached_segment_count"] == detail_payload["segment_count"]
     assert detail_payload["cached_size_bytes"] > 0
+    assert len(detail_payload["cached_byte_ranges"]) == 2
+    assert detail_payload["cached_byte_ranges"][0]["start"] == 0
+    assert detail_payload["cached_byte_ranges"][0]["end"] == 100
 
     cache_response = client.post(f"/api/videos/{video.id}/cache")
     assert cache_response.status_code == 409

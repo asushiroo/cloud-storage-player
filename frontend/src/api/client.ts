@@ -7,8 +7,6 @@ import type {
   CachedVideo,
   ClearedCacheResult,
   ClearedImportJobsResult,
-  Folder,
-  ImportFolderResult,
   ImportJob,
   PublicSettings,
   VideoPage,
@@ -108,13 +106,8 @@ export const logout = (): Promise<AuthSession> =>
     method: "POST",
   });
 
-export const fetchFolders = (): Promise<Folder[]> => request("/api/folders");
-
-export const fetchVideos = (params?: { folderId?: number; q?: string; tag?: string }): Promise<Video[]> => {
+export const fetchVideos = (params?: { q?: string; tag?: string }): Promise<Video[]> => {
   const search = new URLSearchParams();
-  if (params?.folderId !== undefined) {
-    search.set("folder_id", String(params.folderId));
-  }
   if (params?.q?.trim()) {
     search.set("q", params.q.trim());
   }
@@ -126,16 +119,12 @@ export const fetchVideos = (params?: { folderId?: number; q?: string; tag?: stri
 };
 
 export const fetchVideoPage = (params?: {
-  folderId?: number;
   q?: string;
   tag?: string;
   offset?: number;
   limit?: number;
 }): Promise<VideoPage> => {
   const search = new URLSearchParams();
-  if (params?.folderId !== undefined) {
-    search.set("folder_id", String(params.folderId));
-  }
   if (params?.q?.trim()) {
     search.set("q", params.q.trim());
   }
@@ -156,6 +145,11 @@ export const fetchVideo = (videoId: number): Promise<Video> => request(`/api/vid
 
 export const fetchVideoRecommendations = (): Promise<VideoRecommendationShelf> =>
   request("/api/videos/recommendations");
+
+export const likeVideo = (videoId: number): Promise<Video> =>
+  request(`/api/videos/${videoId}/like`, {
+    method: "POST",
+  });
 
 export const reportVideoWatchHeartbeat = (payload: {
   videoId: number;
@@ -219,22 +213,10 @@ export const fetchImportJobs = (): Promise<ImportJob[]> => request("/api/imports
 
 export const createImport = (payload: {
   source_path: string;
-  folder_id?: number | null;
   title?: string | null;
   tags?: string[];
 }): Promise<ImportJob> =>
   request("/api/imports", {
-    method: "POST",
-    headers: jsonHeaders,
-    body: JSON.stringify(payload),
-  });
-
-export const createFolderImport = (payload: {
-  source_path: string;
-  folder_id?: number | null;
-  tags?: string[];
-}): Promise<ImportFolderResult> =>
-  request("/api/imports/folder", {
     method: "POST",
     headers: jsonHeaders,
     body: JSON.stringify(payload),

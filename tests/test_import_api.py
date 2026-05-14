@@ -10,7 +10,6 @@ from app.core.config import Settings
 from app.core.keys import load_content_key
 from app.core.security import hash_password
 from app.main import create_app
-from app.repositories.folders import create_folder
 from app.repositories.videos import create_video
 from app.repositories.import_jobs import create_import_job
 from app.repositories.settings import set_setting
@@ -121,14 +120,13 @@ def test_import_api_requires_authentication(tmp_path: Path) -> None:
 def test_import_video_creates_queued_job_and_completes_in_background(tmp_path: Path) -> None:
     client, settings, password = build_client(tmp_path)
     source_path = create_sample_video(tmp_path / "demo.mp4")
-    folder = create_folder(settings, name="Movies")
+
     login(client, password)
 
     response = client.post(
         "/api/imports",
         json={
             "source_path": str(source_path),
-            "folder_id": folder.id,
             "title": "Imported Demo",
             "tags": ["动画", "治愈", "动画"],
         },
@@ -156,7 +154,6 @@ def test_import_video_creates_queued_job_and_completes_in_background(tmp_path: P
     assert video_response.status_code == 200
     video_payload = video_response.json()
     assert video_payload["title"] == "Imported Demo"
-    assert video_payload["folder_id"] == folder.id
     assert video_payload["mime_type"] == "video/mp4"
     assert video_payload["size"] > 0
     assert video_payload["duration_seconds"] is not None
@@ -377,33 +374,6 @@ def test_delete_job_cancel_endpoint_rejects_cancel_request(tmp_path: Path) -> No
     assert "cannot be cancelled" in cancel_response.json()["detail"]
 
 
-def test_folder_import_creates_one_job_per_video_file_recursively(tmp_path: Path) -> None:
-    client, _, password = build_client(tmp_path)
-    source_dir = tmp_path / "batch-folder"
-    nested_dir = source_dir / "nested"
-    nested_dir.mkdir(parents=True)
-    create_sample_video(source_dir / "episode-01.mp4")
-    create_sample_video(nested_dir / "episode-02.mkv")
-    (nested_dir / "readme.txt").write_text("ignore me", encoding="utf-8")
-    login(client, password)
-
-    response = client.post(
-        "/api/imports/folder",
-        json={"source_path": str(source_dir), "tags": ["批量", "导入"]},
-    )
-
-    assert response.status_code == 201
-    payload = response.json()
-    assert payload["created_job_count"] == 2
-    assert len(payload["created_job_ids"]) == 2
-
-    jobs_response = client.get("/api/imports")
-    assert jobs_response.status_code == 200
-    listed = jobs_response.json()
-    assert len(listed) >= 2
-    assert all(job["requested_tags"] == ["批量", "导入"] for job in listed[:2])
-
-
 def test_clear_finished_import_jobs_keeps_active_jobs_and_removes_finished_ones(tmp_path: Path) -> None:
     client, settings, password = build_client(tmp_path)
     queued_source = create_sample_video(tmp_path / "queued.mp4")
@@ -475,7 +445,7 @@ def test_update_video_artwork_replaces_cover_and_poster(tmp_path: Path) -> None:
 
     png_data_url = (
         "data:image/png;base64,"
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y2fW1kAAAAASUVORK5CYII="
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII="
     )
     response = client.post(
         f"/api/videos/{video_id}/artwork",
@@ -527,3 +497,5 @@ def test_video_api_normalizes_legacy_jpg_poster_path_to_avif(tmp_path: Path) -> 
     assert response.status_code == 200
     payload = response.json()
     assert payload["poster_path"] == "/api/artwork/legacy-poster.avif"
+
+

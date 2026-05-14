@@ -33,7 +33,6 @@ def build_settings(tmp_path: Path) -> Settings:
 def sample_video() -> Video:
     return Video(
         id=7,
-        folder_id=None,
         title="Secret Demo",
         cover_path=None,
         poster_path=None,

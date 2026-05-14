@@ -4,17 +4,14 @@ from dataclasses import dataclass, field
 
 
 @dataclass(slots=True)
-class Folder:
-    id: int
-    name: str
-    cover_path: str | None
-    created_at: str
+class CachedByteRange:
+    start: int
+    end: int
 
 
 @dataclass(slots=True)
 class Video:
     id: int
-    folder_id: int | None
     title: str
     cover_path: str | None
     poster_path: str | None
@@ -45,7 +42,9 @@ class Video:
     resume_score: float = 0
     recommendation_score: float = 0
     cache_priority: float = 0
+    like_count: int = 0
     highlight_start_seconds: float | None = None
     highlight_end_seconds: float | None = None
     highlight_bucket_count: int = 20
     highlight_heatmap: list[float] = field(default_factory=list)
+    cached_byte_ranges: list[CachedByteRange] = field(default_factory=list)

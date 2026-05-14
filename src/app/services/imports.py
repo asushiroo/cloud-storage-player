@@ -14,7 +14,6 @@ from app.media.probe import MediaProbeError, probe_video
 from app.models.imports import ImportJob
 from app.models.library import Video
 from app.models.segments import VideoSegment
-from app.repositories.folders import get_folder
 from app.repositories.import_jobs import (
     create_import_job,
     get_import_job,
@@ -49,6 +48,7 @@ from app.services.remote_transfers import (
 )
 from app.services.artwork_storage import build_poster_file_name, store_encrypted_artwork_file
 from app.services.cache_eviction import enforce_cache_limit
+from app.services.cache import refresh_video_cache_entry
 from app.services.settings import get_upload_transfer_concurrency
 from app.services.video_fingerprint import build_video_content_fingerprint
 from app.services.video_delete import delete_library_video
@@ -77,7 +77,6 @@ def queue_import_job(
     settings: Settings,
     *,
     source_path: str,
-    folder_id: int | None = None,
     title: str | None = None,
     tags: list[str] | None = None,
     worker: "ImportWorker",
@@ -85,14 +84,12 @@ def queue_import_job(
     source, requested_title, normalized_tags = validate_import_request(
         settings,
         source_path=source_path,
-        folder_id=folder_id,
         title=title,
         tags=tags,
     )
     job = create_import_job(
         settings,
         source_path=str(source),
-        folder_id=folder_id,
         requested_title=requested_title,
         requested_tags=normalized_tags,
         task_name=requested_title or source.stem,
@@ -101,58 +98,22 @@ def queue_import_job(
     return job
 
 
-def queue_import_directory(
-    settings: Settings,
-    *,
-    source_path: str,
-    folder_id: int | None = None,
-    tags: list[str] | None = None,
-    worker: "ImportWorker",
-) -> list[ImportJob]:
-    directory, normalized_tags = validate_import_directory_request(
-        settings,
-        source_path=source_path,
-        folder_id=folder_id,
-        tags=tags,
-    )
-    video_files = discover_video_files(directory)
-    if not video_files:
-        raise ImportValidationError(f"No supported video files were found in directory: {source_path}")
-
-    jobs: list[ImportJob] = []
-    for video_file in video_files:
-        job = create_import_job(
-            settings,
-            source_path=str(video_file),
-            folder_id=folder_id,
-            requested_title=None,
-            requested_tags=normalized_tags,
-            task_name=video_file.stem,
-        )
-        worker.enqueue(job.id)
-        jobs.append(job)
-    return jobs
-
-
 def import_local_video(
     settings: Settings,
     *,
     source_path: str,
-    folder_id: int | None = None,
     title: str | None = None,
     tags: list[str] | None = None,
 ) -> ImportJob:
     source, requested_title, normalized_tags = validate_import_request(
         settings,
         source_path=source_path,
-        folder_id=folder_id,
         title=title,
         tags=tags,
     )
     job = create_import_job(
         settings,
         source_path=str(source),
-        folder_id=folder_id,
         requested_title=requested_title,
         requested_tags=normalized_tags,
         task_name=requested_title or source.stem,
@@ -171,7 +132,6 @@ def process_import_job(settings: Settings, job_id: int) -> ImportJob:
         source, requested_title, requested_tags = validate_import_request(
             settings,
             source_path=job.source_path,
-            folder_id=job.folder_id,
             title=job.requested_title,
             tags=job.requested_tags,
         )
@@ -186,7 +146,6 @@ def process_import_job(settings: Settings, job_id: int) -> ImportJob:
         metadata = probe_video(source, ffprobe_binary=settings.ffprobe_binary)
         video = _create_video_from_probe(
             settings,
-            folder_id=job.folder_id,
             title=requested_title or source.stem,
             source_path=str(source),
             mime_type=metadata.mime_type,
@@ -228,6 +187,7 @@ def process_import_job(settings: Settings, job_id: int) -> ImportJob:
             video=video,
             duration_seconds=metadata.duration_seconds,
         )
+        refresh_video_cache_entry(settings, video_id=video.id)
         _enforce_post_import_cache_limit(settings, current_video_id=video.id)
         throw_if_cancel_requested(settings, job.id)
     except JobCancelledError as exc:
@@ -259,7 +219,6 @@ def validate_import_request(
     settings: Settings,
     *,
     source_path: str,
-    folder_id: int | None = None,
     title: str | None = None,
     tags: list[str] | None = None,
 ) -> tuple[Path, str | None, list[str]]:
@@ -267,28 +226,8 @@ def validate_import_request(
     if not source.exists() or not source.is_file():
         raise ImportValidationError(f"Source file does not exist: {source_path}")
 
-    if folder_id is not None and get_folder(settings, folder_id) is None:
-        raise ImportValidationError(f"Folder does not exist: {folder_id}")
-
     requested_title = title.strip() if title else None
     return source, requested_title, normalize_tags(tags)
-
-
-def validate_import_directory_request(
-    settings: Settings,
-    *,
-    source_path: str,
-    folder_id: int | None = None,
-    tags: list[str] | None = None,
-) -> tuple[Path, list[str]]:
-    source = Path(source_path)
-    if not source.exists() or not source.is_dir():
-        raise ImportValidationError(f"Source directory does not exist: {source_path}")
-
-    if folder_id is not None and get_folder(settings, folder_id) is None:
-        raise ImportValidationError(f"Folder does not exist: {folder_id}")
-
-    return source, normalize_tags(tags)
 
 
 def discover_video_files(source_dir: Path) -> list[Path]:
@@ -305,7 +244,6 @@ def discover_video_files(source_dir: Path) -> list[Path]:
 def _create_video_from_probe(
     settings: Settings,
     *,
-    folder_id: int | None,
     title: str,
     source_path: str,
     mime_type: str,
@@ -315,7 +253,6 @@ def _create_video_from_probe(
 ) -> Video:
     return create_video(
         settings,
-        folder_id=folder_id,
         title=title,
         mime_type=mime_type,
         size=size,

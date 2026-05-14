@@ -307,6 +307,7 @@ def persist_segment_payload(
     segment_path = _resolve_segment_cache_path(settings, segment)
     if segment_path.exists() and segment_path.is_file():
         _ensure_segment_local_staging_path(settings, segment, segment_path)
+        _refresh_cache_entry(settings, video_id=segment.video_id)
         return
 
     segment_path.parent.mkdir(parents=True, exist_ok=True)
@@ -318,6 +319,7 @@ def persist_segment_payload(
         temp_path.unlink(missing_ok=True)
 
     _ensure_segment_local_staging_path(settings, segment, segment_path)
+    _refresh_cache_entry(settings, video_id=segment.video_id)
 
 
 def queue_segment_cache_write(
@@ -375,3 +377,9 @@ def _resolve_segment_cache_path(settings: Settings, segment: VideoSegment) -> Pa
 
 def _current_time_millis() -> int:
     return time_ns() // 1_000_000
+
+
+def _refresh_cache_entry(settings: Settings, *, video_id: int) -> None:
+    from app.services.cache import refresh_video_cache_entry
+
+    refresh_video_cache_entry(settings, video_id=video_id)

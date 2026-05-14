@@ -59,6 +59,7 @@ def enforce_cache_limit(
             continue
         total_size_after -= reclaimed
         evicted_ids.append(entry.video_id)
+        _refresh_cache_entry(settings, video_id=entry.video_id)
 
     return CacheEvictionResult(
         evicted_video_ids=evicted_ids,
@@ -126,3 +127,9 @@ def _directory_size_bytes(path: Path) -> int:
             continue
         total += file_path.stat().st_size
     return total
+
+
+def _refresh_cache_entry(settings: Settings, *, video_id: int) -> None:
+    from app.services.cache import refresh_video_cache_entry
+
+    refresh_video_cache_entry(settings, video_id=video_id)

@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 class ImportJob:
     id: int
     source_path: str
-    folder_id: int | None
     requested_title: str | None
     job_kind: str
     task_name: str

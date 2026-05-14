@@ -7,7 +7,6 @@ from app.api.dependencies import require_authenticated
 from app.api.schemas.imports import ImportJobResponse
 from app.api.schemas.library import (
     CatalogSyncResponse,
-    FolderResponse,
     VideoPageResponse,
     VideoRecommendationShelfResponse,
     VideoArtworkUpdateRequest,
@@ -18,10 +17,12 @@ from app.api.schemas.library import (
     VideoTagsUpdateRequest,
 )
 from app.core.tags import normalize_tags
-from app.repositories.folders import list_folders
-from app.repositories.videos import get_video, list_videos
+from app.repositories.videos import get_video, increment_video_like_count, list_videos
 from app.services.baidu_oauth import BaiduOAuthConfigurationError
-from app.services.cache import get_video_cache_status
+from app.services.cache import (
+    get_video_cache_status,
+    list_cached_byte_ranges,
+)
 from app.services.catalog_sync import sync_remote_catalog
 from app.services.recommendations import (
     build_recommendation_shelf,
@@ -43,19 +44,9 @@ from app.storage.baidu_api import BaiduApiError
 router = APIRouter(prefix="/api", tags=["library"])
 
 
-@router.get("/folders", response_model=list[FolderResponse])
-async def get_folders(
-    request: Request,
-    _: None = Depends(require_authenticated),
-) -> list[FolderResponse]:
-    settings = request.app.state.settings
-    return [FolderResponse.model_validate(folder) for folder in list_folders(settings)]
-
-
 @router.get("/videos", response_model=list[VideoResponse])
 async def get_videos(
     request: Request,
-    folder_id: int | None = None,
     q: str | None = None,
     tag: str | None = None,
     _: None = Depends(require_authenticated),
@@ -63,7 +54,7 @@ async def get_videos(
     settings = request.app.state.settings
     return [
         VideoResponse.model_validate(video)
-        for video in list_videos(settings, folder_id=folder_id, q=q, tag=tag)
+        for video in list_videos(settings, q=q, tag=tag)
     ]
 
 
@@ -97,7 +88,6 @@ async def get_video_recommendations(
 @router.get("/videos/page", response_model=VideoPageResponse)
 async def get_video_page(
     request: Request,
-    folder_id: int | None = None,
     q: str | None = None,
     tag: str | None = None,
     offset: int = 0,
@@ -110,7 +100,7 @@ async def get_video_page(
     if offset < 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="offset must be greater than or equal to 0.")
 
-    filtered_videos = list_videos(settings, folder_id=folder_id, q=q, tag=tag)
+    filtered_videos = list_videos(settings, q=q, tag=tag)
     total = len(filtered_videos)
     page = filtered_videos[offset : offset + limit]
     return VideoPageResponse(
@@ -150,8 +140,24 @@ async def get_video_detail(
     cache_status = get_video_cache_status(settings, video_id=video.id)
     video.cached_size_bytes = cache_status.cached_size_bytes
     video.cached_segment_count = cache_status.cached_segment_count
+    video.cached_byte_ranges = list_cached_byte_ranges(settings, video_id=video.id)
 
     return VideoResponse.model_validate(video)
+
+
+@router.post("/videos/{video_id}/like", response_model=VideoResponse)
+async def like_video(
+    video_id: int,
+    request: Request,
+    _: None = Depends(require_authenticated),
+) -> VideoResponse:
+    settings = request.app.state.settings
+    video = get_video(settings, video_id)
+    if video is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found.")
+
+    updated_video = increment_video_like_count(settings, video_id, delta=1, upper_bound=99)
+    return VideoResponse.model_validate(updated_video)
 
 
 @router.post("/videos/{video_id}/watch", response_model=VideoWatchHeartbeatResponse)

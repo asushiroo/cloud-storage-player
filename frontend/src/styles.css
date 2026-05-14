@@ -608,6 +608,25 @@ h2 {
   background: black;
 }
 
+.cache-range-overlay {
+  position: absolute;
+  left: 1rem;
+  right: 1rem;
+  bottom: 3.6rem;
+  height: 0.32rem;
+  pointer-events: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.cache-range-overlay-segment {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.35);
+}
+
 .top-gap {
   margin-top: 1rem;
 }

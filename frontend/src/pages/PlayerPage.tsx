@@ -110,6 +110,26 @@ function CropControls({
   );
 }
 
+function buildCacheOverlayRanges(video: Video): Array<{ startPercent: number; widthPercent: number }> {
+  if (video.size <= 0 || video.cached_byte_ranges.length === 0) {
+    return [];
+  }
+  return video.cached_byte_ranges
+    .map((range) => {
+      const clampedStart = Math.max(0, Math.min(range.start, video.size));
+      const clampedEnd = Math.max(clampedStart, Math.min(range.end, video.size));
+      const length = clampedEnd - clampedStart;
+      if (length <= 0) {
+        return null;
+      }
+      return {
+        startPercent: (clampedStart / video.size) * 100,
+        widthPercent: (length / video.size) * 100,
+      };
+    })
+    .filter((value): value is { startPercent: number; widthPercent: number } => value !== null);
+}
+
 export function PlayerPage() {
   const { videoId: rawVideoId } = useParams();
   const videoId = Number(rawVideoId);
@@ -199,7 +219,7 @@ export function PlayerPage() {
     onSuccess: async (updatedVideo) => {
       refreshVideoCaches(updatedVideo);
       setCapturedDataUrl(null);
-      setFeedback("Poster 已更新。媒体库和首页推荐位都会直接使用这张横版图。");
+      setFeedback("Poster 已更新。媒体库和推荐位会直接使用这张横版图。");
       setError(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["video", videoId] }),
@@ -296,6 +316,7 @@ export function PlayerPage() {
   }
 
   const video = videoQuery.data;
+  const cachedRanges = video ? buildCacheOverlayRanges(video) : [];
 
   const captureCurrentFrame = () => {
     const element = videoRef.current;
@@ -364,6 +385,17 @@ export function PlayerPage() {
           ref={videoRef}
           src={getStreamUrl(videoId)}
         />
+        {cachedRanges.length > 0 ? (
+          <div className="cache-range-overlay" aria-hidden="true">
+            {cachedRanges.map((range, index) => (
+              <span
+                className="cache-range-overlay-segment"
+                key={`cache-range-${index}`}
+                style={{ left: `${range.startPercent}%`, width: `${range.widthPercent}%` }}
+              />
+            ))}
+          </div>
+        ) : null}
       </div>
 
       {video && video.highlight_start_seconds !== null && video.highlight_end_seconds !== null ? (

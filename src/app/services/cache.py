@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.core.config import Settings
+from app.models.library import CachedByteRange
 from app.models.imports import ImportJob
 from app.repositories.import_jobs import (
     create_cache_job,
@@ -16,8 +17,12 @@ from app.repositories.import_jobs import (
     mark_import_job_running,
     update_import_job_progress,
 )
+from app.repositories.video_cache_entries import (
+    get_video_cache_entry,
+    list_video_cache_entries,
+    upsert_video_cache_entry,
+)
 from app.repositories.video_segments import (
-    list_all_video_segments,
     list_video_segments,
     update_video_segment_local_staging_path,
 )
@@ -76,18 +81,14 @@ def get_cache_summary(settings: Settings) -> CacheSummary:
 
 def list_cached_videos(settings: Settings) -> list[CachedVideo]:
     videos = {video.id: video for video in list_videos(settings)}
-    segments_by_video_id: dict[int, list] = {}
-    for segment in list_all_video_segments(settings):
-        segments_by_video_id.setdefault(segment.video_id, []).append(segment)
-
+    cache_entries = {entry.video_id: entry for entry in list_video_cache_entries(settings)}
     cached_videos: list[CachedVideo] = []
-    for video_id, segments in segments_by_video_id.items():
+    for entry in cache_entries.values():
+        if entry.cached_segment_count <= 0:
+            continue
+        video_id = entry.video_id
         video = videos.get(video_id)
         if video is None:
-            continue
-
-        cache_status = _build_video_cache_status(settings, segments=segments)
-        if cache_status.cached_segment_count == 0:
             continue
 
         cached_videos.append(
@@ -96,9 +97,30 @@ def list_cached_videos(settings: Settings) -> list[CachedVideo]:
                 title=video.title,
                 poster_path=video.poster_path,
                 cover_path=video.cover_path,
-                cached_size_bytes=cache_status.cached_size_bytes,
-                cached_segment_count=cache_status.cached_segment_count,
-                total_segment_count=cache_status.total_segment_count,
+                cached_size_bytes=entry.cached_size_bytes,
+                cached_segment_count=entry.cached_segment_count,
+                total_segment_count=entry.total_segment_count,
+            )
+        )
+
+    # Backfill entries lazily for videos imported before cache-table refresh hooks.
+    for video in videos.values():
+        if video.id in cache_entries:
+            continue
+        if video.segment_count <= 0:
+            continue
+        status = refresh_video_cache_entry(settings, video_id=video.id)
+        if status.cached_segment_count <= 0:
+            continue
+        cached_videos.append(
+            CachedVideo(
+                id=video.id,
+                title=video.title,
+                poster_path=video.poster_path,
+                cover_path=video.cover_path,
+                cached_size_bytes=status.cached_size_bytes,
+                cached_segment_count=status.cached_segment_count,
+                total_segment_count=status.total_segment_count,
             )
         )
 
@@ -107,10 +129,20 @@ def list_cached_videos(settings: Settings) -> list[CachedVideo]:
 
 
 def get_video_cache_status(settings: Settings, *, video_id: int) -> VideoCacheStatus:
-    return _build_video_cache_status(
+    cached_entry = get_video_cache_entry(settings, video_id=video_id)
+    if cached_entry is not None:
+        return VideoCacheStatus(
+            cached_size_bytes=cached_entry.cached_size_bytes,
+            cached_segment_count=cached_entry.cached_segment_count,
+            total_segment_count=cached_entry.total_segment_count,
+        )
+
+    status = _build_video_cache_status(
         settings,
         segments=list_video_segments(settings, video_id=video_id),
     )
+    refresh_video_cache_entry(settings, video_id=video_id)
+    return status
 
 
 def clear_video_cache(settings: Settings, *, video_id: int) -> None:
@@ -132,6 +164,7 @@ def clear_video_cache(settings: Settings, *, video_id: int) -> None:
     for cache_dir in sorted(cache_dirs, key=lambda item: len(item.resolve(strict=False).parts), reverse=True):
         if cache_dir.exists():
             shutil.rmtree(cache_dir)
+    refresh_video_cache_entry(settings, video_id=video_id)
 
 
 def clear_all_cache(settings: Settings) -> int:
@@ -150,7 +183,8 @@ def queue_video_cache_job(settings: Settings, *, video_id: int, worker: "ImportW
     if existing_job is not None:
         return existing_job
 
-    cache_status = get_video_cache_status(settings, video_id=video_id)
+    # Always recompute once at queue time so stale table rows do not block recache.
+    cache_status = refresh_video_cache_entry(settings, video_id=video_id)
     if cache_status.is_fully_cached:
         raise VideoAlreadyCachedError(f"Video already fully cached: {video_id}")
 
@@ -215,6 +249,8 @@ def process_cache_job(settings: Settings, job_id: int) -> ImportJob:
                 raise ValueError(f"Segment {segment.segment_index} is missing cloud_path.")
             pending_segments.append(segment)
 
+        refresh_video_cache_entry(settings, video_id=video.id)
+
         if completed_segments:
             update_import_job_progress(
                 settings,
@@ -244,9 +280,12 @@ def process_cache_job(settings: Settings, job_id: int) -> ImportJob:
             ),
             on_result=on_result,
         )
+        refresh_video_cache_entry(settings, video_id=video.id)
     except JobCancelledError as exc:
+        refresh_video_cache_entry(settings, video_id=video.id)
         return mark_import_job_cancelled(settings, job_id, error_message=str(exc))
     except Exception as exc:
+        refresh_video_cache_entry(settings, video_id=video.id)
         return mark_import_job_failed(settings, job_id, error_message=str(exc))
     finally:
         close = getattr(storage, "close", None)
@@ -254,6 +293,49 @@ def process_cache_job(settings: Settings, job_id: int) -> ImportJob:
             close()
 
     return mark_import_job_completed(settings, job_id, video_id=video.id)
+
+
+def list_cached_byte_ranges(settings: Settings, *, video_id: int) -> list[CachedByteRange]:
+    segments = list_video_segments(settings, video_id=video_id)
+    if not segments:
+        return []
+    ranges: list[CachedByteRange] = []
+    for segment in segments:
+        segment_path = _resolve_local_segment_path(
+            settings,
+            segment.video_id,
+            segment.segment_index,
+            segment.local_staging_path,
+        )
+        if not segment_path.exists() or not segment_path.is_file():
+            continue
+        ranges.append(
+            CachedByteRange(
+                start=int(segment.original_offset),
+                end=int(segment.original_offset + segment.original_length),
+            )
+        )
+    return ranges
+
+
+def refresh_video_cache_entry(settings: Settings, *, video_id: int) -> VideoCacheStatus:
+    segments = list_video_segments(settings, video_id=video_id)
+    status = _build_video_cache_status(settings, segments=segments)
+    cache_segments_dir = local_segment_path(settings, video_id=video_id, segment_index=0).parent
+    relative_dir = None
+    try:
+        relative_dir = str(cache_segments_dir.relative_to(settings.segment_staging_dir))
+    except ValueError:
+        relative_dir = str(cache_segments_dir)
+    upsert_video_cache_entry(
+        settings,
+        video_id=video_id,
+        cached_size_bytes=status.cached_size_bytes,
+        cached_segment_count=status.cached_segment_count,
+        total_segment_count=status.total_segment_count,
+        cache_root_relative_segments_dir=relative_dir,
+    )
+    return status
 
 
 def _resolve_local_segment_path(

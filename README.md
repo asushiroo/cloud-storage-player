@@ -81,7 +81,7 @@
   - 登录页走 `/api/auth/login`
   - 推荐页走 `/api/videos/recommendations`
   - 媒体库页走 `/api/videos`
-  - 管理页走 `/api/folders`、`/api/videos`、`/api/imports`
+  - 管理页走 `/api/videos`、`/api/imports` 与缓存相关接口，不再依赖文件夹流
   - 视频详情页走 `/api/videos/{id}`、`PATCH /api/videos/{id}/tags`、`POST /api/videos/{id}/artwork`、`DELETE /api/videos/{id}`
   - 设置页走 `/api/settings`、`/api/settings/baidu/oauth`
   - 播放页直接使用后端 `/api/videos/{id}/stream`
@@ -289,10 +289,10 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 
 目录与播放：
 
-- `GET /api/folders`
 - `GET /api/videos`
 - `GET /api/videos/{video_id}`
 - `PATCH /api/videos/{video_id}/tags`
+- `POST /api/videos/{video_id}/like`
 - `POST /api/videos/{video_id}/artwork`
 - `DELETE /api/videos/{video_id}`（创建删除任务）
 - `GET /api/videos/{video_id}/stream`
@@ -300,7 +300,6 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 导入：
 
 - `POST /api/imports`
-- `POST /api/imports/folder`
 - `POST /api/imports/{job_id}/cancel`
 - `POST /api/imports/cancel-all`
 - `DELETE /api/imports?status_group=completed|failed`

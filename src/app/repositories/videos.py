@@ -10,7 +10,6 @@ from app.models.library import Video
 
 VIDEO_SELECT_SQL = """
     SELECT videos.id,
-           videos.folder_id,
            videos.title,
            videos.cover_path,
            videos.poster_path,
@@ -37,6 +36,7 @@ VIDEO_SELECT_SQL = """
            videos.resume_score,
            videos.recommendation_score,
            videos.cache_priority,
+           videos.like_count,
            videos.highlight_start_seconds,
            videos.highlight_end_seconds,
            videos.highlight_bucket_count,
@@ -51,24 +51,14 @@ VIDEO_SELECT_SQL = """
 def list_videos(
     settings: Settings,
     *,
-    folder_id: int | None = None,
     q: str | None = None,
     tag: str | None = None,
 ) -> list[Video]:
     query = VIDEO_SELECT_SQL
-    parameters: tuple[object, ...] = ()
-    if folder_id is None:
-        query += " GROUP BY videos.id ORDER BY videos.title COLLATE NOCASE, videos.id"
-    else:
-        query += """
-            WHERE videos.folder_id = ?
-            GROUP BY videos.id
-            ORDER BY videos.title COLLATE NOCASE, videos.id
-        """
-        parameters = (folder_id,)
+    query += " GROUP BY videos.id ORDER BY videos.title COLLATE NOCASE, videos.id"
 
     with connect_database(settings) as connection:
-        rows = connection.execute(query, parameters).fetchall()
+        rows = connection.execute(query).fetchall()
 
     videos = [_row_to_video(row) for row in rows]
     normalized_query = q.strip().casefold() if q and q.strip() else None
@@ -94,7 +84,6 @@ def create_video(
     mime_type: str,
     size: int,
     tags: list[str] | None = None,
-    folder_id: int | None = None,
     cover_path: str | None = None,
     poster_path: str | None = None,
     duration_seconds: float | None = None,
@@ -106,7 +95,6 @@ def create_video(
         cursor = connection.execute(
             """
             INSERT INTO videos (
-                folder_id,
                 title,
                 cover_path,
                 poster_path,
@@ -118,10 +106,9 @@ def create_video(
                 tags_json,
                 content_fingerprint
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                folder_id,
                 title,
                 cover_path,
                 poster_path,
@@ -398,6 +385,7 @@ def update_video_analytics(
     resume_score: float,
     recommendation_score: float,
     cache_priority: float,
+    like_count: int,
     highlight_start_seconds: float | None,
     highlight_end_seconds: float | None,
     highlight_bucket_count: int,
@@ -421,6 +409,7 @@ def update_video_analytics(
                 resume_score = ?,
                 recommendation_score = ?,
                 cache_priority = ?,
+                like_count = ?,
                 highlight_start_seconds = ?,
                 highlight_end_seconds = ?,
                 highlight_bucket_count = ?,
@@ -442,6 +431,7 @@ def update_video_analytics(
                 resume_score,
                 recommendation_score,
                 cache_priority,
+                like_count,
                 highlight_start_seconds,
                 highlight_end_seconds,
                 highlight_bucket_count,
@@ -517,6 +507,28 @@ def get_video_by_content_fingerprint(settings: Settings, content_fingerprint: st
     return _row_to_video(row)
 
 
+def increment_video_like_count(
+    settings: Settings,
+    video_id: int,
+    *,
+    delta: int = 1,
+    upper_bound: int = 99,
+) -> Video:
+    with connect_database(settings) as connection:
+        connection.execute(
+            """
+            UPDATE videos
+            SET like_count = MIN(MAX(like_count + ?, 0), ?)
+            WHERE id = ?
+            """,
+            (delta, upper_bound, video_id),
+        )
+        connection.commit()
+        row = _fetch_video_row(connection, video_id)
+
+    return _row_to_video(row)
+
+
 def _fetch_video_row(connection: sqlite3.Connection, video_id: int) -> sqlite3.Row | None:
     return connection.execute(
         f"""
@@ -531,7 +543,6 @@ def _fetch_video_row(connection: sqlite3.Connection, video_id: int) -> sqlite3.R
 def _row_to_video(row: sqlite3.Row) -> Video:
     return Video(
         id=row["id"],
-        folder_id=row["folder_id"],
         title=row["title"],
         cover_path=row["cover_path"],
         poster_path=row["poster_path"],
@@ -560,6 +571,7 @@ def _row_to_video(row: sqlite3.Row) -> Video:
         resume_score=float(row["resume_score"] or 0),
         recommendation_score=float(row["recommendation_score"] or 0),
         cache_priority=float(row["cache_priority"] or 0),
+        like_count=int(row["like_count"] or 0),
         highlight_start_seconds=row["highlight_start_seconds"],
         highlight_end_seconds=row["highlight_end_seconds"],
         highlight_bucket_count=int(row["highlight_bucket_count"] or 20),
