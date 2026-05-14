@@ -660,23 +660,40 @@ h2 {
   color: #9cc8ff;
 }
 
-.cache-range-overlay {
+.player-cache-hud {
   position: absolute;
   left: 1rem;
   right: 1rem;
-  bottom: 3.6rem;
-  height: 0.32rem;
+  bottom: 1rem;
+  display: flex;
+  justify-content: center;
   pointer-events: none;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.1);
-  overflow: hidden;
+  opacity: 0;
+  transform: translateY(0.35rem);
+  transition: opacity 180ms ease, transform 180ms ease;
 }
 
-.cache-range-overlay-segment {
+.player-cache-hud.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.player-cache-track {
+  position: relative;
+  width: min(100%, 32rem);
+  height: 0.22rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.player-cache-segment {
   position: absolute;
   top: 0;
   height: 100%;
-  background: rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
 }
 
 .top-gap {

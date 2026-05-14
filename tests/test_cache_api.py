@@ -8,12 +8,14 @@ from app.core.config import Settings
 from app.core.security import hash_password
 from app.main import create_app
 from app.repositories.video_segments import NewVideoSegment, create_video_segments
+from app.repositories.video_cache_entries import upsert_video_cache_entry
 from app.repositories.videos import create_video
 from app.services.manifests import (
     encrypted_remote_manifest_upload_path,
     local_manifest_path,
     local_segment_path,
 )
+from app.services.cache import refresh_video_cache_entry
 from app.services.segment_local_paths import serialize_local_staging_path
 
 
@@ -228,6 +230,7 @@ def test_cache_videos_api_normalizes_legacy_artwork_paths(tmp_path: Path) -> Non
             )
         ],
     )
+    refresh_video_cache_entry(settings, video_id=video.id)
 
     response = client.get("/api/cache/videos")
 
@@ -271,6 +274,7 @@ def test_cache_videos_api_normalizes_legacy_jpg_poster_path_to_avif(tmp_path: Pa
             )
         ],
     )
+    refresh_video_cache_entry(settings, video_id=video.id)
 
     response = client.get("/api/cache/videos")
 
@@ -278,3 +282,43 @@ def test_cache_videos_api_normalizes_legacy_jpg_poster_path_to_avif(tmp_path: Pa
     payload_json = response.json()
     assert len(payload_json) == 1
     assert payload_json[0]["poster_path"] == "/api/artwork/cache-poster.avif"
+
+
+def test_cache_videos_api_reads_from_cache_table_without_rescanning_disk(monkeypatch, tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    login(client, password)
+
+    video = create_video(
+        settings,
+        title="DB cache only",
+        mime_type="video/mp4",
+        size=2048,
+    )
+    upsert_video_cache_entry(
+        settings,
+        video_id=video.id,
+        cached_size_bytes=1024,
+        cached_segment_count=2,
+        total_segment_count=4,
+        cache_root_relative_segments_dir=f"{video.id}/segments",
+    )
+
+    def fail_refresh(*args, **kwargs):
+        raise AssertionError("cache list path should not refresh cache entries from disk")
+
+    monkeypatch.setattr("app.services.cache.refresh_video_cache_entry", fail_refresh)
+
+    response = client.get("/api/cache/videos")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "id": video.id,
+            "title": "DB cache only",
+            "poster_path": None,
+            "cover_path": None,
+            "cached_size_bytes": 1024,
+            "cached_segment_count": 2,
+            "total_segment_count": 4,
+        }
+    ]

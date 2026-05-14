@@ -7,6 +7,7 @@ import {
   clearAllCachedVideos,
   clearCachedVideo,
   clearFinishedImportJobs,
+  createFolderImport,
   createImport,
   fetchCacheSummary,
   fetchCachedVideos,
@@ -21,6 +22,12 @@ import { formatBytes, parseTagInput } from "../utils/format";
 
 const ACTIVE_JOB_STATUSES = new Set(["queued", "running", "cancelling"]);
 const ERROR_MESSAGE_PREVIEW_MAX_LENGTH = 240;
+const IMPORT_MODE_OPTIONS = [
+  { value: "file", label: "导入视频" },
+  { value: "folder", label: "导入文件夹" },
+] as const;
+
+type ImportMode = (typeof IMPORT_MODE_OPTIONS)[number]["value"];
 
 function canCancelJob(job: ImportJob) {
   return job.job_kind !== "delete" && ACTIVE_JOB_STATUSES.has(job.status);
@@ -44,7 +51,9 @@ export function ManagementPage() {
   const session = useRequireSession();
   const queryClient = useQueryClient();
   const location = useLocation();
+  const [importMode, setImportMode] = useState<ImportMode>("file");
   const [sourcePath, setSourcePath] = useState("");
+  const [sourceDir, setSourceDir] = useState("");
   const [title, setTitle] = useState("");
   const [tagInput, setTagInput] = useState("");
   const [showCachePanel, setShowCachePanel] = useState(false);
@@ -88,6 +97,24 @@ export function ManagementPage() {
       setError(null);
       setSourcePath("");
       setTitle("");
+      setTagInput("");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["imports"] }),
+        queryClient.invalidateQueries({ queryKey: ["videos"] }),
+      ]);
+    },
+    onError: (exc: ApiError) => {
+      setError(exc.message);
+      setFeedback(null);
+    },
+  });
+
+  const folderImportMutation = useMutation({
+    mutationFn: createFolderImport,
+    onSuccess: async (result) => {
+      setFeedback(`已从文件夹发现 ${result.discovered_file_count} 个视频并创建导入任务。`);
+      setError(null);
+      setSourceDir("");
       setTagInput("");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["imports"] }),
@@ -295,20 +322,43 @@ export function ManagementPage() {
 
       <div className="management-grid management-grid-single">
         <Surface>
-          <h2>导入视频</h2>
+          <h2>导入</h2>
           <div className="form-stack top-gap">
-            <input
-              className="text-input"
-              onChange={(event) => setSourcePath(event.target.value)}
-              placeholder="例如：D:\\Videos\\movie.mp4"
-              value={sourcePath}
-            />
-            <input
-              className="text-input"
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="可选：显示标题"
-              value={title}
-            />
+            <div className="chip-row compact">
+              {IMPORT_MODE_OPTIONS.map((option) => (
+                <button
+                  className={`chip ${importMode === option.value ? "chip-active" : "chip-outline"}`}
+                  key={option.value}
+                  onClick={() => setImportMode(option.value)}
+                  type="button"
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            {importMode === "file" ? (
+              <>
+                <input
+                  className="text-input"
+                  onChange={(event) => setSourcePath(event.target.value)}
+                  placeholder="例如：D:\\Videos\\movie.mp4"
+                  value={sourcePath}
+                />
+                <input
+                  className="text-input"
+                  onChange={(event) => setTitle(event.target.value)}
+                  placeholder="可选：显示标题"
+                  value={title}
+                />
+              </>
+            ) : (
+              <input
+                className="text-input"
+                onChange={(event) => setSourceDir(event.target.value)}
+                placeholder="例如：D:\\Videos\\Anime"
+                value={sourceDir}
+              />
+            )}
             <input
               className="text-input"
               onChange={(event) => setTagInput(event.target.value)}
@@ -317,17 +367,33 @@ export function ManagementPage() {
             />
             <button
               className="primary-button"
-              disabled={importMutation.isPending || sourcePath.trim().length === 0}
-              onClick={() =>
-                importMutation.mutate({
-                  source_path: sourcePath,
-                  title: title || null,
-                  tags: parseTagInput(tagInput),
-                })
+              disabled={
+                importMutation.isPending ||
+                folderImportMutation.isPending ||
+                (importMode === "file" ? sourcePath.trim().length === 0 : sourceDir.trim().length === 0)
               }
+              onClick={() => {
+                const tags = parseTagInput(tagInput);
+                if (importMode === "file") {
+                  importMutation.mutate({
+                    source_path: sourcePath,
+                    title: title || null,
+                    tags,
+                  });
+                  return;
+                }
+                folderImportMutation.mutate({
+                  source_dir: sourceDir,
+                  tags,
+                });
+              }}
               type="button"
             >
-              {importMutation.isPending ? "创建中..." : "创建导入任务"}
+              {importMutation.isPending || folderImportMutation.isPending
+                ? "创建中..."
+                : importMode === "file"
+                  ? "创建导入任务"
+                  : "创建批量导入任务"}
             </button>
           </div>
         </Surface>

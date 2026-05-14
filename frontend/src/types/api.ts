@@ -82,6 +82,11 @@ export interface ImportJob {
   updated_at: string;
 }
 
+export interface FolderImportResult {
+  discovered_file_count: number;
+  jobs: ImportJob[];
+}
+
 export interface ClearedImportJobsResult {
   deleted_job_count: number;
   status_group: "completed" | "failed";

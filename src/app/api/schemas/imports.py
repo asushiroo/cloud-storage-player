@@ -11,6 +11,11 @@ class ImportRequest(BaseModel):
     tags: list[str] = Field(default_factory=list)
 
 
+class FolderImportRequest(BaseModel):
+    source_dir: str = Field(min_length=1)
+    tags: list[str] = Field(default_factory=list)
+
+
 class ClearedImportJobsResponse(BaseModel):
     deleted_job_count: int
     status_group: Literal["completed", "failed"]
@@ -18,6 +23,11 @@ class ClearedImportJobsResponse(BaseModel):
 
 class CancelAllImportJobsResponse(BaseModel):
     updated_job_count: int
+
+
+class FolderImportResponse(BaseModel):
+    discovered_file_count: int
+    jobs: list["ImportJobResponse"] = Field(default_factory=list)
 
 
 class ImportJobResponse(BaseModel):

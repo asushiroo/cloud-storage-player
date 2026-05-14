@@ -10,6 +10,7 @@ import { formatBytes, formatDuration } from "../utils/format";
 const POSTER_TARGET = { width: 1280, height: 720 };
 const DEFAULT_CROP = { zoom: 1, offsetX: 0, offsetY: 0 };
 const WATCH_HEARTBEAT_MS = 10_000;
+const CACHE_HUD_FADE_DELAY_MS = 2_200;
 
 type CropConfig = typeof DEFAULT_CROP;
 type LikeOverlay = { id: number; delta: 1 | -1 };
@@ -148,20 +149,46 @@ function buildCacheOverlayRanges(video: Video): Array<{ startPercent: number; wi
   if (video.size <= 0 || video.cached_byte_ranges.length === 0) {
     return [];
   }
-  return video.cached_byte_ranges
+
+  const normalizedRanges = video.cached_byte_ranges
     .map((range) => {
       const clampedStart = Math.max(0, Math.min(range.start, video.size));
       const clampedEnd = Math.max(clampedStart, Math.min(range.end, video.size));
-      const length = clampedEnd - clampedStart;
-      if (length <= 0) {
+      if (clampedEnd <= clampedStart) {
         return null;
       }
-      return {
-        startPercent: (clampedStart / video.size) * 100,
-        widthPercent: (length / video.size) * 100,
-      };
+      return { start: clampedStart, end: clampedEnd };
     })
-    .filter((value): value is { startPercent: number; widthPercent: number } => value !== null);
+    .filter((value): value is { start: number; end: number } => value !== null)
+    .sort((left, right) => left.start - right.start);
+
+  const mergedRanges: Array<{ start: number; end: number }> = [];
+  for (const range of normalizedRanges) {
+    const previous = mergedRanges[mergedRanges.length - 1];
+    if (!previous || range.start > previous.end) {
+      mergedRanges.push({ ...range });
+      continue;
+    }
+    previous.end = Math.max(previous.end, range.end);
+  }
+
+  return mergedRanges.map((range) => ({
+    startPercent: (range.start / video.size) * 100,
+    widthPercent: ((range.end - range.start) / video.size) * 100,
+  }));
+}
+
+function mergeCachedVideoState(previous: Video | undefined, next: Video): Video {
+  if (!previous) {
+    return next;
+  }
+
+  return {
+    ...next,
+    cached_size_bytes: next.cached_size_bytes > 0 ? next.cached_size_bytes : previous.cached_size_bytes,
+    cached_segment_count: next.cached_segment_count > 0 ? next.cached_segment_count : previous.cached_segment_count,
+    cached_byte_ranges: next.cached_byte_ranges.length > 0 ? next.cached_byte_ranges : previous.cached_byte_ranges,
+  };
 }
 
 export function PlayerPage() {
@@ -172,6 +199,7 @@ export function PlayerPage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const lastHeartbeatAtRef = useRef<number | null>(null);
   const lastPlaybackPositionRef = useRef(0);
+  const cacheHudHideTimerRef = useRef<number | null>(null);
   const [capturedDataUrl, setCapturedDataUrl] = useState<string | null>(null);
   const [posterPreviewDataUrl, setPosterPreviewDataUrl] = useState<string | null>(null);
   const [posterCrop, setPosterCrop] = useState<CropConfig>(DEFAULT_CROP);
@@ -179,6 +207,7 @@ export function PlayerPage() {
   const [error, setError] = useState<string | null>(null);
   const [watchSessionToken, setWatchSessionToken] = useState<string | null>(null);
   const [likeOverlays, setLikeOverlays] = useState<LikeOverlay[]>([]);
+  const [showCacheHud, setShowCacheHud] = useState(true);
 
   const videoQuery = useQuery({
     queryKey: ["video", videoId],
@@ -187,7 +216,9 @@ export function PlayerPage() {
   });
 
   const refreshVideoCaches = (updatedVideo: Video) => {
-    queryClient.setQueryData(["video", videoId], updatedVideo);
+    const previousVideo = queryClient.getQueryData<Video>(["video", videoId]);
+    const mergedVideo = mergeCachedVideoState(previousVideo, updatedVideo);
+    queryClient.setQueryData(["video", videoId], mergedVideo);
     queryClient.setQueriesData({ queryKey: ["videos"] }, (current: unknown) => {
       if (!Array.isArray(current)) {
         if (!current || typeof current !== "object" || !("pages" in current) || !Array.isArray(current.pages)) {
@@ -201,24 +232,43 @@ export function PlayerPage() {
             }
             return {
               ...page,
-              items: page.items.map((item: Video) => (item.id === updatedVideo.id ? { ...item, ...updatedVideo } : item)),
+              items: page.items.map((item: Video) => (item.id === mergedVideo.id ? { ...item, ...mergedVideo } : item)),
             };
           }),
         };
       }
-      return current.map((item) => (item.id === updatedVideo.id ? { ...item, ...updatedVideo } : item));
+      return current.map((item) => (item.id === mergedVideo.id ? { ...item, ...mergedVideo } : item));
     });
     queryClient.setQueryData(["videos", "recommendations"], (current: VideoRecommendationShelf | undefined) => {
       if (!current) {
         return current;
       }
-      const patch = (items: Video[]) => items.map((item) => (item.id === updatedVideo.id ? { ...item, ...updatedVideo } : item));
+      const patch = (items: Video[]) => items.map((item) => (item.id === mergedVideo.id ? { ...item, ...mergedVideo } : item));
       return {
         recommended: patch(current.recommended),
         continue_watching: patch(current.continue_watching),
         popular: patch(current.popular),
       };
     });
+  };
+
+  const clearCacheHudHideTimer = () => {
+    if (cacheHudHideTimerRef.current !== null) {
+      window.clearTimeout(cacheHudHideTimerRef.current);
+      cacheHudHideTimerRef.current = null;
+    }
+  };
+
+  const showCacheHudTemporarily = (persist = false) => {
+    clearCacheHudHideTimer();
+    setShowCacheHud(true);
+    if (persist || videoRef.current?.paused) {
+      return;
+    }
+    cacheHudHideTimerRef.current = window.setTimeout(() => {
+      setShowCacheHud(false);
+      cacheHudHideTimerRef.current = null;
+    }, CACHE_HUD_FADE_DELAY_MS);
   };
 
   useEffect(() => {
@@ -244,6 +294,8 @@ export function PlayerPage() {
       active = false;
     };
   }, [capturedDataUrl, posterCrop]);
+
+  useEffect(() => () => clearCacheHudHideTimer(), []);
 
   const artworkMutation = useMutation({
     mutationFn: () =>
@@ -334,13 +386,21 @@ export function PlayerPage() {
     const handlePlay = () => {
       lastHeartbeatAtRef.current = Date.now();
       lastPlaybackPositionRef.current = Math.max(videoElement.currentTime || 0, 0);
+      showCacheHudTemporarily();
     };
-    const handlePause = () => sendHeartbeat(false);
+    const handlePause = () => {
+      sendHeartbeat(false);
+      showCacheHudTemporarily(true);
+    };
     const handleSeeked = () => {
       lastPlaybackPositionRef.current = Math.max(videoElement.currentTime || 0, 0);
       lastHeartbeatAtRef.current = Date.now();
+      showCacheHudTemporarily();
     };
-    const handleEnded = () => sendHeartbeat(true);
+    const handleEnded = () => {
+      sendHeartbeat(true);
+      showCacheHudTemporarily(true);
+    };
     const heartbeatTimer = window.setInterval(() => {
       if (!videoElement.paused && !videoElement.ended) {
         sendHeartbeat(false);
@@ -429,7 +489,13 @@ export function PlayerPage() {
         </Surface>
       ) : null}
 
-      <div className="player-surface">
+      <div
+        className="player-surface"
+        onClick={() => showCacheHudTemporarily(videoRef.current?.paused ?? false)}
+        onMouseEnter={() => showCacheHudTemporarily(videoRef.current?.paused ?? false)}
+        onMouseMove={() => showCacheHudTemporarily()}
+        onTouchStart={() => showCacheHudTemporarily(videoRef.current?.paused ?? false)}
+      >
         <video
           autoPlay
           className="player-video"
@@ -440,14 +506,16 @@ export function PlayerPage() {
           src={getStreamUrl(videoId)}
         />
         {cachedRanges.length > 0 ? (
-          <div className="cache-range-overlay" aria-hidden="true">
-            {cachedRanges.map((range, index) => (
-              <span
-                className="cache-range-overlay-segment"
-                key={`cache-range-${index}`}
-                style={{ left: `${range.startPercent}%`, width: `${range.widthPercent}%` }}
-              />
-            ))}
+          <div className={`player-cache-hud${showCacheHud ? " is-visible" : ""}`} aria-hidden="true">
+            <div className="player-cache-track">
+              {cachedRanges.map((range, index) => (
+                <span
+                  className="player-cache-segment"
+                  key={`cache-range-${index}`}
+                  style={{ left: `${range.startPercent}%`, width: `${range.widthPercent}%` }}
+                />
+              ))}
+            </div>
           </div>
         ) : null}
       </div>

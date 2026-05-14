@@ -8,6 +8,8 @@ from app.api.dependencies import require_authenticated
 from app.api.schemas.imports import (
     CancelAllImportJobsResponse,
     ClearedImportJobsResponse,
+    FolderImportRequest,
+    FolderImportResponse,
     ImportJobResponse,
     ImportRequest,
 )
@@ -20,7 +22,7 @@ from app.repositories.import_jobs import (
     request_cancel_all_active_jobs,
     request_cancel_job,
 )
-from app.services.imports import ImportValidationError, queue_import_job
+from app.services.imports import ImportValidationError, queue_folder_import_jobs, queue_import_job
 
 router = APIRouter(prefix="/api/imports", tags=["imports"])
 
@@ -45,6 +47,30 @@ async def create_import(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     return ImportJobResponse.model_validate(job)
+
+
+@router.post("/folders", response_model=FolderImportResponse, status_code=status.HTTP_201_CREATED)
+async def create_folder_import(
+    payload: FolderImportRequest,
+    request: Request,
+    _: None = Depends(require_authenticated),
+) -> FolderImportResponse:
+    settings = request.app.state.settings
+    worker = request.app.state.import_worker
+    try:
+        jobs = queue_folder_import_jobs(
+            settings,
+            source_dir=payload.source_dir,
+            tags=payload.tags,
+            worker=worker,
+        )
+    except ImportValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    return FolderImportResponse(
+        discovered_file_count=len(jobs),
+        jobs=[ImportJobResponse.model_validate(job) for job in jobs],
+    )
 
 
 @router.post("/{job_id}/cancel", response_model=ImportJobResponse)

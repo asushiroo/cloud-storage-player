@@ -256,6 +256,67 @@ def test_import_rejects_missing_source_file(tmp_path: Path) -> None:
     assert "Source file does not exist" in response.json()["detail"]
 
 
+def test_folder_import_creates_one_job_per_video_file(tmp_path: Path) -> None:
+    client, _, password = build_client(tmp_path)
+    source_dir = tmp_path / "batch"
+    nested_dir = source_dir / "nested"
+    nested_dir.mkdir(parents=True)
+    first_video = create_sample_video(source_dir / "first.mp4")
+    second_video = create_sample_video(nested_dir / "second.mkv")
+    (source_dir / "ignore.txt").write_text("skip", encoding="utf-8")
+    login(client, password)
+
+    response = client.post(
+        "/api/imports/folders",
+        json={
+            "source_dir": str(source_dir),
+            "tags": ["合集", "测试", "合集"],
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["discovered_file_count"] == 2
+    assert len(payload["jobs"]) == 2
+    assert {job["task_name"] for job in payload["jobs"]} == {"first.mp4", str(Path("nested") / "second.mkv")}
+    assert all(job["requested_title"] is None for job in payload["jobs"])
+    assert all(job["requested_tags"] == ["合集", "测试"] for job in payload["jobs"])
+
+    completed_jobs = [
+        wait_for_job_status(client, job["id"], expected_status="completed")
+        for job in payload["jobs"]
+    ]
+    imported_video_ids = {job["video_id"] for job in completed_jobs}
+    assert len(imported_video_ids) == 2
+
+    imported_sources = {
+        client.get(f"/api/videos/{video_id}").json()["source_path"]
+        for video_id in imported_video_ids
+    }
+    assert imported_sources == {str(first_video), str(second_video)}
+
+
+def test_folder_import_rejects_missing_or_empty_directory(tmp_path: Path) -> None:
+    client, _, password = build_client(tmp_path)
+    login(client, password)
+
+    missing_response = client.post(
+        "/api/imports/folders",
+        json={"source_dir": str(tmp_path / "missing")},
+    )
+    empty_dir = tmp_path / "empty"
+    empty_dir.mkdir()
+    empty_response = client.post(
+        "/api/imports/folders",
+        json={"source_dir": str(empty_dir)},
+    )
+
+    assert missing_response.status_code == 400
+    assert "Source directory does not exist" in missing_response.json()["detail"]
+    assert empty_response.status_code == 400
+    assert "No supported video files found in directory" in empty_response.json()["detail"]
+
+
 def test_import_of_non_video_file_returns_failed_job(tmp_path: Path) -> None:
     client, _, password = build_client(tmp_path)
     source_path = tmp_path / "not-video.txt"

@@ -20,6 +20,11 @@
 - Playback no longer stops silently when a later encrypted segment is missing remotely; if the original source file still exists, the backend now falls back to the corresponding source byte range and keeps streaming.
 - Watch heartbeat analytics no longer write back stale `like_count`, so cancel-like operations are not overwritten by concurrent playback progress updates.
 
+## 2026-05-14 Management And Player Follow-Up
+- Cache list reads on `/api/cache/videos` now stay on `video_cache_entries` and no longer lazily rescan segment files during "查看缓存".
+- Folder import is restored through `/api/imports/folders`, and the management page again supports switching between single-file import and folder batch import.
+- The player local-cache visualization now uses a native-buffer-like bottom track that only appears while controls are active, and cached ranges stay stable during like/watch updates.
+
 ## 当前已实现
 
 - 问题修复（2026-05 Problem.md）
@@ -39,6 +44,9 @@
   - 导入完成后增加缓存上限淘汰：优先清理旧缓存，且保护当前新上传视频不被优先淘汰
   - 修复“退出播放页后仍持续请求百度网盘下载分片”的带宽浪费问题：播放预取改为首片优先响应后再按 5 片一批滚动预取；每批完成才会进入下一批，播放会话释放后立即停止后续预取
   - 修复历史 poster `.jpg` 路径导致前端无封面：API 对 `/covers/*-poster.jpg` 自动归一到 `/api/artwork/*-poster.avif`，`/api/artwork/*.jpg` 在缺失时可回退读取同名 `.avif` 加密封面
+  - 管理页“查看缓存”改为纯数据库读取 `video_cache_entries`，不再在列表读取路径上回扫本地分片目录
+  - 恢复管理页“导入文件夹”模式，并新增 `/api/imports/folders` 批量创建导入任务
+  - 播放页本地缓存可视化改为贴近原生缓冲条的底部细条，且显隐时机跟随原生控件活跃状态
 - UV 管理 Python 项目与依赖
 - FastAPI 应用入口与 SQLite bootstrap
 - 基于 Cookie Session 的单密码认证
@@ -308,6 +316,7 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 导入：
 
 - `POST /api/imports`
+- `POST /api/imports/folders`
 - `POST /api/imports/{job_id}/cancel`
 - `POST /api/imports/cancel-all`
 - `DELETE /api/imports?status_group=completed|failed`

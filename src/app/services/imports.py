@@ -98,6 +98,34 @@ def queue_import_job(
     return job
 
 
+def queue_folder_import_jobs(
+    settings: Settings,
+    *,
+    source_dir: str,
+    tags: list[str] | None = None,
+    worker: "ImportWorker",
+) -> list[ImportJob]:
+    source_root = validate_import_directory(source_dir)
+    normalized_tags = normalize_tags(tags)
+    video_files = discover_video_files(source_root)
+    if not video_files:
+        raise ImportValidationError(f"No supported video files found in directory: {source_dir}")
+
+    jobs: list[ImportJob] = []
+    for source in video_files:
+        relative_task_name = str(source.relative_to(source_root))
+        job = create_import_job(
+            settings,
+            source_path=str(source),
+            requested_tags=normalized_tags,
+            task_name=relative_task_name,
+        )
+        worker.enqueue(job.id)
+        jobs.append(job)
+
+    return jobs
+
+
 def import_local_video(
     settings: Settings,
     *,
@@ -228,6 +256,13 @@ def validate_import_request(
 
     requested_title = title.strip() if title else None
     return source, requested_title, normalize_tags(tags)
+
+
+def validate_import_directory(source_dir: str) -> Path:
+    source_root = Path(source_dir)
+    if not source_root.exists() or not source_root.is_dir():
+        raise ImportValidationError(f"Source directory does not exist: {source_dir}")
+    return source_root
 
 
 def discover_video_files(source_dir: Path) -> list[Path]:

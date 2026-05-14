@@ -7,6 +7,7 @@ import type {
   CachedVideo,
   ClearedCacheResult,
   ClearedImportJobsResult,
+  FolderImportResult,
   ImportJob,
   PublicSettings,
   VideoPage,
@@ -219,6 +220,16 @@ export const createImport = (payload: {
   tags?: string[];
 }): Promise<ImportJob> =>
   request("/api/imports", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify(payload),
+  });
+
+export const createFolderImport = (payload: {
+  source_dir: string;
+  tags?: string[];
+}): Promise<FolderImportResult> =>
+  request("/api/imports/folders", {
     method: "POST",
     headers: jsonHeaders,
     body: JSON.stringify(payload),

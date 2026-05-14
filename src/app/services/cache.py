@@ -103,27 +103,6 @@ def list_cached_videos(settings: Settings) -> list[CachedVideo]:
             )
         )
 
-    # Backfill entries lazily for videos imported before cache-table refresh hooks.
-    for video in videos.values():
-        if video.id in cache_entries:
-            continue
-        if video.segment_count <= 0:
-            continue
-        status = refresh_video_cache_entry(settings, video_id=video.id)
-        if status.cached_segment_count <= 0:
-            continue
-        cached_videos.append(
-            CachedVideo(
-                id=video.id,
-                title=video.title,
-                poster_path=video.poster_path,
-                cover_path=video.cover_path,
-                cached_size_bytes=status.cached_size_bytes,
-                cached_segment_count=status.cached_segment_count,
-                total_segment_count=status.total_segment_count,
-            )
-        )
-
     cached_videos.sort(key=lambda item: (item.title.casefold(), item.id))
     return cached_videos
 
