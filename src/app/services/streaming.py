@@ -72,6 +72,7 @@ def prepare_video_stream(
     size = video.size
     byte_range = parse_range_header(range_header, size=size)
     effective_range = byte_range or ByteRange(start=0, end=size - 1)
+    source_path = _resolve_existing_source_path(video.source_path)
 
     segments = list_video_segments(settings, video_id=video_id)
     if segments:
@@ -84,13 +85,12 @@ def prepare_video_stream(
             segments=segments,
         )
         if segment_payload is not None:
+            segment_payload.source_path = source_path
             return segment_payload
 
     if not video.source_path:
         raise VideoStreamNotFoundError("Video source path is not available.")
-
-    source_path = Path(video.source_path)
-    if not source_path.exists() or not source_path.is_file():
+    if source_path is None:
         raise VideoStreamNotFoundError("Source file not found.")
 
     return VideoStreamPayload(
@@ -114,7 +114,14 @@ def iter_video_stream(payload: VideoStreamPayload):
                         prefetched_remote_payloads=payload.prefetched_remote_payloads,
                     )
                 except VideoStreamNotFoundError:
-                    return
+                    if payload.source_path is None:
+                        raise
+                    logger.warning(
+                        "Encrypted segment %s for video %s is unavailable; falling back to source file bytes.",
+                        segment_read.segment.segment_index,
+                        segment_read.segment.video_id,
+                    )
+                    yield from iter_source_segment_slice(payload.source_path, segment_read=segment_read)
                 if payload.prefetch_session is not None:
                     payload.prefetch_session.request_prefetch(
                         current_segment_index=segment_read.segment.segment_index
@@ -258,6 +265,19 @@ def iter_file_range(
             yield chunk
 
 
+def iter_source_segment_slice(
+    source_path: Path,
+    *,
+    segment_read: PreparedSegmentRead,
+):
+    start = segment_read.segment.original_offset + segment_read.read_start
+    end = segment_read.segment.original_offset + segment_read.read_end
+    try:
+        yield from iter_file_range(source_path, start=start, end=end)
+    except OSError as exc:
+        raise VideoStreamNotFoundError("Source file not found.") from exc
+
+
 def iter_segment_slice(
     segment_read: PreparedSegmentRead,
     *,
@@ -351,6 +371,15 @@ def _segment_cache_path(
         segment_index=segment.segment_index,
         local_staging_path=segment.local_staging_path,
     )
+
+
+def _resolve_existing_source_path(raw_source_path: str | None) -> Path | None:
+    if not raw_source_path:
+        return None
+    source_path = Path(raw_source_path)
+    if not source_path.exists() or not source_path.is_file():
+        return None
+    return source_path
 
 
 __all__ = [

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends, Request, Response
+from fastapi import APIRouter, Body, Depends, Query, Request, Response
 from fastapi import HTTPException, status
 
 from app.api.dependencies import require_authenticated
@@ -152,16 +152,21 @@ async def like_video(
     request: Request,
     _: None = Depends(require_authenticated),
     payload: VideoLikeUpdateRequest | None = Body(default=None),
+    delta: int | None = Query(default=None),
 ) -> VideoResponse:
     settings = request.app.state.settings
     video = get_video(settings, video_id)
     if video is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found.")
 
+    selected_delta = delta if delta is not None else (payload.delta if payload is not None else 1)
+    if selected_delta not in {-1, 1}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="delta must be 1 or -1.")
+
     updated_video = increment_video_like_count(
         settings,
         video_id,
-        delta=payload.delta if payload is not None else 1,
+        delta=selected_delta,
         upper_bound=99,
     )
     return VideoResponse.model_validate(updated_video)

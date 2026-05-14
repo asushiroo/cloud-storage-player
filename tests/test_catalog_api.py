@@ -1,4 +1,5 @@
 from pathlib import Path
+from threading import Event, Thread
 
 from fastapi.testclient import TestClient
 
@@ -7,6 +8,7 @@ from app.core.security import hash_password
 from app.main import create_app
 from app.repositories.settings import get_setting, set_setting
 from app.repositories.videos import create_video
+import app.services.recommendations as recommendations_service
 from app.services.artwork_storage import (
     build_poster_file_name,
     read_artwork_bytes,
@@ -341,3 +343,91 @@ def test_video_like_endpoint_supports_decrement_without_going_below_zero(tmp_pat
     below_zero = client.post(f"/api/videos/{video.id}/like", json={"delta": -1})
     assert below_zero.status_code == 200
     assert below_zero.json()["like_count"] == 0
+
+
+def test_video_like_endpoint_accepts_query_delta_for_unlike(tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    video = create_video(
+        settings,
+        title="Query Unlike Video",
+        mime_type="video/mp4",
+        size=100,
+    )
+    login(client, password)
+
+    seeded = client.post(f"/api/videos/{video.id}/like")
+    assert seeded.status_code == 200
+    assert seeded.json()["like_count"] == 1
+
+    unlike = client.post(f"/api/videos/{video.id}/like?delta=-1")
+    assert unlike.status_code == 200
+    assert unlike.json()["like_count"] == 0
+
+
+def test_video_watch_heartbeat_does_not_restore_stale_like_count(tmp_path: Path, monkeypatch) -> None:
+    client, settings, password = build_client(tmp_path)
+    video = create_video(
+        settings,
+        title="Concurrent Like Video",
+        mime_type="video/mp4",
+        size=100,
+        duration_seconds=100,
+    )
+    login(client, password)
+
+    seeded = client.post(
+        f"/api/videos/{video.id}/watch",
+        json={
+            "position_seconds": 15,
+            "watched_seconds_delta": 15,
+            "completed": False,
+        },
+    )
+    assert seeded.status_code == 200
+    session_token = seeded.json()["session_token"]
+
+    entered_recalc = Event()
+    allow_recalc = Event()
+    real_recalculate = recommendations_service.recalculate_video_analytics
+
+    def delayed_recalculate(*args, **kwargs):
+        entered_recalc.set()
+        allow_recalc.wait(timeout=2)
+        return real_recalculate(*args, **kwargs)
+
+    monkeypatch.setattr(recommendations_service, "recalculate_video_analytics", delayed_recalculate)
+
+    heartbeat_response: dict[str, object] = {}
+
+    def send_heartbeat() -> None:
+        heartbeat_response["response"] = client.post(
+            f"/api/videos/{video.id}/watch",
+            json={
+                "session_token": session_token,
+                "position_seconds": 55,
+                "watched_seconds_delta": 40,
+                "completed": True,
+            },
+        )
+
+    heartbeat_thread = Thread(target=send_heartbeat)
+    heartbeat_thread.start()
+    assert entered_recalc.wait(timeout=2)
+
+    like_response = client.post(f"/api/videos/{video.id}/like", json={"delta": 1})
+    assert like_response.status_code == 200
+    assert like_response.json()["like_count"] == 1
+
+    unlike_response = client.post(f"/api/videos/{video.id}/like", json={"delta": -1})
+    assert unlike_response.status_code == 200
+    assert unlike_response.json()["like_count"] == 0
+
+    allow_recalc.set()
+    heartbeat_thread.join(timeout=2)
+    response = heartbeat_response.get("response")
+    assert response is not None
+    assert response.status_code == 200
+
+    detail = client.get(f"/api/videos/{video.id}")
+    assert detail.status_code == 200
+    assert detail.json()["like_count"] == 0

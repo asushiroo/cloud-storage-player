@@ -16,6 +16,10 @@
 ## 2026-05-13 Playback Fix
 - Playback now keeps the video element source intact across React StrictMode remounts and uses credentialed media requests.
 
+## 2026-05-14 Playback And Like Fix
+- Playback no longer stops silently when a later encrypted segment is missing remotely; if the original source file still exists, the backend now falls back to the corresponding source byte range and keeps streaming.
+- Watch heartbeat analytics no longer write back stale `like_count`, so cancel-like operations are not overwritten by concurrent playback progress updates.
+
 ## 当前已实现
 
 - 问题修复（2026-05 Problem.md）
@@ -296,7 +300,7 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 - `GET /api/videos/{video_id}`
 - `PATCH /api/videos/{video_id}/tags`
 - `POST /api/videos/{video_id}/like`
-  - 请求体可选 `{"delta": 1}` 或 `{"delta": -1}`；缺省仍等价于点赞 `+1`
+  - 可通过请求体 `{"delta": 1}` / `{"delta": -1}` 或查询参数 `?delta=1` / `?delta=-1` 指定增减；缺省仍等价于点赞 `+1`
 - `POST /api/videos/{video_id}/artwork`
 - `DELETE /api/videos/{video_id}`（创建删除任务）
 - `GET /api/videos/{video_id}/stream`

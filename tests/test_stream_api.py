@@ -4,8 +4,12 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
+from app.core.keys import load_or_create_content_key
+from app.db.schema import initialize_database
+from app.media.crypto import encrypt_segment
 from app.core.security import hash_password
 from app.main import create_app
+from app.repositories.video_segments import NewVideoSegment, create_video_segments
 from app.storage.mock import MockStorageBackend
 from tests.test_streaming_remote_payload import _create_remote_only_segment_video, build_settings as build_remote_only_settings
 from app.models.segments import VideoSegment
@@ -13,7 +17,9 @@ from app.repositories.videos import get_video
 from app.repositories.video_segments import list_video_segments
 from app.services.imports import import_local_video
 from app.services.segment_local_paths import resolve_segment_local_staging_path
+from app.services.segment_local_paths import serialize_local_staging_path
 from app.storage.baidu_api import BaiduApiError
+from app.repositories.videos import create_video
 
 
 def build_client(tmp_path: Path, password: str = "shared-secret") -> tuple[TestClient, Settings, str]:
@@ -353,3 +359,86 @@ def test_stream_api_can_start_from_remote_only_without_local_cache(monkeypatch, 
 
     assert response.status_code == 206
     assert response.content == b"abcdefghijklmnop"
+
+
+def test_stream_falls_back_to_source_bytes_when_later_remote_segment_is_missing(monkeypatch, tmp_path: Path) -> None:
+    settings = build_remote_only_settings(tmp_path)
+    settings.password_hash = hash_password("shared-secret")
+    initialize_database(settings)
+    app = create_app(settings)
+    client = TestClient(app)
+
+    file_bytes = b"abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    source_path = tmp_path / "fallback-source.bin"
+    source_path.write_bytes(file_bytes)
+    video = _create_remote_segment_video_with_source(
+        settings,
+        plaintext=file_bytes,
+        source_path=source_path,
+    )
+
+    segments = list_video_segments(settings, video_id=video.id)
+    assert len(segments) >= 2
+    storage = MockStorageBackend(settings.mock_storage_dir)
+    missing_remote_path = segments[1].cloud_path
+    assert missing_remote_path is not None
+    storage.local_path_for(missing_remote_path).unlink()
+
+    class TrackingStorage:
+        def download_bytes(self, remote_path: str) -> bytes:
+            return storage.download_bytes(remote_path)
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr("app.services.streaming.build_storage_backend", lambda _settings: TrackingStorage())
+    login(client, "shared-secret")
+
+    response = client.get(f"/api/videos/{video.id}/stream")
+
+    assert response.status_code == 200
+    assert response.content == file_bytes
+
+
+def _create_remote_segment_video_with_source(settings: Settings, *, plaintext: bytes, source_path: Path):
+    key = load_or_create_content_key(settings)
+    video = create_video(
+        settings,
+        title="Remote Segment With Source",
+        mime_type="video/mp4",
+        size=len(plaintext),
+        manifest_path="/apps/CloudStoragePlayer/mock/manifest.bin",
+        source_path=str(source_path),
+    )
+
+    segment_length = 32
+    segments: list[NewVideoSegment] = []
+    storage = MockStorageBackend(settings.mock_storage_dir)
+    for index, start in enumerate(range(0, len(plaintext), segment_length)):
+        chunk = plaintext[start : start + segment_length]
+        encrypted = encrypt_segment(chunk, key, nonce=f"{index:012d}".encode("ascii"))
+        remote_path = f"/apps/CloudStoragePlayer/mock/{video.id}/{index}.bin"
+        storage.upload_bytes(encrypted.ciphertext + encrypted.tag, remote_path)
+        segments.append(
+            NewVideoSegment(
+                segment_index=index,
+                original_offset=start,
+                original_length=len(chunk),
+                ciphertext_size=encrypted.ciphertext_size,
+                plaintext_sha256=encrypted.plaintext_sha256,
+                nonce_b64=encrypted.nonce_b64,
+                tag_b64=encrypted.tag_b64,
+                cloud_path=remote_path,
+                local_staging_path=serialize_local_staging_path(
+                    settings,
+                    settings.segment_staging_dir / str(video.id) / "segments" / f"{index:06d}.cspseg",
+                ),
+            )
+        )
+
+    create_video_segments(
+        settings,
+        video_id=video.id,
+        segments=segments,
+    )
+    return video
