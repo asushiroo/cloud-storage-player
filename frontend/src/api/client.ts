@@ -146,9 +146,11 @@ export const fetchVideo = (videoId: number): Promise<Video> => request(`/api/vid
 export const fetchVideoRecommendations = (): Promise<VideoRecommendationShelf> =>
   request("/api/videos/recommendations");
 
-export const likeVideo = (videoId: number): Promise<Video> =>
+export const likeVideo = (videoId: number, delta: 1 | -1 = 1): Promise<Video> =>
   request(`/api/videos/${videoId}/like`, {
     method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ delta }),
   });
 
 export const reportVideoWatchHeartbeat = (payload: {

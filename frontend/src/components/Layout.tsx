@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type PropsWithChildren } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
-import logoImage from "../../public/logo.png";
+import logoImage from "../asserts/images/logo.png";
 import { logout } from "../api/client";
 import { clearPersistedSession, sessionQueryKey, useSession } from "../hooks/session";
 

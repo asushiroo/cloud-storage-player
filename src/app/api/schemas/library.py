@@ -64,6 +64,16 @@ class VideoTagsUpdateRequest(BaseModel):
     tags: list[str] = Field(default_factory=list)
 
 
+class VideoLikeUpdateRequest(BaseModel):
+    delta: int = Field(default=1)
+
+    @model_validator(mode="after")
+    def validate_delta(self) -> "VideoLikeUpdateRequest":
+        if self.delta not in {-1, 1}:
+            raise ValueError("delta must be 1 or -1.")
+        return self
+
+
 class VideoMetadataUpdateRequest(BaseModel):
     title: str = Field(min_length=1)
     tags: list[str] = Field(default_factory=list)

@@ -6,13 +6,14 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings
 from app.core.security import hash_password
 from app.main import create_app
+from app.storage.mock import MockStorageBackend
+from tests.test_streaming_remote_payload import _create_remote_only_segment_video, build_settings as build_remote_only_settings
 from app.models.segments import VideoSegment
 from app.repositories.videos import get_video
 from app.repositories.video_segments import list_video_segments
 from app.services.imports import import_local_video
 from app.services.segment_local_paths import resolve_segment_local_staging_path
 from app.storage.baidu_api import BaiduApiError
-from app.storage.mock import MockStorageBackend
 
 
 def build_client(tmp_path: Path, password: str = "shared-secret") -> tuple[TestClient, Settings, str]:
@@ -322,3 +323,33 @@ def test_stream_returns_404_when_source_local_and_remote_segments_are_all_missin
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Encrypted segment file is missing."}
+
+
+def test_stream_api_can_start_from_remote_only_without_local_cache(monkeypatch, tmp_path: Path) -> None:
+    settings = build_remote_only_settings(tmp_path)
+    settings.password_hash = hash_password("shared-secret")
+    app = create_app(settings)
+    client = TestClient(app)
+    video = _create_remote_only_segment_video(
+        settings,
+        plaintext=b"abcdefghijklmnopqrstuvwxyz0123456789",
+    )
+    storage = MockStorageBackend(settings.mock_storage_dir)
+
+    class TrackingStorage:
+        def download_bytes(self, remote_path: str) -> bytes:
+            return storage.download_bytes(remote_path)
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr("app.services.streaming.build_storage_backend", lambda _settings: TrackingStorage())
+    login(client, "shared-secret")
+
+    response = client.get(
+        f"/api/videos/{video.id}/stream",
+        headers={"Range": "bytes=0-15"},
+    )
+
+    assert response.status_code == 206
+    assert response.content == b"abcdefghijklmnop"

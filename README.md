@@ -19,6 +19,9 @@
 ## 当前已实现
 
 - 问题修复（2026-05 Problem.md）
+  - 修复仅远端分片、无本地缓存时的播放起播路径：浏览器首个流请求现在可直接等待并读取远端分片返回，不再因本地缓存缺失而无法播放
+  - 播放页交互改为内联 SVG 的点赞 / 取消点赞 / 跳高光操作区：点赞数仅在操作时以上浮数字动画反馈，跳高光按钮简化为记录分钟点位
+  - 视频详情页移除重复点赞按钮，点赞交互统一收敛到播放页
   - 修复 Windows/GBK 环境下 `ffprobe`/`ffmpeg` 子进程输出解码导致的 `UnicodeDecodeError`：改为字节读取 + UTF-8/GB18030 回退解码
   - 导入封面抽帧改为按视频 `1/3` 时长位置生成，保持 `AVIF` + 本地加密存储
   - 新增批量重建封面 CLI：`cloud-storage-player-rebuild-posters`（对有源文件的视频按 1/3 帧重建 poster）
@@ -293,6 +296,7 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 - `GET /api/videos/{video_id}`
 - `PATCH /api/videos/{video_id}/tags`
 - `POST /api/videos/{video_id}/like`
+  - 请求体可选 `{"delta": 1}` 或 `{"delta": -1}`；缺省仍等价于点赞 `+1`
 - `POST /api/videos/{video_id}/artwork`
 - `DELETE /api/videos/{video_id}`（创建删除任务）
 - `GET /api/videos/{video_id}/stream`

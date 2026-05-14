@@ -318,3 +318,26 @@ def test_video_like_endpoint_caps_at_99_and_updates_payload(tmp_path: Path) -> N
 
     payload = client.get(f"/api/videos/{video.id}").json()
     assert payload["like_count"] == 99
+
+
+def test_video_like_endpoint_supports_decrement_without_going_below_zero(tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    video = create_video(
+        settings,
+        title="Like Toggle Video",
+        mime_type="video/mp4",
+        size=100,
+    )
+    login(client, password)
+
+    increase = client.post(f"/api/videos/{video.id}/like", json={"delta": 1})
+    assert increase.status_code == 200
+    assert increase.json()["like_count"] == 1
+
+    decrease = client.post(f"/api/videos/{video.id}/like", json={"delta": -1})
+    assert decrease.status_code == 200
+    assert decrease.json()["like_count"] == 0
+
+    below_zero = client.post(f"/api/videos/{video.id}/like", json={"delta": -1})
+    assert below_zero.status_code == 200
+    assert below_zero.json()["like_count"] == 0

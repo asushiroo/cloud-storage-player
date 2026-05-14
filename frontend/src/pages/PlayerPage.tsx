@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { fetchVideo, getStreamUrl, reportVideoWatchHeartbeat, updateVideoArtwork } from "../api/client";
+import { fetchVideo, getStreamUrl, likeVideo, reportVideoWatchHeartbeat, updateVideoArtwork } from "../api/client";
 import { Surface } from "../components/Surface";
 import { useRequireSession } from "../hooks/session";
 import type { ApiError, Video, VideoRecommendationShelf } from "../types/api";
@@ -12,6 +12,40 @@ const DEFAULT_CROP = { zoom: 1, offsetX: 0, offsetY: 0 };
 const WATCH_HEARTBEAT_MS = 10_000;
 
 type CropConfig = typeof DEFAULT_CROP;
+type LikeOverlay = { id: number; delta: 1 | -1 };
+
+function ThumbUpIcon() {
+  return (
+    <svg aria-hidden="true" className="player-action-icon" viewBox="0 0 24 24">
+      <path
+        d="M9 10V21H5C3.9 21 3 20.1 3 19V12C3 10.9 3.9 10 5 10H9ZM11 10L14.4 3.2C14.7 2.5 15.5 2.1 16.2 2.4C16.9 2.7 17.3 3.5 17 4.2L15.2 10H19C20.1 10 21 10.9 21 12C21 12.2 21 12.4 20.9 12.6L18.3 19.6C18 20.4 17.2 21 16.3 21H11V10Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function ThumbDownIcon() {
+  return (
+    <svg aria-hidden="true" className="player-action-icon" viewBox="0 0 24 24">
+      <path
+        d="M15 14V3H19C20.1 3 21 3.9 21 5V12C21 13.1 20.1 14 19 14H15ZM13 14L9.6 20.8C9.3 21.5 8.5 21.9 7.8 21.6C7.1 21.3 6.7 20.5 7 19.8L8.8 14H5C3.9 14 3 13.1 3 12C3 11.8 3 11.6 3.1 11.4L5.7 4.4C6 3.6 6.8 3 7.7 3H13V14Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function FlameIcon() {
+  return (
+    <svg aria-hidden="true" className="player-action-icon" viewBox="0 0 24 24">
+      <path
+        d="M13.5 2C14.2 5.1 17.8 6.3 17.8 10.4C17.8 14.1 15.2 17 12 17C8.8 17 6.2 14.4 6.2 11.2C6.2 8.3 7.7 6.3 10.2 4.2C10.7 6.1 11.7 7 13 7.7C13.4 6.2 13.8 4.3 13.5 2ZM12 18.5C16 18.5 19.2 15.2 19.2 11.2C19.2 7.1 16.5 4.7 14.9 3.4L14.4 3L14 3.5C14 3.3 13.9 3.2 13.9 3L13.7 1.5L12.6 2.6C11.7 3.5 10.8 4.4 9.8 5.3C7.1 7.9 4.8 10.1 4.8 13.2C4.8 16.2 7.4 18.5 12 18.5Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
 
 function loadImage(source: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -144,6 +178,7 @@ export function PlayerPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [watchSessionToken, setWatchSessionToken] = useState<string | null>(null);
+  const [likeOverlays, setLikeOverlays] = useState<LikeOverlay[]>([]);
 
   const videoQuery = useQuery({
     queryKey: ["video", videoId],
@@ -220,6 +255,25 @@ export function PlayerPage() {
       refreshVideoCaches(updatedVideo);
       setCapturedDataUrl(null);
       setFeedback("Poster 已更新。媒体库和推荐位会直接使用这张横版图。");
+      setError(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["video", videoId] }),
+        queryClient.invalidateQueries({ queryKey: ["videos"] }),
+        queryClient.invalidateQueries({ queryKey: ["videos", "recommendations"] }),
+      ]);
+    },
+    onError: (exc: ApiError) => {
+      setError(exc.message);
+      setFeedback(null);
+    },
+  });
+
+  const likeMutation = useMutation({
+    mutationFn: ({ delta }: { delta: 1 | -1 }) => likeVideo(videoId, delta),
+    onSuccess: async (updatedVideo, variables) => {
+      refreshVideoCaches(updatedVideo);
+      setLikeOverlays((current) => [...current, { id: Date.now() + current.length, delta: variables.delta }]);
+      setFeedback(null);
       setError(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["video", videoId] }),
@@ -349,7 +403,7 @@ export function PlayerPage() {
     }
     element.currentTime = video.highlight_start_seconds;
     void element.play().catch(() => undefined);
-    setFeedback(`已跳转到高光片段 ${formatDuration(video.highlight_start_seconds)}。`);
+    setFeedback(`高光 ${formatDuration(video.highlight_start_seconds)}`);
     setError(null);
   };
 
@@ -398,18 +452,50 @@ export function PlayerPage() {
         ) : null}
       </div>
 
-      {video && video.highlight_start_seconds !== null && video.highlight_end_seconds !== null ? (
+      {video ? (
         <Surface>
-          <div className="section-head">
-            <div>
-              <h2>高光片段</h2>
-              <p className="muted">
-                {formatDuration(video.highlight_start_seconds)} - {formatDuration(video.highlight_end_seconds)}
-              </p>
+          <div className="player-action-bar">
+            <div className="player-like-stack">
+              <button
+                aria-label="点赞"
+                className="secondary-button player-action-button"
+                disabled={likeMutation.isPending || video.like_count >= 99}
+                onClick={() => likeMutation.mutate({ delta: 1 })}
+                type="button"
+              >
+                <ThumbUpIcon />
+                <span>{video.like_count}</span>
+              </button>
+              {likeOverlays.map((overlay) => (
+                <span
+                  aria-hidden="true"
+                  className={`player-like-float ${overlay.delta > 0 ? "is-positive" : "is-negative"}`}
+                  key={overlay.id}
+                  onAnimationEnd={() => {
+                    setLikeOverlays((current) => current.filter((item) => item.id !== overlay.id));
+                  }}
+                >
+                  {overlay.delta > 0 ? "+1" : "-1"}
+                </span>
+              ))}
             </div>
-            <button className="primary-button" onClick={jumpToHighlight} type="button">
-              跳到高潮
-            </button>
+            <div className="player-action-cluster">
+              <button
+                aria-label="取消点赞"
+                className="secondary-button player-action-button"
+                disabled={likeMutation.isPending || video.like_count <= 0}
+                onClick={() => likeMutation.mutate({ delta: -1 })}
+                type="button"
+              >
+                <ThumbDownIcon />
+              </button>
+              {video.highlight_start_seconds !== null ? (
+                <button className="primary-button player-action-button" onClick={jumpToHighlight} type="button">
+                  <FlameIcon />
+                  <span>{formatDuration(video.highlight_start_seconds)}</span>
+                </button>
+              ) : null}
+            </div>
           </div>
         </Surface>
       ) : null}

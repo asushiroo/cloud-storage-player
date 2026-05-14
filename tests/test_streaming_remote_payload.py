@@ -100,6 +100,27 @@ def test_stream_reuses_prefetched_first_remote_segment_without_double_download(m
     assert len(download_calls) == 1
 
 
+def test_stream_can_start_from_remote_only_without_local_cache(monkeypatch, tmp_path: Path) -> None:
+    settings = build_settings(tmp_path)
+    plaintext = b"abcdefghijklmnopqrstuvwxyz0123456789"
+    video = _create_remote_only_segment_video(settings, plaintext=plaintext)
+    storage = MockStorageBackend(settings.mock_storage_dir)
+
+    class TrackingStorage:
+        def download_bytes(self, remote_path: str) -> bytes:
+            return storage.download_bytes(remote_path)
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr("app.services.streaming.build_storage_backend", lambda _settings: TrackingStorage())
+
+    payload = prepare_video_stream(settings, video_id=video.id, range_header="bytes=0-15")
+    streamed = b"".join(iter_video_stream(payload))
+
+    assert streamed == plaintext[:16]
+
+
 def _create_remote_only_segment_video(settings: Settings, *, plaintext: bytes):
     key = load_or_create_content_key(settings)
     encrypted = encrypt_segment(plaintext, key, nonce=b"123456789012")
