@@ -435,3 +435,7 @@ uv run cloud-storage-player-baidu-smoke --source-path tmp/rieri.mp4
 - Library page batch expansion size is now `6` (was `12`) to improve scroll restoration precision when rebuilding list height from memory.
 - Library memory persistence now tracks the last known scroll position continuously and reuses that value during route unmount, preventing detail-page back navigation from overwriting memory with a stale scroll offset.
 - Recommendation page content shells now use fluid width (`width: 100%` + `max-width: 90vw`), so both "recent watch" and lower recommendation sections resize with viewport width consistently.
+## 2026-05-16 Recommendation Width Follow-Up
+- Root cause was not `body`/`main`, but `.library-content-shell` as a grid container using implicit track sizing; child max-content width could force the single column wider than the shell on narrow viewports.
+- Added an explicit track (`grid-template-columns: minmax(0, 1fr)`) and direct-child shrink guard (`.library-content-shell > * { min-width: 0; }`) so recommendation sections remain width-bound to the shell.
+- Verified with Playwright across multiple widths (1720/1440/1280/1100/980/900/820/768/640): `html.scrollWidth` now equals viewport width and recommendation secondary grid width follows shell width without page-level overflow.
