@@ -792,7 +792,8 @@ h2 {
 
 .library-banner-shell,
 .library-content-shell {
-  width: 90vw;
+  width: 100%;
+  max-width: 90vw;
   margin: 0 auto;
 }
 

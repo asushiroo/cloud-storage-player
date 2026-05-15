@@ -9,7 +9,7 @@ import { useRequireSession } from "../hooks/session";
 import { loadLibraryPageMemory, saveLibraryPageMemory } from "../utils/libraryMemory";
 import { expandTagValue } from "../utils/tagHierarchy";
 
-const LIBRARY_PAGE_SIZE = 12;
+const LIBRARY_PAGE_SIZE = 6;
 
 export function LibraryPage() {
   const session = useRequireSession();
@@ -29,6 +29,7 @@ interface LibraryPageContentProps {
 
 function LibraryPageContent({ appliedSearch }: LibraryPageContentProps) {
   const initialMemoryRef = useRef(loadLibraryPageMemory(appliedSearch));
+  const lastKnownScrollYRef = useRef(initialMemoryRef.current?.scrollY ?? 0);
   const [activePrimaryTag, setActivePrimaryTag] = useState<string | undefined>(() => initialMemoryRef.current?.activePrimaryTag);
   const [activeSecondaryTag, setActiveSecondaryTag] = useState<string | undefined>(() => initialMemoryRef.current?.activeSecondaryTag);
   const [visibleCount, setVisibleCount] = useState(() =>
@@ -109,13 +110,16 @@ function LibraryPageContent({ appliedSearch }: LibraryPageContentProps) {
   const visibleVideos = filteredVideos.slice(0, visibleCount);
   const hasMoreVisibleVideos = visibleVideos.length < filteredVideos.length;
 
-  const saveMemorySnapshot = useCallback(() => {
+  const saveMemorySnapshot = useCallback((captureCurrentScroll = true) => {
+    if (captureCurrentScroll) {
+      lastKnownScrollYRef.current = window.scrollY;
+    }
     saveLibraryPageMemory({
       search: appliedSearch,
       activePrimaryTag,
       activeSecondaryTag,
       visibleCount,
-      scrollY: window.scrollY,
+      scrollY: lastKnownScrollYRef.current,
     });
   }, [activePrimaryTag, activeSecondaryTag, appliedSearch, visibleCount]);
 
@@ -179,17 +183,28 @@ function LibraryPageContent({ appliedSearch }: LibraryPageContentProps) {
     if (pendingScrollRestoreRef.current) {
       return;
     }
-    saveMemorySnapshot();
+    saveMemorySnapshot(true);
   }, [activePrimaryTag, activeSecondaryTag, appliedSearch, saveMemorySnapshot, visibleCount]);
 
   useEffect(() => {
-    window.addEventListener("pagehide", saveMemorySnapshot);
+    const handlePageHide = () => {
+      saveMemorySnapshot(true);
+    };
+    const trackScroll = () => {
+      lastKnownScrollYRef.current = window.scrollY;
+    };
+
+    trackScroll();
+    window.addEventListener("scroll", trackScroll, { passive: true });
+    window.addEventListener("pagehide", handlePageHide);
+
     return () => {
       if (restoreFrameRef.current !== null) {
         window.cancelAnimationFrame(restoreFrameRef.current);
       }
-      saveMemorySnapshot();
-      window.removeEventListener("pagehide", saveMemorySnapshot);
+      saveMemorySnapshot(false);
+      window.removeEventListener("scroll", trackScroll);
+      window.removeEventListener("pagehide", handlePageHide);
     };
   }, [saveMemorySnapshot]);
 

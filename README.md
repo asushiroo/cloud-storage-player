@@ -431,3 +431,7 @@ uv run cloud-storage-player-baidu-smoke --source-path tmp/rieri.mp4
 - Refined cached-video card behavior on the management page: first click now arms the card, delete/guide UI auto-hides after 2 seconds, and the delete button style was adjusted to be less intrusive.
 - Updated player-page similar recommendations to a fixed one-row, four-column display and limited rendering to four items.
 - Added an extra overflow-safe text wrap guard for recommendation secondary cards on narrow viewports.
+## 2026-05-15 Problem.md Follow-Up 4
+- Library page batch expansion size is now `6` (was `12`) to improve scroll restoration precision when rebuilding list height from memory.
+- Library memory persistence now tracks the last known scroll position continuously and reuses that value during route unmount, preventing detail-page back navigation from overwriting memory with a stale scroll offset.
+- Recommendation page content shells now use fluid width (`width: 100%` + `max-width: 90vw`), so both "recent watch" and lower recommendation sections resize with viewport width consistently.
