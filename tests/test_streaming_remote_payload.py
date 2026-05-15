@@ -121,7 +121,7 @@ def test_stream_can_start_from_remote_only_without_local_cache(monkeypatch, tmp_
     assert streamed == plaintext[:16]
 
 
-def test_stream_cache_write_enforces_cache_limit(monkeypatch, tmp_path: Path) -> None:
+def test_stream_cache_write_defers_cache_limit_until_flush(monkeypatch, tmp_path: Path) -> None:
     settings = build_settings(tmp_path)
     plaintext = b"0123456789abcdefghijklmnopqrstuvwxyz"
     video = _create_remote_only_segment_video(settings, plaintext=plaintext)
@@ -140,12 +140,26 @@ def test_stream_cache_write_enforces_cache_limit(monkeypatch, tmp_path: Path) ->
         return None
 
     monkeypatch.setattr("app.services.streaming.build_storage_backend", lambda _settings: TrackingStorage())
-    monkeypatch.setattr("app.services.cache_eviction.enforce_cache_limit", fake_enforce_cache_limit)
+    monkeypatch.setattr("app.services.playback_cache_flush.enforce_cache_limit", fake_enforce_cache_limit)
 
     payload = prepare_video_stream(settings, video_id=video.id, range_header="bytes=0-15")
     streamed = b"".join(iter_video_stream(payload))
 
     assert streamed == plaintext[:16]
+    assert eviction_calls == []
+
+    from app.services.playback_cache_flush import PlaybackCacheFlushRegistry
+
+    registry = PlaybackCacheFlushRegistry(settings)
+    import app.services.segment_prefetch as segment_prefetch_service
+
+    previous_registry = getattr(segment_prefetch_service, "_playback_cache_registry")
+    segment_prefetch_service.set_playback_cache_registry(registry)
+    try:
+        registry.flush_video(video_id=video.id, segment_indexes=[0])
+    finally:
+        segment_prefetch_service.set_playback_cache_registry(previous_registry)
+
     assert eviction_calls
     assert {video.id} in eviction_calls
 

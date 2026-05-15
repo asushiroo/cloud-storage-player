@@ -35,6 +35,12 @@ class WatchHeartbeatResult:
     video: Video
 
 
+@dataclass(slots=True)
+class SimilarVideoMatch:
+    video: Video
+    similarity_score: float
+
+
 def record_watch_heartbeat(
     settings: Settings,
     *,
@@ -80,6 +86,25 @@ def record_watch_heartbeat(
 
     updated_video = recalculate_video_analytics(settings, video_id=video_id)
     return WatchHeartbeatResult(session_token=token, video=updated_video)
+
+
+def record_watch_flush(
+    settings: Settings,
+    *,
+    video_id: int,
+    session_token: str | None,
+    position_seconds: float,
+    watched_seconds_delta: float,
+    completed: bool,
+) -> WatchHeartbeatResult:
+    return record_watch_heartbeat(
+        settings,
+        video_id=video_id,
+        session_token=session_token,
+        position_seconds=position_seconds,
+        watched_seconds_delta=watched_seconds_delta,
+        completed=completed,
+    )
 
 
 def recalculate_video_analytics(settings: Settings, *, video_id: int) -> Video:
@@ -214,6 +239,38 @@ def build_recommendation_shelf(settings: Settings) -> RecommendationShelf:
     )
 
 
+def find_similar_videos(
+    settings: Settings,
+    *,
+    video_id: int,
+    limit: int = 12,
+) -> list[Video]:
+    videos = list_videos(settings)
+    current = next((video for video in videos if video.id == video_id), None)
+    if current is None:
+        raise ValueError(f"Video not found: {video_id}")
+
+    matches: list[SimilarVideoMatch] = []
+    for candidate in videos:
+        if candidate.id == current.id:
+            continue
+        similarity_score = _compute_similarity_score(current, candidate)
+        if similarity_score <= 0:
+            continue
+        matches.append(SimilarVideoMatch(video=candidate, similarity_score=similarity_score))
+
+    matches.sort(
+        key=lambda item: (
+            -item.similarity_score,
+            -item.video.recommendation_score,
+            -item.video.popularity_score,
+            item.video.title.casefold(),
+            item.video.id,
+        )
+    )
+    return [match.video for match in matches[:limit]]
+
+
 def refresh_recommendation_analytics(settings: Settings) -> None:
     for video in list_videos(settings):
         recalculate_video_analytics(settings, video_id=video.id)
@@ -280,7 +337,7 @@ def _refresh_all_recommendation_scores(settings: Settings) -> None:
             0.65 * tag_match_score
             + 0.20 * exploration_score
             + 0.10 * video.popularity_score
-            + 0.05 * _clamp(video.like_count / 99.0, 0.0, 1.0)
+            + 0.02 * _clamp(video.like_count / 99.0, 0.0, 1.0)
         )
         novelty_factor = _novelty_factor(video.valid_play_count)
         recommendation_score = _clamp(base_recommendation_score * novelty_factor, 0.0, 1.0)
@@ -414,6 +471,35 @@ def _compute_cache_priority(
     watched_penalty = min(valid_play_count * 0.25, 0.8)
     like_boost = _clamp(like_count / 99.0, 0.0, 1.0) * 0.15
     return _clamp(0.50 * recommendation_score + 0.35 * resume_score + like_boost - watched_penalty, 0.0, 1.0)
+
+
+def _compute_similarity_score(current: Video, candidate: Video) -> float:
+    current_primary, current_secondary = _split_video_tags(current)
+    candidate_primary, candidate_secondary = _split_video_tags(candidate)
+    primary_score = _jaccard_similarity(current_primary, candidate_primary)
+    secondary_score = _jaccard_similarity(current_secondary, candidate_secondary)
+    if primary_score <= 0 and secondary_score <= 0:
+        return 0.0
+    return _clamp(
+        PRIMARY_TAG_WEIGHT * primary_score
+        + SECONDARY_TAG_WEIGHT * secondary_score
+        + 0.10 * candidate.popularity_score
+        + 0.05 * candidate.interest_score,
+        0.0,
+        1.5,
+    )
+
+
+def _jaccard_similarity(left: list[str], right: list[str]) -> float:
+    left_set = {value.casefold() for value in left if value.strip()}
+    right_set = {value.casefold() for value in right if value.strip()}
+    if not left_set or not right_set:
+        return 0.0
+    intersection = len(left_set & right_set)
+    union = len(left_set | right_set)
+    if union <= 0:
+        return 0.0
+    return intersection / union
 
 
 def _build_highlight_heatmap(

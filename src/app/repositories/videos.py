@@ -20,6 +20,7 @@ VIDEO_SELECT_SQL = """
            videos.source_path,
            videos.tags_json,
            videos.content_fingerprint,
+           videos.is_visible,
            videos.manifest_sync_dirty,
            videos.manifest_sync_requested_at,
            videos.valid_play_count,
@@ -53,8 +54,11 @@ def list_videos(
     *,
     q: str | None = None,
     tag: str | None = None,
+    include_hidden: bool = False,
 ) -> list[Video]:
     query = VIDEO_SELECT_SQL
+    if not include_hidden:
+        query += " WHERE videos.is_visible = 1"
     query += " GROUP BY videos.id ORDER BY videos.created_at DESC, videos.id DESC"
 
     with connect_database(settings) as connection:
@@ -90,6 +94,7 @@ def create_video(
     manifest_path: str | None = None,
     source_path: str | None = None,
     content_fingerprint: str | None = None,
+    is_visible: bool = True,
 ) -> Video:
     with connect_database(settings) as connection:
         cursor = connection.execute(
@@ -104,9 +109,10 @@ def create_video(
                 manifest_path,
                 source_path,
                 tags_json,
-                content_fingerprint
+                content_fingerprint,
+                is_visible
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 title,
@@ -119,6 +125,7 @@ def create_video(
                 source_path,
                 encode_tags(tags),
                 content_fingerprint,
+                int(is_visible),
             ),
         )
         connection.commit()
@@ -255,6 +262,7 @@ def update_video_sync_metadata(
                 source_path = ?,
                 tags_json = ?,
                 content_fingerprint = ?,
+                is_visible = 1,
                 manifest_sync_dirty = 0
             WHERE id = ?
             """,
@@ -317,6 +325,7 @@ def update_video_fields(
     title: str,
     tags: list[str] | None,
     content_fingerprint: str | None | _UnchangedValue = _UNCHANGED,
+    is_visible: bool | _UnchangedValue = _UNCHANGED,
 ) -> Video:
     assignments = [
         "title = ?",
@@ -326,6 +335,9 @@ def update_video_fields(
     if not isinstance(content_fingerprint, _UnchangedValue):
         assignments.append("content_fingerprint = ?")
         parameters.append(content_fingerprint)
+    if not isinstance(is_visible, _UnchangedValue):
+        assignments.append("is_visible = ?")
+        parameters.append(int(is_visible))
 
     with connect_database(settings) as connection:
         connection.execute(
@@ -335,6 +347,48 @@ def update_video_fields(
             WHERE id = ?
             """,
             (*parameters, video_id),
+        )
+        connection.commit()
+        row = _fetch_video_row(connection, video_id)
+
+    return _row_to_video(row)
+
+
+def update_video_import_metadata(
+    settings: Settings,
+    video_id: int,
+    *,
+    title: str,
+    mime_type: str,
+    size: int,
+    duration_seconds: float | None,
+    source_path: str | None,
+    tags: list[str] | None,
+    is_visible: bool,
+) -> Video:
+    with connect_database(settings) as connection:
+        connection.execute(
+            """
+            UPDATE videos
+            SET title = ?,
+                mime_type = ?,
+                size = ?,
+                duration_seconds = ?,
+                source_path = ?,
+                tags_json = ?,
+                is_visible = ?
+            WHERE id = ?
+            """,
+            (
+                title,
+                mime_type,
+                size,
+                duration_seconds,
+                source_path,
+                encode_tags(tags),
+                int(is_visible),
+                video_id,
+            ),
         )
         connection.commit()
         row = _fetch_video_row(connection, video_id)
@@ -526,6 +580,27 @@ def increment_video_like_count(
     return _row_to_video(row)
 
 
+def set_video_visibility(
+    settings: Settings,
+    video_id: int,
+    *,
+    is_visible: bool,
+) -> Video:
+    with connect_database(settings) as connection:
+        connection.execute(
+            """
+            UPDATE videos
+            SET is_visible = ?
+            WHERE id = ?
+            """,
+            (int(is_visible), video_id),
+        )
+        connection.commit()
+        row = _fetch_video_row(connection, video_id)
+
+    return _row_to_video(row)
+
+
 def _fetch_video_row(connection: sqlite3.Connection, video_id: int) -> sqlite3.Row | None:
     return connection.execute(
         f"""
@@ -552,6 +627,7 @@ def _row_to_video(row: sqlite3.Row) -> Video:
         segment_count=row["segment_count"],
         tags=decode_tags(row["tags_json"]),
         content_fingerprint=row["content_fingerprint"],
+        is_visible=bool(row["is_visible"]),
         manifest_sync_dirty=bool(row["manifest_sync_dirty"]),
         manifest_sync_requested_at=row["manifest_sync_requested_at"],
         valid_play_count=row["valid_play_count"],

@@ -304,6 +304,78 @@ def test_video_watch_endpoint_updates_analytics_and_recommendation_shelves(tmp_p
     assert any(item["title"] == "Similar Video" for item in shelf_payload["recommended"])
 
 
+def test_video_watch_flush_endpoint_updates_analytics_once(tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    video = create_video(
+        settings,
+        title="Flush Watch Video",
+        mime_type="video/mp4",
+        size=100,
+        duration_seconds=100,
+        tags=["Actor Flush", "secondary:Drama"],
+    )
+    login(client, password)
+
+    response = client.post(
+        f"/api/videos/{video.id}/watch/flush",
+        json={
+            "position_seconds": 42,
+            "watched_seconds_delta": 42,
+            "completed": False,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["video"]["last_position_seconds"] == 42
+    assert payload["video"]["total_watch_seconds"] == 42
+    assert payload["session_token"]
+
+
+def test_similar_videos_endpoint_prefers_tag_similarity(tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    current = create_video(
+        settings,
+        title="Current Video",
+        mime_type="video/mp4",
+        size=100,
+        duration_seconds=100,
+        tags=["Actor A", "secondary:Action", "secondary:Mecha"],
+    )
+    create_video(
+        settings,
+        title="Most Similar",
+        mime_type="video/mp4",
+        size=100,
+        duration_seconds=100,
+        tags=["Actor A", "secondary:Action", "secondary:Mecha"],
+    )
+    create_video(
+        settings,
+        title="Less Similar",
+        mime_type="video/mp4",
+        size=100,
+        duration_seconds=100,
+        tags=["Actor A", "secondary:Comedy"],
+    )
+    create_video(
+        settings,
+        title="Unrelated",
+        mime_type="video/mp4",
+        size=100,
+        duration_seconds=100,
+        tags=["Actor B", "secondary:Slice of Life"],
+    )
+    login(client, password)
+
+    response = client.get(f"/api/videos/{current.id}/similar")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["title"] for item in payload["items"][:2]] == ["Most Similar", "Less Similar"]
+    assert all(item["id"] != current.id for item in payload["items"])
+
+
 def test_video_like_endpoint_caps_at_99_and_updates_payload(tmp_path: Path) -> None:
     client, settings, password = build_client(tmp_path)
     video = create_video(

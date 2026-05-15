@@ -333,6 +333,35 @@ def test_import_of_non_video_file_returns_failed_job(tmp_path: Path) -> None:
     assert failed_payload["error_message"] is not None
 
 
+def test_failed_import_job_can_retry_in_place(tmp_path: Path) -> None:
+    client, _, password = build_client(tmp_path)
+    bad_source_path = tmp_path / "bad.txt"
+    bad_source_path.write_text("hello", encoding="utf-8")
+    login(client, password)
+
+    create_response = client.post("/api/imports", json={"source_path": str(bad_source_path)})
+    assert create_response.status_code == 201
+    job_id = create_response.json()["id"]
+
+    failed_payload = wait_for_job_status(client, job_id, expected_status="failed")
+
+    good_source_path = create_sample_video(tmp_path / "good.mp4")
+    bad_source_path.unlink()
+    good_source_path.replace(bad_source_path)
+
+    retry_response = client.post(f"/api/imports/{job_id}/retry")
+    assert retry_response.status_code == 200
+    assert retry_response.json()["id"] == job_id
+    assert retry_response.json()["status"] == "queued"
+
+    completed_payload = wait_for_job_status(client, job_id, expected_status="completed")
+    assert completed_payload["video_id"] is not None
+
+    videos_response = client.get("/api/videos")
+    assert videos_response.status_code == 200
+    assert len(videos_response.json()) == 1
+
+
 def test_import_still_succeeds_when_cover_extraction_fails(tmp_path: Path) -> None:
     client, _, password = build_client(tmp_path, ffmpeg_binary="missing-ffmpeg-for-test")
     source_path = create_sample_video(tmp_path / "no-cover.mp4")

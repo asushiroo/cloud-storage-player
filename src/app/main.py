@@ -20,6 +20,8 @@ from app.core.config import Settings, get_settings
 from app.db.schema import initialize_database
 from app.services.import_worker import ImportWorker
 from app.services.manifest_sync_scheduler import ManifestSyncScheduler
+from app.services.playback_cache_flush import PlaybackCacheFlushRegistry
+from app.services.segment_prefetch import set_playback_cache_registry
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -41,6 +43,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = app_settings
     app.state.import_worker = ImportWorker(app_settings)
     app.state.manifest_sync_scheduler = ManifestSyncScheduler(app_settings)
+    app.state.playback_cache_flush_registry = PlaybackCacheFlushRegistry(app_settings)
+    set_playback_cache_registry(app.state.playback_cache_flush_registry)
     app.add_middleware(
         SessionMiddleware,
         secret_key=app_settings.session_secret,

@@ -9,7 +9,7 @@ from app.core.keys import load_content_key, load_or_create_content_key
 from app.core.tags import normalize_tags
 from app.media.chunker import iter_file_chunks
 from app.media.covers import CoverExtractionError, extract_poster_at_ratio
-from app.media.crypto import encrypt_segment
+from app.media.crypto import decode_token, encrypt_segment
 from app.media.probe import MediaProbeError, probe_video
 from app.models.imports import ImportJob
 from app.models.library import Video
@@ -23,10 +23,13 @@ from app.repositories.import_jobs import (
     mark_import_job_running,
     update_import_job_progress,
 )
-from app.repositories.video_segments import NewVideoSegment, create_video_segments
+from app.repositories.video_segments import NewVideoSegment, create_video_segments, list_video_segments
 from app.repositories.videos import (
     create_video,
+    get_video,
     get_video_by_content_fingerprint,
+    set_video_visibility,
+    update_video_import_metadata,
     update_video_artwork_paths,
     update_video_fields,
     update_video_manifest_path,
@@ -172,8 +175,9 @@ def process_import_job(settings: Settings, job_id: int) -> ImportJob:
     try:
         throw_if_cancel_requested(settings, job.id)
         metadata = probe_video(source, ffprobe_binary=settings.ffprobe_binary)
-        video = _create_video_from_probe(
+        video = _reuse_or_create_video_from_probe(
             settings,
+            job=job,
             title=requested_title or source.stem,
             source_path=str(source),
             mime_type=metadata.mime_type,
@@ -228,18 +232,19 @@ def process_import_job(settings: Settings, job_id: int) -> ImportJob:
     except MediaProbeError as exc:
         if video is not None:
             try:
-                delete_library_video(settings, video.id)
+                _preserve_failed_import_state(settings, video.id, job_id=job.id)
             except Exception:
                 pass
         return mark_import_job_failed(settings, job.id, error_message=str(exc))
     except Exception as exc:
         if video is not None:
             try:
-                delete_library_video(settings, video.id)
+                _preserve_failed_import_state(settings, video.id, job_id=job.id)
             except Exception:
                 pass
         return mark_import_job_failed(settings, job.id, error_message=str(exc))
 
+    _finalize_successful_retry(settings, job.id, video.id)
     return mark_import_job_completed(settings, job.id, video_id=video.id)
 
 
@@ -299,6 +304,43 @@ def _create_video_from_probe(
     )
 
 
+def _reuse_or_create_video_from_probe(
+    settings: Settings,
+    *,
+    job: ImportJob,
+    title: str,
+    source_path: str,
+    mime_type: str,
+    size: int,
+    duration_seconds: float | None,
+    tags: list[str],
+) -> Video:
+    if job.target_video_id is not None:
+        existing = get_video(settings, job.target_video_id)
+        if existing is not None:
+            return update_video_import_metadata(
+                settings,
+                existing.id,
+                title=title,
+                mime_type=mime_type,
+                size=size,
+                duration_seconds=duration_seconds,
+                source_path=source_path,
+                tags=tags,
+                is_visible=False,
+            )
+    video = _create_video_from_probe(
+        settings,
+        title=title,
+        source_path=source_path,
+        mime_type=mime_type,
+        size=size,
+        duration_seconds=duration_seconds,
+        tags=tags,
+    )
+    return set_video_visibility(settings, video.id, is_visible=False)
+
+
 def _maybe_extract_cover(
     settings: Settings,
     *,
@@ -341,6 +383,7 @@ def _materialize_encrypted_segments(
     job_id: int,
 ) -> list[VideoSegment]:
     content_key = load_or_create_content_key(settings)
+    existing_segments = {segment.segment_index: segment for segment in list_video_segments(settings, video_id=video.id)}
     video_segment_dir = local_segment_path(
         settings,
         video_id=video.id,
@@ -349,8 +392,28 @@ def _materialize_encrypted_segments(
     video_segment_dir.mkdir(parents=True, exist_ok=True)
 
     segments_to_insert: list[NewVideoSegment] = []
+    resumed_segments: list[VideoSegment] = []
     for chunk in iter_file_chunks(source, segment_size=settings.segment_size_bytes):
         throw_if_cancel_requested(settings, job_id)
+        existing = existing_segments.get(chunk.index)
+        if existing is not None:
+            segment_path = resolve_segment_local_staging_path(
+                settings,
+                video_id=video.id,
+                segment_index=chunk.index,
+                local_staging_path=existing.local_staging_path,
+            )
+            if not segment_path.exists():
+                segment_path.parent.mkdir(parents=True, exist_ok=True)
+                encrypted = encrypt_segment(
+                    chunk.payload,
+                    content_key,
+                    nonce=decode_token(existing.nonce_b64),
+                )
+                segment_path.write_bytes(encrypted.ciphertext + encrypted.tag)
+            resumed_segments.append(existing)
+            continue
+
         encrypted = encrypt_segment(chunk.payload, content_key)
         segment_path = local_segment_path(settings, video_id=video.id, segment_index=chunk.index)
         segment_path.write_bytes(encrypted.ciphertext + encrypted.tag)
@@ -373,11 +436,14 @@ def _materialize_encrypted_segments(
             )
         )
 
-    return create_video_segments(
+    all_segments = create_video_segments(
         settings,
         video_id=video.id,
         segments=segments_to_insert,
     )
+    if segments_to_insert:
+        return all_segments
+    return sorted(resumed_segments, key=lambda segment: segment.segment_index)
 
 
 def _write_manifest(
@@ -592,3 +658,35 @@ def _enforce_post_import_cache_limit(settings: Settings, *, current_video_id: in
         settings,
         protect_video_ids={current_video_id},
     )
+
+
+def _preserve_failed_import_state(settings: Settings, video_id: int, *, job_id: int) -> None:
+    set_video_visibility(settings, video_id, is_visible=False)
+    from app.db.connection import connect_database
+
+    with connect_database(settings) as connection:
+        connection.execute(
+            """
+            UPDATE import_jobs
+            SET target_video_id = ?
+            WHERE id = ?
+            """,
+            (video_id, job_id),
+        )
+        connection.commit()
+
+
+def _finalize_successful_retry(settings: Settings, job_id: int, video_id: int) -> None:
+    set_video_visibility(settings, video_id, is_visible=True)
+    from app.db.connection import connect_database
+
+    with connect_database(settings) as connection:
+        connection.execute(
+            """
+            UPDATE import_jobs
+            SET target_video_id = NULL
+            WHERE id = ?
+            """,
+            (job_id,),
+        )
+        connection.commit()

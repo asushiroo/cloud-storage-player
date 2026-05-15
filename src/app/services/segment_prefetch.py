@@ -32,6 +32,7 @@ _cache_write_executor = ThreadPoolExecutor(
     max_workers=_CACHE_WRITE_WORKER_COUNT,
     thread_name_prefix="cloud-storage-player-cache-write",
 )
+_playback_cache_registry = None
 
 
 @dataclass(slots=True)
@@ -307,7 +308,7 @@ def persist_segment_payload(
     segment_path = _resolve_segment_cache_path(settings, segment)
     if segment_path.exists() and segment_path.is_file():
         _ensure_segment_local_staging_path(settings, segment, segment_path)
-        _refresh_cache_entry(settings, video_id=segment.video_id)
+        _note_cached_segment(segment.video_id, segment.segment_index)
         return
 
     segment_path.parent.mkdir(parents=True, exist_ok=True)
@@ -319,8 +320,7 @@ def persist_segment_payload(
         temp_path.unlink(missing_ok=True)
 
     _ensure_segment_local_staging_path(settings, segment, segment_path)
-    _refresh_cache_entry(settings, video_id=segment.video_id)
-    _enforce_cache_limit_after_cache_write(settings, video_id=segment.video_id)
+    _note_cached_segment(segment.video_id, segment.segment_index)
 
 
 def queue_segment_cache_write(
@@ -380,23 +380,23 @@ def _current_time_millis() -> int:
     return time_ns() // 1_000_000
 
 
-def _refresh_cache_entry(settings: Settings, *, video_id: int) -> None:
-    from app.services.cache import refresh_video_cache_entry
+def set_playback_cache_registry(registry) -> None:
+    global _playback_cache_registry
+    _playback_cache_registry = registry
 
-    refresh_video_cache_entry(settings, video_id=video_id)
 
-
-def _enforce_cache_limit_after_cache_write(settings: Settings, *, video_id: int) -> None:
-    from app.services.cache_eviction import enforce_cache_limit
-
+def _note_cached_segment(video_id: int, segment_index: int) -> None:
+    if _playback_cache_registry is None:
+        return
     try:
-        enforce_cache_limit(
-            settings,
-            protect_video_ids={video_id},
+        _playback_cache_registry.note_cached_segment(
+            video_id=video_id,
+            segment_index=segment_index,
         )
     except Exception as exc:
         logger.warning(
-            "Failed to enforce cache limit after caching segment for video %s: %s",
+            "Failed to note streamed segment cache state for video %s segment %s: %s",
             video_id,
+            segment_index,
             exc,
         )

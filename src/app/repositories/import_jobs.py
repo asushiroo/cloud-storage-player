@@ -46,6 +46,10 @@ class ImportJobCancellationNotAllowedError(RuntimeError):
     """Raised when a job type does not support user cancellation."""
 
 
+class ImportJobRetryNotAllowedError(RuntimeError):
+    """Raised when a job cannot be retried in its current state."""
+
+
 def create_import_job(
     settings: Settings,
     *,
@@ -280,13 +284,14 @@ def update_import_job_progress(settings: Settings, job_id: int, *, progress_perc
 
 
 def mark_import_job_failed(settings: Settings, job_id: int, *, error_message: str) -> ImportJob:
+    job = get_import_job(settings, job_id)
     return _update_import_job(
         settings,
         job_id,
         status="failed",
         progress_percent=0,
         error_message=error_message,
-        video_id=None,
+        video_id=job.video_id if job else None,
         cancel_requested=False,
     )
 
@@ -382,6 +387,40 @@ def request_cancel_all_active_jobs(settings: Settings) -> int:
         )
         connection.commit()
     return int(queued_cursor.rowcount) + int(running_cursor.rowcount)
+
+
+def retry_import_job(settings: Settings, job_id: int) -> ImportJob | None:
+    job = get_import_job(settings, job_id)
+    if job is None:
+        return None
+    if job.status not in FAILED_JOB_STATUSES:
+        raise ImportJobRetryNotAllowedError("Only failed or cancelled jobs can be retried.")
+    if job.job_kind == "delete":
+        raise ImportJobRetryNotAllowedError("Delete jobs cannot be retried.")
+
+    with connect_database(settings) as connection:
+        connection.execute(
+            """
+            UPDATE import_jobs
+            SET status = 'queued',
+                progress_percent = 0,
+                error_message = NULL,
+                cancel_requested = 0,
+                remote_bytes_transferred = 0,
+                remote_transfer_millis = 0,
+                remote_transfer_started_at_millis = NULL,
+                remote_transfer_updated_at_millis = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (job_id,),
+        )
+        connection.commit()
+        row = _fetch_job_row(connection, job_id)
+
+    if row is None:
+        raise ImportJobNotFoundError(f"Import job does not exist: {job_id}")
+    return _row_to_import_job(row)
 
 
 def delete_import_jobs_by_statuses(settings: Settings, *, statuses: Sequence[str]) -> int:

@@ -6,6 +6,7 @@ import { Surface } from "../components/Surface";
 import { TagChip } from "../components/TagChip";
 import { VideoGridCard } from "../components/VideoGridCard";
 import { useRequireSession } from "../hooks/session";
+import { loadLibraryPageMemory, saveLibraryPageMemory } from "../utils/libraryMemory";
 import { expandTagValue } from "../utils/tagHierarchy";
 
 const LIBRARY_PAGE_SIZE = 12;
@@ -17,6 +18,8 @@ export function LibraryPage() {
   const [activeSecondaryTag, setActiveSecondaryTag] = useState<string | undefined>();
   const [visibleCount, setVisibleCount] = useState(LIBRARY_PAGE_SIZE);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const didRestoreRef = useRef(false);
+  const lastFilterKeyRef = useRef<string | null>(null);
   const appliedSearch = searchParams.get("q")?.trim() ?? "";
 
   const videosQuery = useQuery({
@@ -90,8 +93,55 @@ export function LibraryPage() {
   const hasMoreVisibleVideos = visibleVideos.length < filteredVideos.length;
 
   useEffect(() => {
-    setVisibleCount(LIBRARY_PAGE_SIZE);
+    if (didRestoreRef.current) {
+      return;
+    }
+    const memory = loadLibraryPageMemory(appliedSearch);
+    if (!memory) {
+      didRestoreRef.current = true;
+      return;
+    }
+    setActivePrimaryTag(memory.activePrimaryTag);
+    setActiveSecondaryTag(memory.activeSecondaryTag);
+    setVisibleCount(Math.max(memory.visibleCount, LIBRARY_PAGE_SIZE));
+    didRestoreRef.current = true;
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: memory.scrollY, behavior: "auto" });
+    });
+  }, [appliedSearch]);
+
+  useEffect(() => {
+    const filterKey = JSON.stringify([activePrimaryTag ?? null, activeSecondaryTag ?? null, appliedSearch]);
+    if (lastFilterKeyRef.current === null) {
+      lastFilterKeyRef.current = filterKey;
+      return;
+    }
+    if (lastFilterKeyRef.current !== filterKey) {
+      lastFilterKeyRef.current = filterKey;
+      setVisibleCount(LIBRARY_PAGE_SIZE);
+    }
   }, [activePrimaryTag, activeSecondaryTag, appliedSearch]);
+
+  useEffect(() => {
+    if (!didRestoreRef.current) {
+      return;
+    }
+    const writeMemory = () => {
+      saveLibraryPageMemory({
+        search: appliedSearch,
+        activePrimaryTag,
+        activeSecondaryTag,
+        visibleCount,
+        scrollY: window.scrollY,
+      });
+    };
+    writeMemory();
+    window.addEventListener("pagehide", writeMemory);
+    return () => {
+      writeMemory();
+      window.removeEventListener("pagehide", writeMemory);
+    };
+  }, [activePrimaryTag, activeSecondaryTag, appliedSearch, visibleCount]);
 
   useEffect(() => {
     if (!activePrimaryTag) {

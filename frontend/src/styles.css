@@ -450,6 +450,7 @@ h2 {
 .cache-card {
   display: grid;
   gap: 0.7rem;
+  cursor: pointer;
 }
 
 .cache-card-cover {
@@ -479,6 +480,14 @@ h2 {
   opacity: 1;
 }
 
+.cache-card.is-armed .cache-card-delete {
+  opacity: 1;
+}
+
+.cache-card.is-armed {
+  transform: translateY(-1px);
+}
+
 .cache-card-delete:disabled {
   cursor: not-allowed;
   opacity: 0.5;
@@ -488,6 +497,10 @@ h2 {
 .cache-card-meta {
   display: grid;
   gap: 0.25rem;
+}
+
+.cache-card-link {
+  display: inline-block;
 }
 
 .job-head {
@@ -1094,6 +1107,10 @@ h2 {
   .recommendation-secondary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .player-recommendation-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .management-grid {
@@ -1128,6 +1145,11 @@ h2 {
 .detail-cover-link {
   display: block;
   width: 100%;
+}
+
+.detail-cover .cover-card {
+  width: min(100%, 28rem);
+  margin: 0 auto;
 }
 
 .setting-input-shell {
@@ -1258,6 +1280,12 @@ h2 {
   object-fit: cover;
 }
 
+.player-recommendation-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
 @media (max-width: 560px) {
   .banner-carousel {
     --banner-card-width: min(72vw, 26rem);
@@ -1272,12 +1300,20 @@ h2 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .player-recommendation-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .cache-grid {
     grid-template-columns: 1fr;
   }
 
   .detail-layout {
     gap: 1rem;
+  }
+
+  .detail-cover .cover-card {
+    width: min(100%, 22rem);
   }
 
   .action-row > * {

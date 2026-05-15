@@ -1,18 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { fetchVideo, getStreamUrl, likeVideo, reportVideoWatchHeartbeat, updateVideoArtwork } from "../api/client";
+import { fetchSimilarVideos, fetchVideo, flushVideoCache, flushVideoWatch, getStreamUrl, likeVideo, updateVideoArtwork } from "../api/client";
 import { Surface } from "../components/Surface";
+import { VideoGridCard } from "../components/VideoGridCard";
 import { useRequireSession } from "../hooks/session";
-import type { ApiError, Video, VideoRecommendationShelf } from "../types/api";
+import type { ApiError, SimilarVideosResult, Video, VideoRecommendationShelf } from "../types/api";
 import { formatBytes, formatDuration } from "../utils/format";
 
 const POSTER_TARGET = { width: 1280, height: 720 };
 const DEFAULT_CROP = { zoom: 1, offsetX: 0, offsetY: 0 };
-const WATCH_HEARTBEAT_MS = 10_000;
 
 type CropConfig = typeof DEFAULT_CROP;
 type LikeOverlay = { id: number; delta: 1 | -1 };
+type PendingWatchState = {
+  watchedSecondsDelta: number;
+  positionSeconds: number;
+  completed: boolean;
+};
 
 function ThumbUpIcon() {
   return (
@@ -163,8 +168,15 @@ export function PlayerPage() {
   const session = useRequireSession();
   const queryClient = useQueryClient();
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const lastHeartbeatAtRef = useRef<number | null>(null);
-  const lastPlaybackPositionRef = useRef(0);
+  const lastObservedAtRef = useRef<number | null>(null);
+  const lastObservedPositionRef = useRef(0);
+  const flushStartedRef = useRef(false);
+  const pendingWatchRef = useRef<PendingWatchState>({
+    watchedSecondsDelta: 0,
+    positionSeconds: 0,
+    completed: false,
+  });
+  const pendingCachedSegmentIndexesRef = useRef<Set<number>>(new Set());
   const [capturedDataUrl, setCapturedDataUrl] = useState<string | null>(null);
   const [posterPreviewDataUrl, setPosterPreviewDataUrl] = useState<string | null>(null);
   const [posterCrop, setPosterCrop] = useState<CropConfig>(DEFAULT_CROP);
@@ -176,6 +188,11 @@ export function PlayerPage() {
   const videoQuery = useQuery({
     queryKey: ["video", videoId],
     queryFn: () => fetchVideo(videoId),
+    enabled: session.data?.authenticated === true && Number.isFinite(videoId),
+  });
+  const similarVideosQuery = useQuery({
+    queryKey: ["video", videoId, "similar"],
+    queryFn: () => fetchSimilarVideos(videoId),
     enabled: session.data?.authenticated === true && Number.isFinite(videoId),
   });
 
@@ -282,34 +299,19 @@ export function PlayerPage() {
     },
   });
 
-  const watchMutation = useMutation({
-    mutationFn: (payload: { positionSeconds: number; watchedSecondsDelta: number; completed?: boolean }) =>
-      reportVideoWatchHeartbeat({
-        videoId,
-        sessionToken: watchSessionToken,
-        positionSeconds: payload.positionSeconds,
-        watchedSecondsDelta: payload.watchedSecondsDelta,
-        completed: payload.completed,
-      }),
-    onSuccess: (result) => {
-      setWatchSessionToken(result.session_token);
-      refreshVideoCaches(result.video);
-    },
-  });
-
   useEffect(() => {
     const videoElement = videoRef.current;
     if (!videoElement || !Number.isFinite(videoId)) {
       return;
     }
 
-    const sendHeartbeat = (completed: boolean) => {
+    const collectPlayback = (completed: boolean) => {
       const now = Date.now();
-      const previousAt = lastHeartbeatAtRef.current;
-      const previousPosition = lastPlaybackPositionRef.current;
+      const previousAt = lastObservedAtRef.current;
+      const previousPosition = lastObservedPositionRef.current;
       const currentPosition = Math.max(videoElement.currentTime || 0, 0);
-      lastPlaybackPositionRef.current = currentPosition;
-      lastHeartbeatAtRef.current = now;
+      lastObservedPositionRef.current = currentPosition;
+      lastObservedAtRef.current = now;
       if (previousAt === null) {
         return;
       }
@@ -319,46 +321,107 @@ export function PlayerPage() {
       if (watchedSecondsDelta <= 0 && !completed) {
         return;
       }
-      watchMutation.mutate({
+      pendingWatchRef.current = {
+        watchedSecondsDelta: pendingWatchRef.current.watchedSecondsDelta + watchedSecondsDelta,
         positionSeconds: currentPosition,
-        watchedSecondsDelta,
-        completed,
-      });
+        completed: pendingWatchRef.current.completed || completed,
+      };
+    };
+
+    const collectCachedSegments = () => {
+      const ranges = videoRef.current?.buffered;
+      const currentVideo = videoQuery.data;
+      if (!ranges || !currentVideo || currentVideo.duration_seconds === null || currentVideo.duration_seconds <= 0) {
+        return;
+      }
+      const duration = currentVideo.duration_seconds;
+      for (let rangeIndex = 0; rangeIndex < ranges.length; rangeIndex += 1) {
+        const startRatio = ranges.start(rangeIndex) / duration;
+        const endRatio = ranges.end(rangeIndex) / duration;
+        const startIndex = Math.max(Math.floor(startRatio * currentVideo.segment_count), 0);
+        const endIndex = Math.min(Math.ceil(endRatio * currentVideo.segment_count), currentVideo.segment_count);
+        for (let segmentIndex = startIndex; segmentIndex < endIndex; segmentIndex += 1) {
+          pendingCachedSegmentIndexesRef.current.add(segmentIndex);
+        }
+      }
+    };
+
+    const flushPendingState = () => {
+      if (flushStartedRef.current) {
+        return;
+      }
+      flushStartedRef.current = true;
+      collectPlayback(videoElement.ended);
+      collectCachedSegments();
+      const pendingWatch = pendingWatchRef.current;
+      const cachedSegmentIndexes = [...pendingCachedSegmentIndexesRef.current].sort((left, right) => left - right);
+      if (pendingWatch.watchedSecondsDelta > 0 || pendingWatch.completed) {
+        void flushVideoWatch({
+          videoId,
+          sessionToken: watchSessionToken,
+          positionSeconds: pendingWatch.positionSeconds,
+          watchedSecondsDelta: pendingWatch.watchedSecondsDelta,
+          completed: pendingWatch.completed,
+        }).then((result) => {
+          setWatchSessionToken(result.session_token);
+          refreshVideoCaches(result.video);
+        });
+      }
+      if (cachedSegmentIndexes.length > 0) {
+        void flushVideoCache({ videoId, segmentIndexes: cachedSegmentIndexes }).then(async () => {
+          await queryClient.invalidateQueries({ queryKey: ["video", videoId] });
+          await queryClient.invalidateQueries({ queryKey: ["cache-summary"] });
+          await queryClient.invalidateQueries({ queryKey: ["cached-videos"] });
+        });
+      }
     };
 
     const handlePlay = () => {
-      lastHeartbeatAtRef.current = Date.now();
-      lastPlaybackPositionRef.current = Math.max(videoElement.currentTime || 0, 0);
+      lastObservedAtRef.current = Date.now();
+      lastObservedPositionRef.current = Math.max(videoElement.currentTime || 0, 0);
     };
     const handlePause = () => {
-      sendHeartbeat(false);
+      collectPlayback(false);
+      collectCachedSegments();
     };
     const handleSeeked = () => {
-      lastPlaybackPositionRef.current = Math.max(videoElement.currentTime || 0, 0);
-      lastHeartbeatAtRef.current = Date.now();
+      collectCachedSegments();
+      lastObservedPositionRef.current = Math.max(videoElement.currentTime || 0, 0);
+      lastObservedAtRef.current = Date.now();
     };
     const handleEnded = () => {
-      sendHeartbeat(true);
+      collectPlayback(true);
+      collectCachedSegments();
+      flushPendingState();
     };
-    const heartbeatTimer = window.setInterval(() => {
-      if (!videoElement.paused && !videoElement.ended) {
-        sendHeartbeat(false);
+    const handleProgress = () => {
+      collectCachedSegments();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        flushPendingState();
       }
-    }, WATCH_HEARTBEAT_MS);
+    };
 
     videoElement.addEventListener("play", handlePlay);
     videoElement.addEventListener("pause", handlePause);
     videoElement.addEventListener("seeked", handleSeeked);
     videoElement.addEventListener("ended", handleEnded);
+    videoElement.addEventListener("progress", handleProgress);
+    window.addEventListener("pagehide", flushPendingState);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      window.clearInterval(heartbeatTimer);
+      flushPendingState();
       videoElement.removeEventListener("play", handlePlay);
       videoElement.removeEventListener("pause", handlePause);
       videoElement.removeEventListener("seeked", handleSeeked);
       videoElement.removeEventListener("ended", handleEnded);
+      videoElement.removeEventListener("progress", handleProgress);
+      window.removeEventListener("pagehide", flushPendingState);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [videoId, watchMutation.mutate]);
+  }, [videoId, videoQuery.data, watchSessionToken, queryClient]);
 
   if (session.isLoading || (session.data?.authenticated !== true && !session.isError)) {
     return <p className="state-text">正在准备播放...</p>;
@@ -369,6 +432,8 @@ export function PlayerPage() {
   }
 
   const video = videoQuery.data;
+  const similarVideos = similarVideosQuery.data?.items ?? [];
+  const artworkVersionToken = Math.max(videoQuery.dataUpdatedAt, similarVideosQuery.dataUpdatedAt || 0);
   const captureCurrentFrame = () => {
     const element = videoRef.current;
     if (!element || element.readyState < 2 || element.videoWidth <= 0 || element.videoHeight <= 0) {
@@ -535,6 +600,22 @@ export function PlayerPage() {
           返回媒体库
         </Link>
       </div>
+
+      {similarVideos.length > 0 ? (
+        <Surface>
+          <div className="section-head">
+            <div>
+              <h2>相似推荐</h2>
+              <p className="muted">基于现有标签和观看偏好，优先推荐同类型的其他视频。</p>
+            </div>
+          </div>
+          <div className="player-recommendation-row top-gap">
+            {similarVideos.slice(0, 6).map((item) => (
+              <VideoGridCard key={`similar-${item.id}`} versionToken={artworkVersionToken} video={item} />
+            ))}
+          </div>
+        </Surface>
+      ) : null}
     </div>
   );
 }

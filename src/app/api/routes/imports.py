@@ -15,10 +15,12 @@ from app.api.schemas.imports import (
 )
 from app.repositories.import_jobs import (
     ImportJobCancellationNotAllowedError,
+    ImportJobRetryNotAllowedError,
     delete_completed_import_jobs,
     delete_failed_import_jobs,
     get_import_job,
     list_import_jobs,
+    retry_import_job,
     request_cancel_all_active_jobs,
     request_cancel_job,
 )
@@ -86,6 +88,23 @@ def cancel_import_job(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import job not found.")
+    return ImportJobResponse.model_validate(job)
+
+
+@router.post("/{job_id}/retry", response_model=ImportJobResponse)
+def retry_failed_import_job(
+    job_id: int,
+    request: Request,
+    _: None = Depends(require_authenticated),
+) -> ImportJobResponse:
+    settings = request.app.state.settings
+    try:
+        job = retry_import_job(settings, job_id)
+    except ImportJobRetryNotAllowedError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import job not found.")
+    request.app.state.import_worker.enqueue(job.id)
     return ImportJobResponse.model_validate(job)
 
 

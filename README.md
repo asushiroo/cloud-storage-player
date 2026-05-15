@@ -44,6 +44,12 @@
 - Added regression coverage for client-disconnect cleanup during `/api/videos/{id}/stream`.
 - Normalized `tests/` as an importable package and fixed segment-prefetch tests to use real video rows, so playback/prefetch regressions run reliably under `pytest`.
 
+## 2026-05-15 Plan.md Follow-Up
+- Failed import/cache jobs now expose retry support through `/api/imports/{job_id}/retry`; retries reuse the same job record and resume from preserved intermediate state when possible instead of forcing a brand-new task.
+- Playback watch progress and streamed-cache state are now buffered on the frontend and flushed once on leave/end through `/api/videos/{id}/watch/flush` and `/api/videos/{id}/cache/flush`, which removes the previous high-frequency watch/cache write pattern during playback.
+- Added `/api/videos/{id}/similar` and a new player-page recommendation row that prefers maximum tag similarity to recommend other same-type videos, while reducing the direct influence of likes on recommending the currently liked item itself.
+- Library page now remembers filter/expanded-count/scroll position for 10 minutes; cache cards now use a two-step interaction (show delete first, then navigate); failed tasks show retry; and the video detail page removes manifest/segment/poster text clutter while constraining portrait posters from overflowing the layout.
+
 ## 当前已实现
 
 - 问题修复（2026-05 Problem.md）

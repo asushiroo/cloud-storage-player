@@ -7,16 +7,17 @@ import { CoverCard } from "./CoverCard";
 interface VideoGridCardProps {
   video: Video;
   versionToken?: string | number;
+  onNavigate?: () => void;
 }
 
-export function VideoGridCard({ video, versionToken }: VideoGridCardProps) {
+export function VideoGridCard({ video, versionToken, onNavigate }: VideoGridCardProps) {
   const parsedTags = video.tags.flatMap(expandTagValue);
   const primaryTags = parsedTags.filter((tag) => tag.level === "primary" && tag.label).map((tag) => tag.label);
   const secondaryTags = parsedTags.filter((tag) => tag.level === "secondary" && tag.label).map((tag) => tag.label);
   const hasTags = primaryTags.length > 0 || secondaryTags.length > 0;
 
   return (
-    <Link className="video-card" to={`/videos/${video.id}`}>
+    <Link className="video-card" onClick={onNavigate} to={`/videos/${video.id}`}>
       <CoverCard artworkPath={video.poster_path ?? video.cover_path} title={video.title} versionToken={versionToken} />
       <div className="video-meta">
         <h2>{video.title}</h2>

@@ -7,10 +7,13 @@ from app.api.dependencies import require_authenticated
 from app.api.schemas.imports import ImportJobResponse
 from app.api.schemas.library import (
     CatalogSyncResponse,
+    SimilarVideosResponse,
     VideoPageResponse,
     VideoRecommendationShelfResponse,
     VideoArtworkUpdateRequest,
+    VideoCacheFlushRequest,
     VideoLikeUpdateRequest,
+    VideoWatchFlushRequest,
     VideoWatchHeartbeatRequest,
     VideoWatchHeartbeatResponse,
     VideoMetadataUpdateRequest,
@@ -27,7 +30,9 @@ from app.services.cache import (
 from app.services.catalog_sync import sync_remote_catalog
 from app.services.recommendations import (
     build_recommendation_shelf,
+    find_similar_videos,
     record_watch_heartbeat,
+    record_watch_flush,
 )
 from app.services.video_metadata import (
     VideoMetadataValidationError,
@@ -146,6 +151,22 @@ def get_video_detail(
     return VideoResponse.model_validate(video)
 
 
+@router.get("/videos/{video_id}/similar", response_model=SimilarVideosResponse)
+def get_similar_videos(
+    video_id: int,
+    request: Request,
+    _: None = Depends(require_authenticated),
+) -> SimilarVideosResponse:
+    settings = request.app.state.settings
+    try:
+        items = find_similar_videos(settings, video_id=video_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return SimilarVideosResponse(
+        items=[VideoResponse.model_validate(video) for video in items],
+    )
+
+
 @router.post("/videos/{video_id}/like", response_model=VideoResponse)
 def like_video(
     video_id: int,
@@ -198,6 +219,51 @@ def report_video_watch_progress(
         session_token=result.session_token,
         video=VideoResponse.model_validate(result.video),
     )
+
+
+@router.post("/videos/{video_id}/watch/flush", response_model=VideoWatchHeartbeatResponse)
+def flush_video_watch_progress(
+    video_id: int,
+    payload: VideoWatchFlushRequest,
+    request: Request,
+    _: None = Depends(require_authenticated),
+) -> VideoWatchHeartbeatResponse:
+    settings = request.app.state.settings
+    try:
+        result = record_watch_flush(
+            settings,
+            video_id=video_id,
+            session_token=payload.session_token,
+            position_seconds=payload.position_seconds,
+            watched_seconds_delta=payload.watched_seconds_delta,
+            completed=payload.completed,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        status_code = status.HTTP_404_NOT_FOUND if detail.startswith("Video not found:") else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+
+    return VideoWatchHeartbeatResponse(
+        session_token=result.session_token,
+        video=VideoResponse.model_validate(result.video),
+    )
+
+
+@router.post("/videos/{video_id}/cache/flush", status_code=status.HTTP_204_NO_CONTENT)
+def flush_video_cache_progress(
+    video_id: int,
+    payload: VideoCacheFlushRequest,
+    request: Request,
+    _: None = Depends(require_authenticated),
+) -> Response:
+    video = get_video(request.app.state.settings, video_id)
+    if video is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found.")
+    request.app.state.playback_cache_flush_registry.flush_video(
+        video_id=video_id,
+        segment_indexes=payload.segment_indexes,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.patch("/videos/{video_id}/tags", response_model=VideoResponse)

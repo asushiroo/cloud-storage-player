@@ -10,6 +10,7 @@ import type {
   FolderImportResult,
   ImportJob,
   PublicSettings,
+  SimilarVideosResult,
   VideoPage,
   Video,
   VideoRecommendationShelf,
@@ -147,6 +148,9 @@ export const fetchVideo = (videoId: number): Promise<Video> => request(`/api/vid
 export const fetchVideoRecommendations = (): Promise<VideoRecommendationShelf> =>
   request("/api/videos/recommendations");
 
+export const fetchSimilarVideos = (videoId: number): Promise<SimilarVideosResult> =>
+  request(`/api/videos/${videoId}/similar`);
+
 export const likeVideo = (videoId: number, delta: 1 | -1 = 1): Promise<Video> =>
   request(`/api/videos/${videoId}/like?delta=${delta}`, {
     method: "POST",
@@ -162,6 +166,24 @@ export const reportVideoWatchHeartbeat = (payload: {
   completed?: boolean;
 }): Promise<VideoWatchHeartbeatResult> =>
   request(`/api/videos/${payload.videoId}/watch`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({
+      session_token: payload.sessionToken ?? null,
+      position_seconds: payload.positionSeconds,
+      watched_seconds_delta: payload.watchedSecondsDelta,
+      completed: payload.completed ?? false,
+    }),
+  });
+
+export const flushVideoWatch = (payload: {
+  videoId: number;
+  sessionToken?: string | null;
+  positionSeconds: number;
+  watchedSecondsDelta: number;
+  completed?: boolean;
+}): Promise<VideoWatchHeartbeatResult> =>
+  request(`/api/videos/${payload.videoId}/watch/flush`, {
     method: "POST",
     headers: jsonHeaders,
     body: JSON.stringify({
@@ -240,6 +262,11 @@ export const cancelImportJob = (jobId: number): Promise<ImportJob> =>
     method: "POST",
   });
 
+export const retryImportJob = (jobId: number): Promise<ImportJob> =>
+  request(`/api/imports/${jobId}/retry`, {
+    method: "POST",
+  });
+
 export const cancelAllImportJobs = (): Promise<CancelAllImportJobsResult> =>
   request("/api/imports/cancel-all", {
     method: "POST",
@@ -274,6 +301,15 @@ export const clearCachedVideo = (videoId: number): Promise<ClearedCacheResult> =
 export const createVideoCacheJob = (videoId: number): Promise<ImportJob> =>
   request(`/api/videos/${videoId}/cache`, {
     method: "POST",
+  });
+
+export const flushVideoCache = (payload: { videoId: number; segmentIndexes: number[] }): Promise<void> =>
+  request(`/api/videos/${payload.videoId}/cache/flush`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({
+      segment_indexes: payload.segmentIndexes,
+    }),
   });
 
 export const updateSettings = (payload: SettingsUpdatePayload): Promise<PublicSettings> =>

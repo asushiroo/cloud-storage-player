@@ -7,7 +7,7 @@ import { EditableTagList } from "../components/EditableTagList";
 import { Surface } from "../components/Surface";
 import { useRequireSession } from "../hooks/session";
 import type { ApiError } from "../types/api";
-import { formatBytes, formatDateTime, formatDuration } from "../utils/format";
+import { formatBytes, formatDuration } from "../utils/format";
 
 export function VideoDetailPage() {
   const { videoId: rawVideoId } = useParams();
@@ -181,12 +181,8 @@ export function VideoDetailPage() {
               )}
               <p className="muted">{formatDuration(video.duration_seconds)} · {formatBytes(video.size)} · {video.mime_type}</p>
               <div className="detail-info">
-                <p>Manifest：{video.manifest_path ?? "未生成"}</p>
-                <p>创建时间：{formatDateTime(video.created_at)}</p>
-                <p>分片数量：{video.segment_count}</p>
                 <p>本地缓存：{video.cached_segment_count}/{video.segment_count} 分片 · {formatBytes(video.cached_size_bytes)}</p>
                 <p>点赞：{video.like_count}/99</p>
-                <p>Poster：{video.poster_path ?? video.cover_path ?? "未设置"}</p>
               </div>
               <div className="action-row">
                 <Link className="primary-button link-button" to={`/videos/${video.id}/play`}>

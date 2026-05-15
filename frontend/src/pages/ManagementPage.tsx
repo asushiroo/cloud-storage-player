@@ -12,6 +12,7 @@ import {
   fetchCacheSummary,
   fetchCachedVideos,
   fetchImportJobs,
+  retryImportJob,
   syncRemoteCatalog,
 } from "../api/client";
 import { Surface } from "../components/Surface";
@@ -31,6 +32,10 @@ type ImportMode = (typeof IMPORT_MODE_OPTIONS)[number]["value"];
 
 function canCancelJob(job: ImportJob) {
   return job.job_kind !== "delete" && ACTIVE_JOB_STATUSES.has(job.status);
+}
+
+function canRetryJob(job: ImportJob) {
+  return job.job_kind !== "delete" && (job.status === "failed" || job.status === "cancelled");
 }
 
 function describeJob(job: ImportJob) {
@@ -131,6 +136,19 @@ export function ManagementPage() {
     mutationFn: cancelImportJob,
     onSuccess: async (job) => {
       setFeedback(`已请求取消：${job.task_name}`);
+      setError(null);
+      await queryClient.invalidateQueries({ queryKey: ["imports"] });
+    },
+    onError: (exc: ApiError) => {
+      setError(exc.message);
+      setFeedback(null);
+    },
+  });
+
+  const retryJobMutation = useMutation({
+    mutationFn: retryImportJob,
+    onSuccess: async (job) => {
+      setFeedback(`已重新加入任务队列：${job.task_name}`);
       setError(null);
       await queryClient.invalidateQueries({ queryKey: ["imports"] });
     },
@@ -437,6 +455,7 @@ export function ManagementPage() {
                 cancelJobMutation={cancelJobMutation}
                 job={job}
                 key={job.id}
+                retryJobMutation={retryJobMutation}
               />
             ))}
           </div>
@@ -449,9 +468,10 @@ export function ManagementPage() {
 interface JobCardProps {
   job: ImportJob;
   cancelJobMutation: ReturnType<typeof useMutation<ImportJob, ApiError, number>>;
+  retryJobMutation: ReturnType<typeof useMutation<ImportJob, ApiError, number>>;
 }
 
-function JobCard({ job, cancelJobMutation }: JobCardProps) {
+function JobCard({ job, cancelJobMutation, retryJobMutation }: JobCardProps) {
   const [showFullError, setShowFullError] = useState(false);
   const canCollapseError = job.error_message ? shouldCollapseErrorMessage(job.error_message) : false;
 
@@ -476,6 +496,16 @@ function JobCard({ job, cancelJobMutation }: JobCardProps) {
               type="button"
             >
               {job.status === "cancelling" ? "取消中..." : "取消"}
+            </button>
+          ) : null}
+          {canRetryJob(job) ? (
+            <button
+              className="secondary-button"
+              disabled={retryJobMutation.isPending}
+              onClick={() => retryJobMutation.mutate(job.id)}
+              type="button"
+            >
+              {retryJobMutation.isPending ? "重试中..." : "重试"}
             </button>
           ) : null}
         </div>
@@ -522,23 +552,44 @@ interface CachedVideoCardProps {
 
 function CachedVideoCard({ video, disabled, onClear }: CachedVideoCardProps) {
   const artworkUrl = buildAssetUrl(video.poster_path ?? video.cover_path);
+  const [armed, setArmed] = useState(false);
 
   return (
-    <article className="cache-card">
+    <article
+      className={`cache-card${armed ? " is-armed" : ""}`}
+      onClick={() => {
+        setArmed((value) => !value);
+      }}
+    >
       <div className="cache-card-cover">
         {artworkUrl ? <img alt={video.title} className="cover-image" src={artworkUrl} /> : <div className="cover-placeholder">No Cover</div>}
         <button
           aria-label={`清理 ${video.title} 缓存`}
           className="cache-card-delete"
           disabled={disabled}
-          onClick={onClear}
+          onClick={(event) => {
+            event.stopPropagation();
+            onClear();
+          }}
           type="button"
         >
           ×
         </button>
       </div>
       <div className="cache-card-meta">
-        <strong>{video.title}</strong>
+        <Link
+          className="cache-card-link"
+          onClick={(event) => {
+            if (!armed) {
+              event.preventDefault();
+              return;
+            }
+            event.stopPropagation();
+          }}
+          to={`/videos/${video.id}`}
+        >
+          <strong>{video.title}</strong>
+        </Link>
         <span className="muted small-text">
           {formatBytes(video.cached_size_bytes)} · {video.cached_segment_count}/{video.total_segment_count} 分片
         </span>

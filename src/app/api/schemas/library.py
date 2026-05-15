@@ -112,6 +112,10 @@ class VideoRecommendationShelfResponse(BaseModel):
     popular: list[VideoResponse] = Field(default_factory=list)
 
 
+class SimilarVideosResponse(BaseModel):
+    items: list[VideoResponse] = Field(default_factory=list)
+
+
 class VideoWatchHeartbeatRequest(BaseModel):
     session_token: str | None = None
     position_seconds: float = Field(ge=0)
@@ -122,6 +126,17 @@ class VideoWatchHeartbeatRequest(BaseModel):
 class VideoWatchHeartbeatResponse(BaseModel):
     session_token: str
     video: VideoResponse
+
+
+class VideoWatchFlushRequest(BaseModel):
+    session_token: str | None = None
+    position_seconds: float = Field(ge=0)
+    watched_seconds_delta: float = Field(ge=0)
+    completed: bool = False
+
+
+class VideoCacheFlushRequest(BaseModel):
+    segment_indexes: list[int] = Field(default_factory=list)
 
 
 def _normalize_artwork_path(path: str | None) -> str | None:

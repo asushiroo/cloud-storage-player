@@ -50,6 +50,10 @@ export interface VideoRecommendationShelf {
   popular: Video[];
 }
 
+export interface SimilarVideosResult {
+  items: Video[];
+}
+
 export interface VideoPage {
   items: Video[];
   offset: number;
