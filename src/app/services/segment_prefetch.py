@@ -320,6 +320,7 @@ def persist_segment_payload(
 
     _ensure_segment_local_staging_path(settings, segment, segment_path)
     _refresh_cache_entry(settings, video_id=segment.video_id)
+    _enforce_cache_limit_after_cache_write(settings, video_id=segment.video_id)
 
 
 def queue_segment_cache_write(
@@ -383,3 +384,19 @@ def _refresh_cache_entry(settings: Settings, *, video_id: int) -> None:
     from app.services.cache import refresh_video_cache_entry
 
     refresh_video_cache_entry(settings, video_id=video_id)
+
+
+def _enforce_cache_limit_after_cache_write(settings: Settings, *, video_id: int) -> None:
+    from app.services.cache_eviction import enforce_cache_limit
+
+    try:
+        enforce_cache_limit(
+            settings,
+            protect_video_ids={video_id},
+        )
+    except Exception as exc:
+        logger.warning(
+            "Failed to enforce cache limit after caching segment for video %s: %s",
+            video_id,
+            exc,
+        )

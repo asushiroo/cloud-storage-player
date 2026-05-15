@@ -34,6 +34,11 @@
 - Vite proxy now reads `CSP_PORT` so `/api` and `/covers` stay aligned with the backend port selected at startup.
 - For direct `npm run backend`, you can still set `CSP_PORT` manually when a fixed port is required.
 
+## 2026-05-15 Playback Cache Eviction Follow-Up
+- Fixed missing cache-limit enforcement in the playback-triggered cache write path (`segment_prefetch.persist_segment_payload`).
+- New streamed segment cache writes now enforce `cache_limit_bytes` immediately after persist, while protecting the currently playing video from self-eviction.
+- Added regression coverage to ensure playback-triggered cache writes invoke cache-limit enforcement.
+
 ## 当前已实现
 
 - 问题修复（2026-05 Problem.md）
