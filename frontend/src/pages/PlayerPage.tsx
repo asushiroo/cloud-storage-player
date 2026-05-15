@@ -610,7 +610,7 @@ export function PlayerPage() {
             </div>
           </div>
           <div className="player-recommendation-row top-gap">
-            {similarVideos.slice(0, 6).map((item) => (
+            {similarVideos.slice(0, 4).map((item) => (
               <VideoGridCard key={`similar-${item.id}`} versionToken={artworkVersionToken} video={item} />
             ))}
           </div>

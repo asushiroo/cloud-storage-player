@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   cancelAllImportJobs,
@@ -23,6 +23,7 @@ import { formatBytes, parseTagInput } from "../utils/format";
 
 const ACTIVE_JOB_STATUSES = new Set(["queued", "running", "cancelling"]);
 const ERROR_MESSAGE_PREVIEW_MAX_LENGTH = 240;
+const CACHE_CARD_ARMED_VISIBLE_MS = 2000;
 const IMPORT_MODE_OPTIONS = [
   { value: "file", label: "导入视频" },
   { value: "folder", label: "导入文件夹" },
@@ -554,12 +555,37 @@ function CachedVideoCard({ video, disabled, onClear }: CachedVideoCardProps) {
   const artworkUrl = buildAssetUrl(video.poster_path ?? video.cover_path);
   const [armed, setArmed] = useState(false);
   const navigate = useNavigate();
+  const armTimerRef = useRef<number | null>(null);
+
+  const clearArmTimer = () => {
+    if (armTimerRef.current !== null) {
+      window.clearTimeout(armTimerRef.current);
+      armTimerRef.current = null;
+    }
+  };
+
+  const armCardTemporarily = () => {
+    setArmed(true);
+    clearArmTimer();
+    armTimerRef.current = window.setTimeout(() => {
+      setArmed(false);
+      armTimerRef.current = null;
+    }, CACHE_CARD_ARMED_VISIBLE_MS);
+  };
+
+  useEffect(
+    () => () => {
+      clearArmTimer();
+    },
+    [],
+  );
 
   const handleCardClick = () => {
     if (!armed) {
-      setArmed(true);
+      armCardTemporarily();
       return;
     }
+    clearArmTimer();
     navigate(`/videos/${video.id}`);
   };
 
@@ -576,6 +602,8 @@ function CachedVideoCard({ video, disabled, onClear }: CachedVideoCardProps) {
           disabled={disabled}
           onClick={(event) => {
             event.stopPropagation();
+            clearArmTimer();
+            setArmed(false);
             onClear();
           }}
           type="button"
@@ -587,11 +615,11 @@ function CachedVideoCard({ video, disabled, onClear }: CachedVideoCardProps) {
         <Link
           className="cache-card-link"
           onClick={(event) => {
+            event.stopPropagation();
             if (!armed) {
               event.preventDefault();
-              setArmed(true);
+              armCardTemporarily();
             }
-            event.stopPropagation();
           }}
           to={`/videos/${video.id}`}
         >

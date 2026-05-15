@@ -426,3 +426,8 @@ uv run cloud-storage-player-baidu-smoke --source-path tmp/rieri.mp4
 - Library page state restore now waits until the remembered item batch is rendered before replaying scroll position, so returning from a video detail page restores both filters and the previous scroll offset more reliably.
 - Cache cards on the management page now treat cover-card clicks as a real two-step interaction: first click arms the card and reveals the delete action, second click opens the matching video detail page.
 - Recommendation secondary cards now enforce min-width-safe shrink behavior down to card children, preventing the second column from overflowing on narrower page widths.
+## 2026-05-15 Problem.md Follow-Up 3
+- Kept the useful library-state restore implementation from the previous commit (filter + visible batch + scroll replay) because it directly addresses the "return to prior library position" requirement.
+- Refined cached-video card behavior on the management page: first click now arms the card, delete/guide UI auto-hides after 2 seconds, and the delete button style was adjusted to be less intrusive.
+- Updated player-page similar recommendations to a fixed one-row, four-column display and limited rendering to four items.
+- Added an extra overflow-safe text wrap guard for recommendation secondary cards on narrow viewports.

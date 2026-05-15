@@ -59,13 +59,8 @@ Detailed frontend architecture lives in [frontend/AGENTS.md](/root/cloud-storage
 - Do not move encryption, cloud sync, or decryption logic into the frontend.
 - Backend may temporarily keep simple server-rendered pages for smoke tests or fallback debugging, but they are not the main product direction.
 
-## Migration Rule
-
-- Do not keep “Kyoo-inspired” rewrites as the primary approach.
-- If code from `third/` is useful, copy/adapt the needed parts into `frontend/` and make `frontend/` self-contained.
-- Do not preserve compatibility with the removed frontend if the task explicitly says not to.
-
 ## 技术要求
 
 在生成代码的同时要同步在README.md中更新进度，docs文档只有我让更新时再更新，避免每轮都更新浪费token
 在完成一个阶段时就用 git 进行 commit, commit的格式要符合工程规范，e. feat(cli): add run command;
+当前在windows平台，直接用utf-8进行解码文件
