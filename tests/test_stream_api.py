@@ -1,3 +1,4 @@
+import asyncio
 import time
 from pathlib import Path
 from threading import Event, Thread
@@ -12,6 +13,7 @@ from app.core.security import hash_password
 from app.main import create_app
 from app.repositories.video_segments import NewVideoSegment, create_video_segments
 from app.storage.mock import MockStorageBackend
+from app.api.routes.stream import ManagedStreamingResponse, iterate_stream_chunks
 from tests.test_streaming_remote_payload import _create_remote_only_segment_video, build_settings as build_remote_only_settings
 from app.models.segments import VideoSegment
 from app.repositories.videos import get_video
@@ -82,6 +84,54 @@ def test_stream_requires_authentication(tmp_path: Path) -> None:
 
     assert response.status_code == 401
     assert response.json() == {"detail": "Authentication required."}
+
+
+def test_stream_response_closes_iterator_on_client_disconnect() -> None:
+    iterator_closed = Event()
+
+    def tracked_iterator():
+        try:
+            yield b"first-chunk"
+            yield b"second-chunk"
+        finally:
+            iterator_closed.set()
+
+    response = ManagedStreamingResponse(
+        iterate_stream_chunks(tracked_iterator()),
+        media_type="video/mp4",
+    )
+
+    async def receive():
+        return {"type": "http.disconnect"}
+
+    first_body_sent = False
+
+    async def send(message):
+        nonlocal first_body_sent
+        if message["type"] != "http.response.body" or not message.get("more_body"):
+            return
+        if not first_body_sent:
+            first_body_sent = True
+            raise OSError("client disconnected")
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.4"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": "/api/videos/1/stream",
+        "raw_path": b"/api/videos/1/stream",
+        "query_string": b"",
+        "headers": [],
+        "client": ("testclient", 50000),
+        "server": ("testserver", 80),
+        "root_path": "",
+    }
+
+    asyncio.run(response(scope, receive, send))
+
+    assert iterator_closed.wait(timeout=1.0)
 
 
 def test_stream_returns_full_file(tmp_path: Path) -> None:

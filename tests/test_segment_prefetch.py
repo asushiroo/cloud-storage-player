@@ -6,6 +6,7 @@ from app.core.security import hash_password
 from app.db.schema import initialize_database
 from app.models.segments import VideoSegment
 from app.repositories.settings import set_setting
+from app.repositories.videos import create_video
 from app.services.segment_prefetch import acquire_prefetch_session, release_prefetch_session
 from app.services.segment_local_paths import serialize_local_staging_path
 from app.services.settings import DOWNLOAD_TRANSFER_CONCURRENCY_KEY
@@ -46,9 +47,21 @@ def build_segment(settings: Settings, *, video_id: int, segment_index: int) -> V
     )
 
 
+def create_prefetch_video(settings: Settings, *, title: str, segment_count: int) -> int:
+    video = create_video(
+        settings,
+        title=title,
+        mime_type="video/mp4",
+        size=segment_count * 100,
+        manifest_path=f"/apps/CloudStoragePlayer/mock/{title}/manifest.bin",
+        source_path=None,
+    )
+    return video.id
+
+
 def test_prefetch_session_downloads_in_rolling_batches(monkeypatch, tmp_path: Path) -> None:
     settings = build_settings(tmp_path)
-    video_id = 42
+    video_id = create_prefetch_video(settings, title="Prefetch Rolling Batches", segment_count=8)
     storage = MockStorageBackend(settings.mock_storage_dir)
     segments = [build_segment(settings, video_id=video_id, segment_index=index) for index in range(8)]
     download_calls: list[str] = []
@@ -82,7 +95,7 @@ def test_prefetch_session_downloads_in_rolling_batches(monkeypatch, tmp_path: Pa
 
 def test_prefetch_session_uses_runtime_configured_transfer_concurrency(monkeypatch, tmp_path: Path) -> None:
     settings = build_settings(tmp_path, remote_transfer_concurrency=1)
-    video_id = 64
+    video_id = create_prefetch_video(settings, title="Prefetch Concurrency", segment_count=6)
     storage = MockStorageBackend(settings.mock_storage_dir)
     segments = [build_segment(settings, video_id=video_id, segment_index=index) for index in range(6)]
     max_inflight = {"value": 0}
@@ -124,7 +137,7 @@ def test_prefetch_session_uses_runtime_configured_transfer_concurrency(monkeypat
 
 def test_prefetch_session_stops_soon_after_release(monkeypatch, tmp_path: Path) -> None:
     settings = build_settings(tmp_path)
-    video_id = 88
+    video_id = create_prefetch_video(settings, title="Prefetch Stops Soon", segment_count=12)
     storage = MockStorageBackend(settings.mock_storage_dir)
     segments = [build_segment(settings, video_id=video_id, segment_index=index) for index in range(12)]
     download_calls: list[str] = []
@@ -162,7 +175,7 @@ def test_prefetch_session_stops_soon_after_release(monkeypatch, tmp_path: Path) 
 
 def test_prefetch_session_downloads_next_batch_when_consumer_stays_active(monkeypatch, tmp_path: Path) -> None:
     settings = build_settings(tmp_path)
-    video_id = 91
+    video_id = create_prefetch_video(settings, title="Prefetch Next Batch", segment_count=10)
     storage = MockStorageBackend(settings.mock_storage_dir)
     segments = [build_segment(settings, video_id=video_id, segment_index=index) for index in range(10)]
     download_calls: list[str] = []

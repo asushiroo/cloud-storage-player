@@ -39,6 +39,11 @@
 - New streamed segment cache writes now enforce `cache_limit_bytes` immediately after persist, while protecting the currently playing video from self-eviction.
 - Added regression coverage to ensure playback-triggered cache writes invoke cache-limit enforcement.
 
+## 2026-05-15 Playback Disconnect Cleanup Fix
+- Stream responses now wrap playback iterators with explicit disconnect-safe cleanup, so aborted browser range requests from seek/switch actions immediately release prefetch sessions and storage handles.
+- Added regression coverage for client-disconnect cleanup during `/api/videos/{id}/stream`.
+- Normalized `tests/` as an importable package and fixed segment-prefetch tests to use real video rows, so playback/prefetch regressions run reliably under `pytest`.
+
 ## 当前已实现
 
 - 问题修复（2026-05 Problem.md）
