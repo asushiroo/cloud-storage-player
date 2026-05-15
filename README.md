@@ -422,3 +422,7 @@ uv run cloud-storage-player-baidu-smoke --source-path tmp/rieri.mp4
 - Removed the player cache visualization overlay from the playback page to avoid misleading range rendering.
 - Library listing now defaults to newest imported videos first (by `created_at` descending, then `id` descending).
 - Recommendation secondary grid now switches from 3 columns to 2 columns earlier on medium-width viewports to prevent overflow.
+## 2026-05-15 Problem.md Follow-Up 2
+- Library page state restore now waits until the remembered item batch is rendered before replaying scroll position, so returning from a video detail page restores both filters and the previous scroll offset more reliably.
+- Cache cards on the management page now treat cover-card clicks as a real two-step interaction: first click arms the card and reveals the delete action, second click opens the matching video detail page.
+- Recommendation secondary cards now enforce min-width-safe shrink behavior down to card children, preventing the second column from overflowing on narrower page widths.

@@ -102,7 +102,7 @@ export function RecommendationPage() {
         <div className="section-divider" />
 
         {secondaryVideos.length > 0 ? (
-          <div className="video-grid recommendation-secondary-grid">
+          <div className="video-grid recommendation-secondary-grid recommendation-secondary-section">
             {secondaryVideos.map((video) => (
               <VideoGridCard key={`secondary-${video.id}`} versionToken={artworkVersionToken} video={video} />
             ))}

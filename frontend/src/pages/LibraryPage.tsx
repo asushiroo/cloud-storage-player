@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { fetchVideos } from "../api/client";
 import { Surface } from "../components/Surface";
@@ -14,13 +14,31 @@ const LIBRARY_PAGE_SIZE = 12;
 export function LibraryPage() {
   const session = useRequireSession();
   const [searchParams] = useSearchParams();
-  const [activePrimaryTag, setActivePrimaryTag] = useState<string | undefined>();
-  const [activeSecondaryTag, setActiveSecondaryTag] = useState<string | undefined>();
-  const [visibleCount, setVisibleCount] = useState(LIBRARY_PAGE_SIZE);
-  const loadMoreRef = useRef<HTMLDivElement | null>(null);
-  const didRestoreRef = useRef(false);
-  const lastFilterKeyRef = useRef<string | null>(null);
   const appliedSearch = searchParams.get("q")?.trim() ?? "";
+
+  if (session.isLoading || (session.data?.authenticated !== true && !session.isError)) {
+    return <p className="state-text">正在检查登录状态...</p>;
+  }
+
+  return <LibraryPageContent appliedSearch={appliedSearch} key={appliedSearch} />;
+}
+
+interface LibraryPageContentProps {
+  appliedSearch: string;
+}
+
+function LibraryPageContent({ appliedSearch }: LibraryPageContentProps) {
+  const initialMemoryRef = useRef(loadLibraryPageMemory(appliedSearch));
+  const [activePrimaryTag, setActivePrimaryTag] = useState<string | undefined>(() => initialMemoryRef.current?.activePrimaryTag);
+  const [activeSecondaryTag, setActiveSecondaryTag] = useState<string | undefined>(() => initialMemoryRef.current?.activeSecondaryTag);
+  const [visibleCount, setVisibleCount] = useState(() =>
+    Math.max(initialMemoryRef.current?.visibleCount ?? LIBRARY_PAGE_SIZE, LIBRARY_PAGE_SIZE),
+  );
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const pendingScrollRestoreRef = useRef(initialMemoryRef.current);
+  const restoreFrameRef = useRef<number | null>(null);
+  const restoreAttemptsRef = useRef(0);
+  const lastFilterKeyRef = useRef<string | null>(null);
 
   const videosQuery = useQuery({
     queryKey: ["videos", "library", appliedSearch],
@@ -28,7 +46,6 @@ export function LibraryPage() {
       fetchVideos({
         q: appliedSearch,
       }),
-    enabled: session.data?.authenticated === true,
     refetchOnMount: "always",
   });
 
@@ -92,56 +109,89 @@ export function LibraryPage() {
   const visibleVideos = filteredVideos.slice(0, visibleCount);
   const hasMoreVisibleVideos = visibleVideos.length < filteredVideos.length;
 
-  useEffect(() => {
-    if (didRestoreRef.current) {
-      return;
-    }
-    const memory = loadLibraryPageMemory(appliedSearch);
-    if (!memory) {
-      didRestoreRef.current = true;
-      return;
-    }
-    setActivePrimaryTag(memory.activePrimaryTag);
-    setActiveSecondaryTag(memory.activeSecondaryTag);
-    setVisibleCount(Math.max(memory.visibleCount, LIBRARY_PAGE_SIZE));
-    didRestoreRef.current = true;
-    window.requestAnimationFrame(() => {
-      window.scrollTo({ top: memory.scrollY, behavior: "auto" });
+  const saveMemorySnapshot = useCallback(() => {
+    saveLibraryPageMemory({
+      search: appliedSearch,
+      activePrimaryTag,
+      activeSecondaryTag,
+      visibleCount,
+      scrollY: window.scrollY,
     });
-  }, [appliedSearch]);
+  }, [activePrimaryTag, activeSecondaryTag, appliedSearch, visibleCount]);
 
   useEffect(() => {
-    const filterKey = JSON.stringify([activePrimaryTag ?? null, activeSecondaryTag ?? null, appliedSearch]);
+    const memory = pendingScrollRestoreRef.current;
+    if (!memory || videosQuery.isLoading) {
+      return;
+    }
+
+    const restoreScroll = () => {
+      const maxScrollY = Math.max(document.documentElement.scrollHeight - window.innerHeight, 0);
+      const targetScrollY = Math.min(memory.scrollY, maxScrollY);
+      const needsMoreHeight = maxScrollY < memory.scrollY;
+      if (needsMoreHeight && visibleCount < filteredVideos.length) {
+        if (visibleCount < filteredVideos.length) {
+          setVisibleCount((current) => Math.min(current + LIBRARY_PAGE_SIZE, filteredVideos.length));
+        }
+        restoreFrameRef.current = window.requestAnimationFrame(restoreScroll);
+        return;
+      }
+      window.scrollTo({ top: targetScrollY, behavior: "auto" });
+      if (needsMoreHeight && restoreAttemptsRef.current < 24) {
+        restoreAttemptsRef.current += 1;
+        restoreFrameRef.current = window.requestAnimationFrame(restoreScroll);
+        return;
+      }
+      pendingScrollRestoreRef.current = null;
+      restoreAttemptsRef.current = 0;
+      restoreFrameRef.current = null;
+    };
+
+    restoreAttemptsRef.current = 0;
+    restoreFrameRef.current = window.requestAnimationFrame(restoreScroll);
+    return () => {
+      if (restoreFrameRef.current !== null) {
+        window.cancelAnimationFrame(restoreFrameRef.current);
+        restoreFrameRef.current = null;
+      }
+      restoreAttemptsRef.current = 0;
+    };
+  }, [filteredVideos.length, visibleCount, visibleVideos.length, videosQuery.isLoading]);
+
+  useEffect(() => {
+    const filterKey = JSON.stringify([activePrimaryTag ?? null, activeSecondaryTag ?? null]);
     if (lastFilterKeyRef.current === null) {
       lastFilterKeyRef.current = filterKey;
       return;
     }
-    if (lastFilterKeyRef.current !== filterKey) {
-      lastFilterKeyRef.current = filterKey;
-      setVisibleCount(LIBRARY_PAGE_SIZE);
-    }
-  }, [activePrimaryTag, activeSecondaryTag, appliedSearch]);
-
-  useEffect(() => {
-    if (!didRestoreRef.current) {
+    if (lastFilterKeyRef.current === filterKey) {
       return;
     }
-    const writeMemory = () => {
-      saveLibraryPageMemory({
-        search: appliedSearch,
-        activePrimaryTag,
-        activeSecondaryTag,
-        visibleCount,
-        scrollY: window.scrollY,
-      });
-    };
-    writeMemory();
-    window.addEventListener("pagehide", writeMemory);
+    lastFilterKeyRef.current = filterKey;
+    if (pendingScrollRestoreRef.current) {
+      return;
+    }
+    setVisibleCount(LIBRARY_PAGE_SIZE);
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [activePrimaryTag, activeSecondaryTag]);
+
+  useEffect(() => {
+    if (pendingScrollRestoreRef.current) {
+      return;
+    }
+    saveMemorySnapshot();
+  }, [activePrimaryTag, activeSecondaryTag, appliedSearch, saveMemorySnapshot, visibleCount]);
+
+  useEffect(() => {
+    window.addEventListener("pagehide", saveMemorySnapshot);
     return () => {
-      writeMemory();
-      window.removeEventListener("pagehide", writeMemory);
+      if (restoreFrameRef.current !== null) {
+        window.cancelAnimationFrame(restoreFrameRef.current);
+      }
+      saveMemorySnapshot();
+      window.removeEventListener("pagehide", saveMemorySnapshot);
     };
-  }, [activePrimaryTag, activeSecondaryTag, appliedSearch, visibleCount]);
+  }, [saveMemorySnapshot]);
 
   useEffect(() => {
     if (!activePrimaryTag) {
@@ -178,10 +228,6 @@ export function LibraryPage() {
     observer.observe(sentinel);
     return () => observer.disconnect();
   }, [filteredVideos.length, hasMoreVisibleVideos]);
-
-  if (session.isLoading || (session.data?.authenticated !== true && !session.isError)) {
-    return <p className="state-text">正在检查登录状态...</p>;
-  }
 
   return (
     <div className="library-page">
@@ -242,7 +288,7 @@ export function LibraryPage() {
         {visibleVideos.length > 0 ? (
           <div className="video-grid">
             {visibleVideos.map((video) => (
-              <VideoGridCard key={video.id} versionToken={artworkVersionToken} video={video} />
+              <VideoGridCard key={video.id} onNavigate={saveMemorySnapshot} versionToken={artworkVersionToken} video={video} />
             ))}
           </div>
         ) : null}

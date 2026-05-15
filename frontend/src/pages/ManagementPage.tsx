@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   cancelAllImportJobs,
   cancelImportJob,
@@ -553,18 +553,25 @@ interface CachedVideoCardProps {
 function CachedVideoCard({ video, disabled, onClear }: CachedVideoCardProps) {
   const artworkUrl = buildAssetUrl(video.poster_path ?? video.cover_path);
   const [armed, setArmed] = useState(false);
+  const navigate = useNavigate();
+
+  const handleCardClick = () => {
+    if (!armed) {
+      setArmed(true);
+      return;
+    }
+    navigate(`/videos/${video.id}`);
+  };
 
   return (
-    <article
-      className={`cache-card${armed ? " is-armed" : ""}`}
-      onClick={() => {
-        setArmed((value) => !value);
-      }}
-    >
+    <article className={`cache-card${armed ? " is-armed" : ""}`} onClick={handleCardClick}>
       <div className="cache-card-cover">
         {artworkUrl ? <img alt={video.title} className="cover-image" src={artworkUrl} /> : <div className="cover-placeholder">No Cover</div>}
+        <span className="cache-card-arm-tip muted small-text">
+          {armed ? "\u518d\u6b21\u70b9\u51fb\u8fdb\u5165\u8be6\u60c5" : "\u70b9\u51fb\u4e00\u6b21\u663e\u793a\u6e05\u7406\u6309\u94ae"}
+        </span>
         <button
-          aria-label={`清理 ${video.title} 缓存`}
+          aria-label={`\u6e05\u7406 ${video.title} \u7f13\u5b58`}
           className="cache-card-delete"
           disabled={disabled}
           onClick={(event) => {
@@ -573,7 +580,7 @@ function CachedVideoCard({ video, disabled, onClear }: CachedVideoCardProps) {
           }}
           type="button"
         >
-          ×
+          {"\u00d7"}
         </button>
       </div>
       <div className="cache-card-meta">
@@ -582,16 +589,16 @@ function CachedVideoCard({ video, disabled, onClear }: CachedVideoCardProps) {
           onClick={(event) => {
             if (!armed) {
               event.preventDefault();
-              return;
+              setArmed(true);
             }
             event.stopPropagation();
           }}
           to={`/videos/${video.id}`}
         >
-          <strong>{video.title}</strong>
+          <strong className="cache-card-title">{video.title}</strong>
         </Link>
         <span className="muted small-text">
-          {formatBytes(video.cached_size_bytes)} · {video.cached_segment_count}/{video.total_segment_count} 分片
+          {formatBytes(video.cached_size_bytes)} {"\u00b7"} {video.cached_segment_count}/{video.total_segment_count} {"\u5206\u7247"}
         </span>
       </div>
     </article>
