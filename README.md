@@ -25,6 +25,15 @@
 - Folder import is restored through `/api/imports/folders`, and the management page again supports switching between single-file import and folder batch import.
 - The player local-cache visualization now uses a native-buffer-like bottom track that only appears while controls are active, and cached ranges stay stable during like/watch updates.
 
+## 2026-05-15 Playback Freeze Fix
+- API routes that still execute synchronous DB / filesystem / storage work are now declared as sync handlers, so FastAPI runs them in its worker threadpool instead of pinning the main event loop.
+- Added a regression test that holds a stream segment download open and verifies `/api/videos` still responds during that blocked stream request.
+
+## 2026-05-15 Dev Startup Port Fallback
+- `npm run csp` now runs through `scripts/csp-dev.mjs`, which probes `CSP_PORT` (default `8000`) and automatically falls back to the next available port when occupied.
+- Vite proxy now reads `CSP_PORT` so `/api` and `/covers` stay aligned with the backend port selected at startup.
+- For direct `npm run backend`, you can still set `CSP_PORT` manually when a fixed port is required.
+
 ## 当前已实现
 
 - 问题修复（2026-05 Problem.md）

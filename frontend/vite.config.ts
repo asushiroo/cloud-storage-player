@@ -1,6 +1,11 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+const backendPort = Number.parseInt(process.env.CSP_PORT ?? "8000", 10);
+const resolvedBackendPort =
+  Number.isFinite(backendPort) && backendPort > 0 && backendPort <= 65535 ? backendPort : 8000;
+const backendTarget = `http://127.0.0.1:${resolvedBackendPort}`;
+
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -8,11 +13,11 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:8000",
+        target: backendTarget,
         changeOrigin: true,
       },
       "/covers": {
-        target: "http://127.0.0.1:8000",
+        target: backendTarget,
         changeOrigin: true,
       },
     },
