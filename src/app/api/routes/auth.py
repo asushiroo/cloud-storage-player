@@ -16,7 +16,7 @@ router = APIRouter()
 
 
 @router.post("/auth/login", response_class=HTMLResponse)
-async def login(request: Request, password: Annotated[str, Form()]) -> HTMLResponse:
+def login(request: Request, password: Annotated[str, Form()]) -> HTMLResponse:
     settings = request.app.state.settings
     if verify_password(password, settings.effective_password_hash):
         mark_session_authenticated(request)
@@ -31,6 +31,6 @@ async def login(request: Request, password: Annotated[str, Form()]) -> HTMLRespo
 
 
 @router.post("/auth/logout")
-async def logout(request: Request) -> RedirectResponse:
+def logout(request: Request) -> RedirectResponse:
     clear_session(request)
     return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)

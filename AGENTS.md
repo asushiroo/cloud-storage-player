@@ -32,7 +32,7 @@ This repository hosts a Windows-first internal video server that stores encrypte
 - Primary frontend runtime: `React + TypeScript + Vite` in `frontend/`.
 - `third/Kyoo` may be copied from or studied, but it is not the runtime path and should not be required for build/deploy.
 - Import source: Windows host local file paths entered from the admin UI.
-- Media metadata and cover extraction may use external `ffmpeg` and `ffprobe`.
+- Media metadata and cover extraction may use external `FFmpeg` and `FFprobe`; on the current Windows host, use the `FFmpeg` / `FFprobe` command names directly rather than assuming lowercase `ffmpeg` / `ffprobe` from `PATH`.
 - Segment encryption uses `AES-256-GCM`.
 - Stream decryption happens on the server, not in the browser.
 - Default pre-production storage backend is local `mock`; real cloud backend targets Baidu APIs.

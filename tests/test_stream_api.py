@@ -1,5 +1,6 @@
 import time
 from pathlib import Path
+from threading import Event, Thread
 
 from fastapi.testclient import TestClient
 
@@ -309,6 +310,56 @@ def test_stream_prefetch_stops_at_first_batch_when_stream_ends(monkeypatch, tmp_
 
     # Stream request ends quickly for this test range, so session releases after first prefetch batch.
     assert len(download_calls) == 6
+
+
+def test_stream_request_does_not_block_other_api_requests(monkeypatch, tmp_path: Path) -> None:
+    settings = build_remote_only_settings(tmp_path)
+    settings.password_hash = hash_password("shared-secret")
+    app = create_app(settings)
+    client = TestClient(app)
+    video = _create_remote_only_segment_video(
+        settings,
+        plaintext=b"abcdefghijklmnopqrstuvwxyz0123456789",
+    )
+
+    storage = MockStorageBackend(settings.mock_storage_dir)
+    release_download = Event()
+    started_download = Event()
+
+    class BlockingStorage:
+        def download_bytes(self, remote_path: str) -> bytes:
+            started_download.set()
+            release_download.wait(timeout=2)
+            return storage.download_bytes(remote_path)
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr("app.services.streaming.build_storage_backend", lambda _settings: BlockingStorage())
+    login(client, "shared-secret")
+
+    stream_result: dict[str, object] = {}
+
+    def request_stream() -> None:
+        stream_result["response"] = client.get(
+            f"/api/videos/{video.id}/stream",
+            headers={"Range": "bytes=0-31"},
+        )
+
+    stream_thread = Thread(target=request_stream)
+    stream_thread.start()
+    assert started_download.wait(timeout=2)
+
+    videos_response = client.get("/api/videos")
+
+    release_download.set()
+    stream_thread.join(timeout=2)
+    response = stream_result.get("response")
+
+    assert videos_response.status_code == 200
+    assert any(item["id"] == video.id for item in videos_response.json())
+    assert response is not None
+    assert response.status_code == 206
 
 
 def test_stream_returns_404_when_source_local_and_remote_segments_are_all_missing(tmp_path: Path) -> None:

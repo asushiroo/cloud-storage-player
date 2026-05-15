@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/videos", tags=["stream"])
 
 
 @router.get("/{video_id}/stream")
-async def stream_video(
+def stream_video(
     video_id: int,
     request: Request,
     _: None = Depends(require_authenticated),

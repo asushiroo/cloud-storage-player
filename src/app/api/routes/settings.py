@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
 @router.get("", response_model=SettingsResponse)
-async def get_settings_view(
+def get_settings_view(
     request: Request,
     _: None = Depends(require_authenticated),
 ) -> SettingsResponse:
@@ -24,7 +24,7 @@ async def get_settings_view(
 
 
 @router.post("", response_model=SettingsResponse)
-async def update_settings_view(
+def update_settings_view(
     payload: SettingsUpdateRequest,
     request: Request,
     _: None = Depends(require_authenticated),
@@ -47,7 +47,7 @@ async def update_settings_view(
 
 
 @router.post("/baidu/oauth", response_model=SettingsResponse)
-async def authorize_baidu_view(
+def authorize_baidu_view(
     payload: BaiduOAuthRequest,
     request: Request,
     _: None = Depends(require_authenticated),

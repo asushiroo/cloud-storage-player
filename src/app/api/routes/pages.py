@@ -10,7 +10,7 @@ router = APIRouter()
 
 
 @router.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request) -> HTMLResponse:
+def login_page(request: Request) -> HTMLResponse:
     if is_authenticated(request):
         return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -24,7 +24,7 @@ async def login_page(request: Request) -> HTMLResponse:
 @router.get("/", response_class=HTMLResponse)
 @router.get("/recommend", response_class=HTMLResponse)
 @router.get("/library", response_class=HTMLResponse)
-async def library_page(request: Request) -> HTMLResponse:
+def library_page(request: Request) -> HTMLResponse:
     if not is_authenticated(request):
         return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -39,7 +39,7 @@ async def library_page(request: Request) -> HTMLResponse:
 @router.get("/settings", response_class=HTMLResponse)
 @router.get("/videos/{video_id}", response_class=HTMLResponse)
 @router.get("/videos/{video_id}/play", response_class=HTMLResponse)
-async def spa_protected_page(request: Request) -> HTMLResponse:
+def spa_protected_page(request: Request) -> HTMLResponse:
     if not is_authenticated(request):
         return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
 

@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api", tags=["cache"])
 
 
 @router.get("/cache", response_model=CacheSummaryResponse)
-async def get_cache_summary_view(
+def get_cache_summary_view(
     request: Request,
     _: None = Depends(require_authenticated),
 ) -> CacheSummaryResponse:
@@ -27,7 +27,7 @@ async def get_cache_summary_view(
 
 
 @router.get("/cache/videos", response_model=list[CachedVideoResponse])
-async def get_cached_videos_view(
+def get_cached_videos_view(
     request: Request,
     _: None = Depends(require_authenticated),
 ) -> list[CachedVideoResponse]:
@@ -38,7 +38,7 @@ async def get_cached_videos_view(
 
 
 @router.delete("/cache", response_model=ClearedCacheResponse)
-async def clear_all_cache_view(
+def clear_all_cache_view(
     request: Request,
     _: None = Depends(require_authenticated),
 ) -> ClearedCacheResponse:
@@ -48,7 +48,7 @@ async def clear_all_cache_view(
 
 
 @router.delete("/cache/videos/{video_id}", response_model=ClearedCacheResponse)
-async def clear_video_cache_view(
+def clear_video_cache_view(
     video_id: int,
     request: Request,
     _: None = Depends(require_authenticated),
@@ -61,7 +61,7 @@ async def clear_video_cache_view(
 
 
 @router.post("/videos/{video_id}/cache", response_model=ImportJobResponse, status_code=status.HTTP_202_ACCEPTED)
-async def create_video_cache_job(
+def create_video_cache_job(
     video_id: int,
     request: Request,
     _: None = Depends(require_authenticated),

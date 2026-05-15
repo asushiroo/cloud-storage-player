@@ -46,7 +46,7 @@ router = APIRouter(prefix="/api", tags=["library"])
 
 
 @router.get("/videos", response_model=list[VideoResponse])
-async def get_videos(
+def get_videos(
     request: Request,
     q: str | None = None,
     tag: str | None = None,
@@ -60,7 +60,7 @@ async def get_videos(
 
 
 @router.get("/videos/recommendations", response_model=VideoRecommendationShelfResponse)
-async def get_video_recommendations(
+def get_video_recommendations(
     request: Request,
     _: None = Depends(require_authenticated),
 ) -> VideoRecommendationShelfResponse:
@@ -87,7 +87,7 @@ async def get_video_recommendations(
 
 
 @router.get("/videos/page", response_model=VideoPageResponse)
-async def get_video_page(
+def get_video_page(
     request: Request,
     q: str | None = None,
     tag: str | None = None,
@@ -114,7 +114,7 @@ async def get_video_page(
 
 
 @router.get("/artwork/{artwork_name}")
-async def get_artwork(artwork_name: str, request: Request) -> Response:
+def get_artwork(artwork_name: str, request: Request) -> Response:
     settings = request.app.state.settings
     try:
         payload, media_type = read_artwork_bytes(settings, artwork_name=artwork_name)
@@ -128,7 +128,7 @@ async def get_artwork(artwork_name: str, request: Request) -> Response:
 
 
 @router.get("/videos/{video_id}", response_model=VideoResponse)
-async def get_video_detail(
+def get_video_detail(
     video_id: int,
     request: Request,
     _: None = Depends(require_authenticated),
@@ -147,7 +147,7 @@ async def get_video_detail(
 
 
 @router.post("/videos/{video_id}/like", response_model=VideoResponse)
-async def like_video(
+def like_video(
     video_id: int,
     request: Request,
     _: None = Depends(require_authenticated),
@@ -173,7 +173,7 @@ async def like_video(
 
 
 @router.post("/videos/{video_id}/watch", response_model=VideoWatchHeartbeatResponse)
-async def report_video_watch_progress(
+def report_video_watch_progress(
     video_id: int,
     payload: VideoWatchHeartbeatRequest,
     request: Request,
@@ -201,7 +201,7 @@ async def report_video_watch_progress(
 
 
 @router.patch("/videos/{video_id}/tags", response_model=VideoResponse)
-async def patch_video_tags(
+def patch_video_tags(
     video_id: int,
     payload: VideoTagsUpdateRequest,
     request: Request,
@@ -225,7 +225,7 @@ async def patch_video_tags(
 
 
 @router.patch("/videos/{video_id}", response_model=VideoResponse)
-async def patch_video_metadata(
+def patch_video_metadata(
     video_id: int,
     payload: VideoMetadataUpdateRequest,
     request: Request,
@@ -247,7 +247,7 @@ async def patch_video_metadata(
 
 
 @router.post("/videos/{video_id}/artwork", response_model=VideoResponse)
-async def update_video_artwork(
+def update_video_artwork(
     video_id: int,
     payload: VideoArtworkUpdateRequest,
     request: Request,
@@ -270,7 +270,7 @@ async def update_video_artwork(
 
 
 @router.delete("/videos/{video_id}", response_model=ImportJobResponse, status_code=status.HTTP_202_ACCEPTED)
-async def delete_video_entry(
+def delete_video_entry(
     video_id: int,
     request: Request,
     _: None = Depends(require_authenticated),
@@ -286,7 +286,7 @@ async def delete_video_entry(
 
 
 @router.post("/videos/sync", response_model=CatalogSyncResponse)
-async def sync_videos(
+def sync_videos(
     request: Request,
     _: None = Depends(require_authenticated),
 ) -> CatalogSyncResponse:

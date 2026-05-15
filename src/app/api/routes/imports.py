@@ -28,7 +28,7 @@ router = APIRouter(prefix="/api/imports", tags=["imports"])
 
 
 @router.post("", response_model=ImportJobResponse, status_code=status.HTTP_201_CREATED)
-async def create_import(
+def create_import(
     payload: ImportRequest,
     request: Request,
     _: None = Depends(require_authenticated),
@@ -50,7 +50,7 @@ async def create_import(
 
 
 @router.post("/folders", response_model=FolderImportResponse, status_code=status.HTTP_201_CREATED)
-async def create_folder_import(
+def create_folder_import(
     payload: FolderImportRequest,
     request: Request,
     _: None = Depends(require_authenticated),
@@ -74,7 +74,7 @@ async def create_folder_import(
 
 
 @router.post("/{job_id}/cancel", response_model=ImportJobResponse)
-async def cancel_import_job(
+def cancel_import_job(
     job_id: int,
     request: Request,
     _: None = Depends(require_authenticated),
@@ -90,7 +90,7 @@ async def cancel_import_job(
 
 
 @router.post("/cancel-all", response_model=CancelAllImportJobsResponse)
-async def cancel_all_import_jobs(
+def cancel_all_import_jobs(
     request: Request,
     _: None = Depends(require_authenticated),
 ) -> CancelAllImportJobsResponse:
@@ -100,7 +100,7 @@ async def cancel_all_import_jobs(
 
 
 @router.delete("", response_model=ClearedImportJobsResponse)
-async def clear_finished_import_jobs(
+def clear_finished_import_jobs(
     request: Request,
     status_group: Literal["completed", "failed"] = Query(default="completed"),
     _: None = Depends(require_authenticated),
@@ -117,7 +117,7 @@ async def clear_finished_import_jobs(
 
 
 @router.get("", response_model=list[ImportJobResponse])
-async def get_import_jobs(
+def get_import_jobs(
     request: Request,
     _: None = Depends(require_authenticated),
 ) -> list[ImportJobResponse]:
@@ -127,7 +127,7 @@ async def get_import_jobs(
 
 
 @router.get("/{job_id}", response_model=ImportJobResponse)
-async def get_import_job_detail(
+def get_import_job_detail(
     job_id: int,
     request: Request,
     _: None = Depends(require_authenticated),
