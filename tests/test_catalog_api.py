@@ -304,6 +304,63 @@ def test_video_watch_endpoint_updates_analytics_and_recommendation_shelves(tmp_p
     assert any(item["title"] == "Similar Video" for item in shelf_payload["recommended"])
 
 
+def test_recommendations_prefer_unwatched_exploration_over_already_watched_video(tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    watched = create_video(
+        settings,
+        title="Watched Anchor",
+        mime_type="video/mp4",
+        size=100,
+        duration_seconds=100,
+        tags=["动画/奇幻", "secondary:冒险"],
+    )
+    create_video(
+        settings,
+        title="Fresh Match",
+        mime_type="video/mp4",
+        size=100,
+        duration_seconds=100,
+        tags=["动画/奇幻", "secondary:冒险"],
+    )
+    create_video(
+        settings,
+        title="Another Fresh Match",
+        mime_type="video/mp4",
+        size=100,
+        duration_seconds=100,
+        tags=["动画/奇幻", "secondary:冒险"],
+    )
+    login(client, password)
+
+    first = client.post(
+        f"/api/videos/{watched.id}/watch",
+        json={
+            "position_seconds": 35,
+            "watched_seconds_delta": 35,
+            "completed": False,
+        },
+    )
+    assert first.status_code == 200
+    session_token = first.json()["session_token"]
+
+    second = client.post(
+        f"/api/videos/{watched.id}/watch",
+        json={
+            "session_token": session_token,
+            "position_seconds": 75,
+            "watched_seconds_delta": 40,
+            "completed": True,
+        },
+    )
+    assert second.status_code == 200
+
+    shelf = client.get("/api/videos/recommendations")
+    assert shelf.status_code == 200
+    titles = [item["title"] for item in shelf.json()["recommended"][:2]]
+    assert titles == ["Another Fresh Match", "Fresh Match"] or titles == ["Fresh Match", "Another Fresh Match"]
+    assert titles[0] != "Watched Anchor"
+
+
 def test_video_watch_flush_endpoint_updates_analytics_once(tmp_path: Path) -> None:
     client, settings, password = build_client(tmp_path)
     video = create_video(

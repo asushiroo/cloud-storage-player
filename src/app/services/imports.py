@@ -26,8 +26,8 @@ from app.repositories.import_jobs import (
 from app.repositories.video_segments import NewVideoSegment, create_video_segments, list_video_segments
 from app.repositories.videos import (
     create_video,
+    find_video_duplicate_by_fingerprint,
     get_video,
-    get_video_by_content_fingerprint,
     set_video_visibility,
     update_video_import_metadata,
     update_video_artwork_paths,
@@ -189,9 +189,14 @@ def process_import_job(settings: Settings, job_id: int) -> ImportJob:
         update_import_job_progress(settings, job.id, progress_percent=40)
         segments = _materialize_encrypted_segments(settings, source=source, video=video, job_id=job.id)
         content_fingerprint = build_video_content_fingerprint(segments, size=metadata.size)
-        duplicate_video = get_video_by_content_fingerprint(settings, content_fingerprint)
-        if duplicate_video is not None and duplicate_video.id != video.id:
-            raise ImportValidationError(f"Duplicate video content already exists: {duplicate_video.title}")
+        duplicate_video = find_video_duplicate_by_fingerprint(
+            settings,
+            content_fingerprint=content_fingerprint,
+            primary_tags=requested_tags,
+            exclude_video_id=video.id,
+        )
+        if duplicate_video is not None:
+            raise ImportValidationError(_format_duplicate_video_error(duplicate_video))
         video = update_video_fields(
             settings,
             video.id,
@@ -690,3 +695,11 @@ def _finalize_successful_retry(settings: Settings, job_id: int, video_id: int) -
             (job_id,),
         )
         connection.commit()
+
+
+def _format_duplicate_video_error(video: Video) -> str:
+    return (
+        "Duplicate video content already exists. "
+        f"Existing video: {video.title} (/videos/{video.id}). "
+        "Please open the existing video and decide whether to delete it before retrying this import."
+    )

@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 
 from app.core.config import Settings
+from app.core.tags import decode_tags, extract_primary_tags
 from app.db.connection import connect_database
 
 SCHEMA_SQL = """
@@ -119,6 +120,12 @@ CREATE TABLE IF NOT EXISTS video_cache_entries (
     cache_root_relative_segments_dir TEXT,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS video_primary_tags (
+    video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    tag_value TEXT NOT NULL,
+    PRIMARY KEY (video_id, tag_value)
+);
 """
 
 
@@ -167,7 +174,9 @@ def initialize_database(settings: Settings) -> None:
         _ensure_column(connection, "video_cache_entries", "total_segment_count", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(connection, "video_cache_entries", "cache_root_relative_segments_dir", "TEXT")
         _ensure_column(connection, "video_cache_entries", "updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP")
+        _ensure_indexes(connection)
         _rebuild_cache_entries(connection)
+        _rebuild_video_primary_tags(connection)
         connection.commit()
 
 
@@ -339,3 +348,38 @@ def _ensure_column(
     connection.execute(
         f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}"
     )
+
+
+def _ensure_indexes(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_videos_content_fingerprint
+        ON videos(content_fingerprint)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_video_primary_tags_tag_value
+        ON video_primary_tags(tag_value COLLATE NOCASE, video_id)
+        """
+    )
+
+
+def _rebuild_video_primary_tags(connection: sqlite3.Connection) -> None:
+    rows = connection.execute(
+        """
+        SELECT id, tags_json
+        FROM videos
+        """
+    ).fetchall()
+    connection.execute("DELETE FROM video_primary_tags")
+    for row in rows:
+        video_id = int(row["id"])
+        for tag in extract_primary_tags(decode_tags(row["tags_json"])):
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO video_primary_tags (video_id, tag_value)
+                VALUES (?, ?)
+                """,
+                (video_id, tag),
+            )

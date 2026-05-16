@@ -4,7 +4,7 @@ import json
 import sqlite3
 
 from app.core.config import Settings
-from app.core.tags import decode_tags, encode_tags
+from app.core.tags import decode_tags, encode_tags, extract_primary_tags
 from app.db.connection import connect_database
 from app.models.library import Video
 
@@ -128,6 +128,8 @@ def create_video(
                 int(is_visible),
             ),
         )
+        connection.commit()
+        _replace_video_primary_tags(connection, video_id=cursor.lastrowid, tags=tags)
         connection.commit()
         row = _fetch_video_row(connection, cursor.lastrowid)
 
@@ -278,6 +280,7 @@ def update_video_sync_metadata(
                 video_id,
             ),
         )
+        _replace_video_primary_tags(connection, video_id=video_id, tags=tags)
         connection.commit()
         row = _fetch_video_row(connection, video_id)
 
@@ -312,6 +315,7 @@ def update_video_tags(
             """,
             (encode_tags(tags), video_id),
         )
+        _replace_video_primary_tags(connection, video_id=video_id, tags=tags)
         connection.commit()
         row = _fetch_video_row(connection, video_id)
 
@@ -348,6 +352,7 @@ def update_video_fields(
             """,
             (*parameters, video_id),
         )
+        _replace_video_primary_tags(connection, video_id=video_id, tags=tags)
         connection.commit()
         row = _fetch_video_row(connection, video_id)
 
@@ -390,6 +395,7 @@ def update_video_import_metadata(
                 video_id,
             ),
         )
+        _replace_video_primary_tags(connection, video_id=video_id, tags=tags)
         connection.commit()
         row = _fetch_video_row(connection, video_id)
 
@@ -415,6 +421,7 @@ def update_video_metadata(
             """,
             (title, encode_tags(tags), video_id),
         )
+        _replace_video_primary_tags(connection, video_id=video_id, tags=tags)
         connection.commit()
         row = _fetch_video_row(connection, video_id)
 
@@ -558,6 +565,35 @@ def get_video_by_content_fingerprint(settings: Settings, content_fingerprint: st
     return _row_to_video(row)
 
 
+def find_video_duplicate_by_fingerprint(
+    settings: Settings,
+    *,
+    content_fingerprint: str,
+    primary_tags: list[str] | None = None,
+    exclude_video_id: int | None = None,
+) -> Video | None:
+    normalized_primary_tags = extract_primary_tags(primary_tags)
+    candidates = _list_videos_by_content_fingerprint(
+        settings,
+        content_fingerprint=content_fingerprint,
+        primary_tags=normalized_primary_tags,
+    )
+    if exclude_video_id is not None:
+        candidates = [video for video in candidates if video.id != exclude_video_id]
+    if not candidates:
+        return None
+
+    normalized_primary_tags_set = {tag.casefold() for tag in normalized_primary_tags}
+    if not normalized_primary_tags_set:
+        return candidates[0]
+
+    for video in candidates:
+        video_primary_tags = {tag.casefold() for tag in extract_primary_tags(video.tags)}
+        if video_primary_tags & normalized_primary_tags_set:
+            return video
+    return candidates[0]
+
+
 def increment_video_like_count(
     settings: Settings,
     video_id: int,
@@ -610,6 +646,61 @@ def _fetch_video_row(connection: sqlite3.Connection, video_id: int) -> sqlite3.R
         """,
         (video_id,),
     ).fetchone()
+
+
+def _list_videos_by_content_fingerprint(
+    settings: Settings,
+    *,
+    content_fingerprint: str,
+    primary_tags: list[str] | None = None,
+) -> list[Video]:
+    normalized_primary_tags = extract_primary_tags(primary_tags)
+    with connect_database(settings) as connection:
+        if normalized_primary_tags:
+            placeholders = ", ".join("?" for _ in normalized_primary_tags)
+            rows = connection.execute(
+                f"""
+                {VIDEO_SELECT_SQL}
+                INNER JOIN video_primary_tags
+                    ON video_primary_tags.video_id = videos.id
+                WHERE videos.content_fingerprint = ?
+                  AND video_primary_tags.tag_value COLLATE NOCASE IN ({placeholders})
+                GROUP BY videos.id
+                ORDER BY videos.created_at DESC, videos.id DESC
+                """,
+                (content_fingerprint, *normalized_primary_tags),
+            ).fetchall()
+            if rows:
+                return [_row_to_video(row) for row in rows]
+        rows = connection.execute(
+            f"""
+            {VIDEO_SELECT_SQL}
+            WHERE videos.content_fingerprint = ?
+            GROUP BY videos.id
+            ORDER BY videos.created_at DESC, videos.id DESC
+            """,
+            (content_fingerprint,),
+        ).fetchall()
+
+    return [_row_to_video(row) for row in rows]
+
+
+def _replace_video_primary_tags(connection: sqlite3.Connection, *, video_id: int, tags: list[str] | None) -> None:
+    connection.execute(
+        """
+        DELETE FROM video_primary_tags
+        WHERE video_id = ?
+        """,
+        (video_id,),
+    )
+    for tag in extract_primary_tags(tags):
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO video_primary_tags (video_id, tag_value)
+            VALUES (?, ?)
+            """,
+            (video_id, tag),
+        )
 
 
 def _row_to_video(row: sqlite3.Row) -> Video:

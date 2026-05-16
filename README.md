@@ -455,3 +455,8 @@ uv run cloud-storage-player-baidu-smoke --source-path tmp/rieri.mp4
 - Library card links now set `preventScrollReset`, avoiding router-level forced scroll-top when entering video detail pages.
 - Library-page scroll tracking now freezes once a card navigation is triggered, so route-transition scroll noise from the detail page cannot overwrite remembered library position.
 - Removed eager scroll sampling on mount-time effect setup, preventing React StrictMode dev remount from writing a transient `0` back to library memory before restore completes.
+
+## 2026-05-16 Duplicate Import And Recommendation Exploration Follow-Up
+- Import jobs now reject duplicate video content by `content_fingerprint`; when a duplicate is found, the job fails with the existing video detail link so the admin can decide whether to delete and retry.
+- Added a `video_primary_tags` lookup table plus related indexes so duplicate checks can narrow matching by primary tag before falling back to the full fingerprint set.
+- Recommendation shelf now increases exploration weight and applies a stronger watched/resume penalty to the main `recommended` feed, reducing the chance that already watched videos dominate recommendations while keeping them in `continue_watching`.

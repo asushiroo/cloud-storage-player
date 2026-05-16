@@ -53,6 +53,28 @@ function shouldCollapseErrorMessage(message: string) {
   return message.length > ERROR_MESSAGE_PREVIEW_MAX_LENGTH || message.includes("\n");
 }
 
+function renderJobErrorMessage(message: string) {
+  const match = message.match(/(\/videos\/\d+)/);
+  if (!match || !match.index && match.index !== 0) {
+    return message;
+  }
+  const linkPath = match[1];
+  if (!linkPath) {
+    return message;
+  }
+  const start = match.index;
+  const end = start + linkPath.length;
+  return (
+    <>
+      {message.slice(0, start)}
+      <Link className="inline-text-link" to={linkPath}>
+        {linkPath}
+      </Link>
+      {message.slice(end)}
+    </>
+  );
+}
+
 export function ManagementPage() {
   const session = useRequireSession();
   const queryClient = useQueryClient();
@@ -528,7 +550,7 @@ function JobCard({ job, cancelJobMutation, retryJobMutation }: JobCardProps) {
       {job.error_message ? (
         <div className="job-error-block top-gap">
           <p className={`error-text job-error-message${showFullError ? " is-expanded" : ""}`}>
-            {job.error_message}
+            {renderJobErrorMessage(job.error_message)}
           </p>
           {canCollapseError ? (
             <button

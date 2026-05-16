@@ -202,6 +202,7 @@ def build_recommendation_shelf(settings: Settings) -> RecommendationShelf:
     sorted_recommended = sorted(
         videos,
         key=lambda video: (
+            -_recommendation_feed_score(video),
             -video.recommendation_score,
             -video.popularity_score,
             video.title.casefold(),
@@ -334,10 +335,10 @@ def _refresh_all_recommendation_scores(settings: Settings) -> None:
         secondary_explore = _average_exploration(secondary_tags, secondary_preferences)
         exploration_score = PRIMARY_TAG_WEIGHT * primary_explore + SECONDARY_TAG_WEIGHT * secondary_explore
         base_recommendation_score = (
-            0.65 * tag_match_score
-            + 0.20 * exploration_score
-            + 0.10 * video.popularity_score
-            + 0.02 * _clamp(video.like_count / 99.0, 0.0, 1.0)
+            0.45 * tag_match_score
+            + 0.40 * exploration_score
+            + 0.06 * video.popularity_score
+            + 0.01 * _clamp(video.like_count / 99.0, 0.0, 1.0)
         )
         novelty_factor = _novelty_factor(video.valid_play_count)
         recommendation_score = _clamp(base_recommendation_score * novelty_factor, 0.0, 1.0)
@@ -401,16 +402,18 @@ def _average_preference(tags: list[str], preferences: dict[str, TagPreference]) 
 
 def _average_exploration(tags: list[str], preferences: dict[str, TagPreference]) -> float:
     if not tags:
-        return 0.0
+        return 0.35
     values: list[float] = []
     for tag in tags:
         preference = preferences.get(tag.casefold())
         if preference is None:
+            values.append(1.0)
             continue
-        exposure_penalty = min(preference.exposure_count / 5.0, 1.0)
-        values.append(preference.preference_score * (1.0 - exposure_penalty))
+        exposure_penalty = min(preference.exposure_count / 3.0, 1.0)
+        base_exploration = max(1.0 - exposure_penalty, 0.0)
+        values.append(0.70 * base_exploration + 0.30 * (1.0 - preference.preference_score))
     if not values:
-        return 0.0
+        return 0.35
     return sum(values) / len(values)
 
 
@@ -418,8 +421,14 @@ def _novelty_factor(valid_play_count: int) -> float:
     if valid_play_count <= 0:
         return 1.0
     if valid_play_count == 1:
-        return 0.25
-    return 0.05
+        return 0.60
+    return 0.20
+
+
+def _recommendation_feed_score(video: Video) -> float:
+    watched_penalty = min(video.valid_play_count * 0.45, 0.9)
+    resume_penalty = video.resume_score * 0.35
+    return _clamp(video.recommendation_score - watched_penalty - resume_penalty, 0.0, 1.0)
 
 
 def _compute_video_popularity_score(

@@ -362,6 +362,46 @@ def test_failed_import_job_can_retry_in_place(tmp_path: Path) -> None:
     assert len(videos_response.json()) == 1
 
 
+def test_duplicate_import_fails_with_existing_video_link(tmp_path: Path) -> None:
+    client, _, password = build_client(tmp_path)
+    source_path = create_sample_video(tmp_path / "duplicate.mp4")
+    copied_source_path = tmp_path / "duplicate-copy.mp4"
+    copied_source_path.write_bytes(source_path.read_bytes())
+    login(client, password)
+
+    first_response = client.post(
+        "/api/imports",
+        json={
+            "source_path": str(source_path),
+            "title": "Original Video",
+            "tags": ["动画/热血", "secondary:战斗"],
+        },
+    )
+    assert first_response.status_code == 201
+    first_job = wait_for_job_status(client, first_response.json()["id"], expected_status="completed")
+    assert first_job["video_id"] is not None
+
+    duplicate_response = client.post(
+        "/api/imports",
+        json={
+            "source_path": str(copied_source_path),
+            "title": "Duplicate Video",
+            "tags": ["动画/热血", "secondary:重传"],
+        },
+    )
+    assert duplicate_response.status_code == 201
+    duplicate_job = wait_for_job_status(client, duplicate_response.json()["id"], expected_status="failed")
+
+    assert duplicate_job["video_id"] is None
+    assert duplicate_job["error_message"] is not None
+    assert f"/videos/{first_job['video_id']}" in duplicate_job["error_message"]
+    assert "Duplicate video content already exists" in duplicate_job["error_message"]
+
+    videos_response = client.get("/api/videos")
+    assert videos_response.status_code == 200
+    assert [video["title"] for video in videos_response.json()] == ["Original Video"]
+
+
 def test_import_still_succeeds_when_cover_extraction_fails(tmp_path: Path) -> None:
     client, _, password = build_client(tmp_path, ffmpeg_binary="missing-ffmpeg-for-test")
     source_path = create_sample_video(tmp_path / "no-cover.mp4")
