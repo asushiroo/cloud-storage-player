@@ -450,3 +450,8 @@ uv run cloud-storage-player-baidu-smoke --source-path tmp/rieri.mp4
 - Library-page memory restore now avoids clearing remembered primary/secondary tag filters while the video query is still loading, preventing Chrome refresh from frequently losing selected tags.
 - Library-page memory persistence now writes with storage-failure-safe fallback (`sessionStorage` first, then `localStorage`) and restores from either store, improving refresh stability on Windows Chrome.
 - Added extra save triggers on `beforeunload` and `visibilitychange(hidden)` in addition to `pagehide`, reducing cases where refresh/navigation misses the latest scroll/filter snapshot.
+
+## 2026-05-16 Problem.md Follow-Up 2
+- Library card links now set `preventScrollReset`, avoiding router-level forced scroll-top when entering video detail pages.
+- Library-page scroll tracking now freezes once a card navigation is triggered, so route-transition scroll noise from the detail page cannot overwrite remembered library position.
+- Removed eager scroll sampling on mount-time effect setup, preventing React StrictMode dev remount from writing a transient `0` back to library memory before restore completes.

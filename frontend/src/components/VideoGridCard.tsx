@@ -17,7 +17,7 @@ export function VideoGridCard({ video, versionToken, onNavigate }: VideoGridCard
   const hasTags = primaryTags.length > 0 || secondaryTags.length > 0;
 
   return (
-    <Link className="video-card" onClick={onNavigate} to={`/videos/${video.id}`}>
+    <Link className="video-card" onClick={onNavigate} preventScrollReset to={`/videos/${video.id}`}>
       <CoverCard artworkPath={video.poster_path ?? video.cover_path} title={video.title} versionToken={versionToken} />
       <div className="video-meta">
         <h2>{video.title}</h2>

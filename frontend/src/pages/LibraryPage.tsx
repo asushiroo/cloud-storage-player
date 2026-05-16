@@ -40,6 +40,7 @@ function LibraryPageContent({ appliedSearch }: LibraryPageContentProps) {
   const restoreFrameRef = useRef<number | null>(null);
   const restoreAttemptsRef = useRef(0);
   const lastFilterKeyRef = useRef<string | null>(null);
+  const isNavigatingAwayRef = useRef(false);
 
   const videosQuery = useQuery({
     queryKey: ["videos", "library", appliedSearch],
@@ -110,7 +111,10 @@ function LibraryPageContent({ appliedSearch }: LibraryPageContentProps) {
   const visibleVideos = filteredVideos.slice(0, visibleCount);
   const hasMoreVisibleVideos = visibleVideos.length < filteredVideos.length;
 
-  const saveMemorySnapshot = useCallback((captureCurrentScroll = true) => {
+  const saveMemorySnapshot = useCallback((captureCurrentScroll = true, options?: { navigatingAway?: boolean }) => {
+    if (options?.navigatingAway) {
+      isNavigatingAwayRef.current = true;
+    }
     if (captureCurrentScroll) {
       lastKnownScrollYRef.current = window.scrollY;
     }
@@ -187,6 +191,7 @@ function LibraryPageContent({ appliedSearch }: LibraryPageContentProps) {
   }, [activePrimaryTag, activeSecondaryTag, appliedSearch, saveMemorySnapshot, visibleCount]);
 
   useEffect(() => {
+    isNavigatingAwayRef.current = false;
     const handlePageHide = () => {
       saveMemorySnapshot(true);
     };
@@ -199,10 +204,12 @@ function LibraryPageContent({ appliedSearch }: LibraryPageContentProps) {
       }
     };
     const trackScroll = () => {
+      if (isNavigatingAwayRef.current) {
+        return;
+      }
       lastKnownScrollYRef.current = window.scrollY;
     };
 
-    trackScroll();
     window.addEventListener("scroll", trackScroll, { passive: true });
     window.addEventListener("pagehide", handlePageHide);
     window.addEventListener("beforeunload", handleBeforeUnload);
@@ -321,7 +328,12 @@ function LibraryPageContent({ appliedSearch }: LibraryPageContentProps) {
         {visibleVideos.length > 0 ? (
           <div className="video-grid">
             {visibleVideos.map((video) => (
-              <VideoGridCard key={video.id} onNavigate={saveMemorySnapshot} versionToken={artworkVersionToken} video={video} />
+              <VideoGridCard
+                key={video.id}
+                onNavigate={() => saveMemorySnapshot(true, { navigatingAway: true })}
+                versionToken={artworkVersionToken}
+                video={video}
+              />
             ))}
           </div>
         ) : null}
