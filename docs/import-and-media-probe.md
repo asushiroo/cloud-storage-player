@@ -183,14 +183,14 @@ manifest 不包含：
 当前封面抽取使用：
 
 ```bash
-ffmpeg -y -ss 0 -i <path> -frames:v 1 <output>.jpg
+FFmpeg -y -ss <duration/3> -i <path> -frames:v 1 <output>.avif
 ```
 
 策略：
 
-- 从视频开头取第一帧
-- 输出 JPG
-- 成功时写到本地封面目录，并给 `videos.cover_path` 写入 `/covers/<video_id>.jpg`
+- 默认从视频约 `1/3` 时长位置取帧
+- 输出 AVIF
+- 成功时写到本地加密 artwork 存储，并给前端暴露 `/api/artwork/*` 路径
 
 失败策略：
 

@@ -1,402 +1,100 @@
-# Cloud Storage Player
+# Cloud Storage Player 🎬
 
-这是一个运行在 Windows 主机上的局域网视频服务：主机负责导入本地视频、按固定大小切片、AES-256-GCM 加密、写入本地元数据，并把加密分片与 manifest 上传到配置的存储后端；浏览器侧通过普通 `video` 标签访问后端 Range 流。
+一个运行在 Windows 主机上的局域网私人视频库。
 
-当前仓库采用**前后端分离**：
+它负责把本地视频导入、切片、加密并保存到本地或百度网盘，再由后端把原始视频字节流安全地回放给局域网内的浏览器。浏览器侧只需要普通网页和原生 `video` 播放能力，不参与解密。
 
-- 后端：FastAPI + SQLite + 服务层 / 仓储层 / 存储抽象
-- 前端：`frontend/` 下的 React + TypeScript + Vite
-- `third/`：参考代码，不参与当前运行时
+## ✨ 主要功能
 
-## 2026-05 Cache Path Update
-- Added configurable cache root path in settings API and settings page (`segment_cache_root_path`).
-- New local segment writes now store `video_segments.local_staging_path` as cache-root-relative suffix only (example: `77/segments/000000.cspseg`).
-- Existing local database values were migrated from absolute paths to suffix-only values after creating a DB backup.
+- Windows 主机本地视频导入
+- AES-256-GCM 加密分片存储
+- 本地 `mock` 存储与百度网盘存储双后端
+- 局域网网页访问、登录、浏览、播放
+- 推荐页、媒体库、详情页、管理页、设置页
+- 后端 `/admin` 管理员页面，可填写首次启动所需的关键配置
+- 后端统一处理播放 Range、远端回退、封面读取与同步
 
-## 2026-05-13 Playback Fix
-- Playback now keeps the video element source intact across React StrictMode remounts and uses credentialed media requests.
+## 🧱 设计理念
 
-## 2026-05-14 Playback And Like Fix
-- Playback no longer stops silently when a later encrypted segment is missing remotely; if the original source file still exists, the backend now falls back to the corresponding source byte range and keeps streaming.
-- Watch heartbeat analytics no longer write back stale `like_count`, so cancel-like operations are not overwritten by concurrent playback progress updates.
+- 后端是唯一事实来源：导入、加密、manifest、同步、播放都由后端负责
+- 前后端分离：前端专注 UI 与交互，后端专注媒体和存储链路
+- Windows 优先：以主机侧部署和非程序员可使用为目标
+- 低耦合：尽量按职责拆分模块，避免大而混杂的实现
 
-## 2026-05-14 Management And Player Follow-Up
-- Cache list reads on `/api/cache/videos` now stay on `video_cache_entries` and no longer lazily rescan segment files during "查看缓存".
-- Folder import is restored through `/api/imports/folders`, and the management page again supports switching between single-file import and folder batch import.
-- The player local-cache visualization now uses a native-buffer-like bottom track that only appears while controls are active, and cached ranges stay stable during like/watch updates.
+## 🚀 快速开始
 
-## 2026-05-15 Playback Freeze Fix
-- API routes that still execute synchronous DB / filesystem / storage work are now declared as sync handlers, so FastAPI runs them in its worker threadpool instead of pinning the main event loop.
-- Added a regression test that holds a stream segment download open and verifies `/api/videos` still responds during that blocked stream request.
+### 1. 准备环境
 
-## 2026-05-15 Dev Startup Port Fallback
-- `npm run csp` now runs through `scripts/csp-dev.mjs`, which probes `CSP_PORT` (default `8000`) and automatically falls back to the next available port when occupied.
-- Vite proxy now reads `CSP_PORT` so `/api` and `/covers` stay aligned with the backend port selected at startup.
-- For direct `npm run backend`, you can still set `CSP_PORT` manually when a fixed port is required.
+- Python `3.12`
+- UV
+- Node.js / npm
+- `FFmpeg` 与 `FFprobe`
 
-## 2026-05-15 Playback Cache Eviction Follow-Up
-- Fixed missing cache-limit enforcement in the playback-triggered cache write path (`segment_prefetch.persist_segment_payload`).
-- New streamed segment cache writes now enforce `cache_limit_bytes` immediately after persist, while protecting the currently playing video from self-eviction.
-- Added regression coverage to ensure playback-triggered cache writes invoke cache-limit enforcement.
+项目根目录中的 `.python-version` 目标为：
 
-## 2026-05-15 Playback Disconnect Cleanup Fix
-- Stream responses now wrap playback iterators with explicit disconnect-safe cleanup, so aborted browser range requests from seek/switch actions immediately release prefetch sessions and storage handles.
-- Added regression coverage for client-disconnect cleanup during `/api/videos/{id}/stream`.
-- Normalized `tests/` as an importable package and fixed segment-prefetch tests to use real video rows, so playback/prefetch regressions run reliably under `pytest`.
+```text
+3.12
+```
 
-## 2026-05-15 Plan.md Follow-Up
-- Failed import/cache jobs now expose retry support through `/api/imports/{job_id}/retry`; retries reuse the same job record and resume from preserved intermediate state when possible instead of forcing a brand-new task.
-- Playback watch progress and streamed-cache state are now buffered on the frontend and flushed once on leave/end through `/api/videos/{id}/watch/flush` and `/api/videos/{id}/cache/flush`, which removes the previous high-frequency watch/cache write pattern during playback.
-- Added `/api/videos/{id}/similar` and a new player-page recommendation row that prefers maximum tag similarity to recommend other same-type videos, while reducing the direct influence of likes on recommending the currently liked item itself.
-- Library page now remembers filter/expanded-count/scroll position for 10 minutes; cache cards now use a two-step interaction (show delete first, then navigate); failed tasks show retry; and the video detail page removes manifest/segment/poster text clutter while constraining portrait posters from overflowing the layout.
-
-## 当前已实现
-
-- 问题修复（2026-05 Problem.md）
-  - 修复仅远端分片、无本地缓存时的播放起播路径：浏览器首个流请求现在可直接等待并读取远端分片返回，不再因本地缓存缺失而无法播放
-  - 播放页交互改为内联 SVG 的点赞 / 取消点赞 / 跳高光操作区：点赞数仅在操作时以上浮数字动画反馈，跳高光按钮简化为记录分钟点位
-  - 视频详情页移除重复点赞按钮，点赞交互统一收敛到播放页
-  - 修复 Windows/GBK 环境下 `ffprobe`/`ffmpeg` 子进程输出解码导致的 `UnicodeDecodeError`：改为字节读取 + UTF-8/GB18030 回退解码
-  - 导入封面抽帧改为按视频 `1/3` 时长位置生成，保持 `AVIF` + 本地加密存储
-  - 新增批量重建封面 CLI：`cloud-storage-player-rebuild-posters`（对有源文件的视频按 1/3 帧重建 poster）
-  - 导入任务列表响应移除 `source_path` 字段，任务栏不再展示源路径
-  - 推荐页 3D 轮播标题改为独立固定左下角叠层，避免动画阶段标题跳位
-  - 推荐页 3D 轮播标题改为随卡片一起切换与动画，消除图片旋转时文字不动、动画结束后文字跳帧问题
-  - 推荐页次推荐位从 12 宫格改为 2 行 3 列（桌面 3 列，移动端 2 列）
-  - 设置页输入框改为始终显示当前值（包含默认值），并在输入框悬停/聚焦时显示就地提示文本
-  - 兼容历史 `/covers/*` artwork 路径：前后端统一归一化到 `/api/artwork/*`，避免旧数据详情页/列表页 404
-  - 上传分片新增远端完整性保护：`mock` 后端下按远端文件尺寸校验，尺寸不一致会强制重传；manifest 始终重传避免元数据滞后
-  - 导入完成后增加缓存上限淘汰：优先清理旧缓存，且保护当前新上传视频不被优先淘汰
-  - 修复“退出播放页后仍持续请求百度网盘下载分片”的带宽浪费问题：播放预取改为首片优先响应后再按 5 片一批滚动预取；每批完成才会进入下一批，播放会话释放后立即停止后续预取
-  - 修复历史 poster `.jpg` 路径导致前端无封面：API 对 `/covers/*-poster.jpg` 自动归一到 `/api/artwork/*-poster.avif`，`/api/artwork/*.jpg` 在缺失时可回退读取同名 `.avif` 加密封面
-  - 管理页“查看缓存”改为纯数据库读取 `video_cache_entries`，不再在列表读取路径上回扫本地分片目录
-  - 恢复管理页“导入文件夹”模式，并新增 `/api/imports/folders` 批量创建导入任务
-  - 播放页本地缓存可视化改为贴近原生缓冲条的底部细条，且显隐时机跟随原生控件活跃状态
-- UV 管理 Python 项目与依赖
-- FastAPI 应用入口与 SQLite bootstrap
-- 基于 Cookie Session 的单密码认证
-- `/api/auth/*`、目录、视频详情、设置、导入接口
-- 本地主机路径导入
-- `ffprobe` 媒体探测
-- 固定大小切片与 AES-256-GCM 加密
-- `video_segments` 元数据落库
-- 本地 manifest 生成
-- 存储后端抽象
-  - `mock`：本地目录模拟远端对象存储
-  - `baidu`：基于百度网盘官方 open platform 的最小可用 backend
-- 百度 OAuth 授权码换取 refresh token，并缓存 access token
-- 导入时把 manifest / 加密分片上传到当前配置的存储后端
-- 后台异步导入任务（API 入队，后台 worker 执行）
-- 视频自定义标签
-  - 导入时可填写多个标签
-  - 视频详情页改为多标签小格子编辑
-  - 支持添加 / 删除 / 双击编辑并自动保存
-  - 标签持久化到本地数据库
-  - 标签写入远端加密 manifest，sync 后可恢复
-- 媒体库标签/关键词过滤
-  - 支持按标题、源路径、标签关键词搜索
-  - 支持按单个标签快速过滤
-- 远端 manifest 扫描 / catalog sync
-  - sync 兼容百度对不存在 legacy `/videos` 目录返回错误的情况
-- 远端元信息加密
-  - 远端视频目录名改为基于内容密钥的稳定混淆名
-  - 远端分片文件名改为基于内容密钥的稳定混淆名
-  - 远端 manifest 改为 AES-256-GCM 加密后的二进制 payload
-  - sync 兼容历史明文 manifest 与新加密 manifest
-- 百度 OpenAPI / PCS 的基础重试与退避
-- 播放流优先读取本地加密分片，其次回退到远端对象，最后回退到源文件
-  - 远端回退播放命中未缓存分片时，会直接使用内存中的远端分片完成当前响应，不再等待先写入本地缓存后再返回
-  - 当前播放响应返回后会后台异步落盘远端分片缓存，避免磁盘写入阻塞首包与 seek
-  - 远端回放会优先同步拉取当前所需首片，再后台按 5 片一批滚动并发预取（每批完成后才会进入下一批）；退出播放页/连接释放后会立即停止后续预取
-  - 遇到百度远端分片 404 时会记录 warning 并中止当前流，避免 traceback 冒到服务端日志
-- `ffmpeg` 封面抽取、AVIF poster 转码与加密 artwork 读取接口
-- 真实百度链路 smoke CLI（上传 / 远端 sync / 远端回放校验）
-- 已完成一次真实百度链路在线验收（`tmp/rieri.mp4` 上传 / sync / 远端回放通过）
-- 前端已切换到 `frontend/` 中的新实现
-  - 首页 `/` 现在重定向到独立推荐页 `/recommend`
-  - 推荐页顶部保留 3D Banner，最近观看改为单行标题列表，次推荐位限制为 12 个视频
-  - 媒体库独立到 `/library`，仅保留搜索、一级 / 二级标签筛选和 poster 墙
-  - 媒体库卡片保持原来的 cover + 元信息布局，修复卡片收缩时封面溢出问题
-  - 搜索与标签过滤在独立媒体库页完成；管理页专注导入、同步与任务管理
-  - 登录页走 `/api/auth/login`
-  - 推荐页走 `/api/videos/recommendations`
-  - 媒体库页走 `/api/videos`
-  - 管理页走 `/api/videos`、`/api/imports` 与缓存相关接口，不再依赖文件夹流
-  - 视频详情页走 `/api/videos/{id}`、`PATCH /api/videos/{id}/tags`、`POST /api/videos/{id}/artwork`、`DELETE /api/videos/{id}`
-  - 设置页走 `/api/settings`、`/api/settings/baidu/oauth`
-  - 播放页直接使用后端 `/api/videos/{id}/stream`
-- 导入 / 删除统一任务栏
-  - 导入任务显示任务名而不是纯路径
-  - 导入 / 缓存任务支持单条取消、全部取消；删除任务不可取消
-  - 删除任务进度按阶段推进，不再从 10 直接跳到 100
-- 本地缓存管理
-  - 管理页默认显示本地缓存总大小
-  - 可展开 4 列缓存封面网格，支持单视频清理与一键清理全部缓存
-  - 视频详情页支持手动创建“缓存到本地”后台任务
-- 后台任务网络速度展示
-  - 导入上传任务与手动缓存下载任务会累计统计远端传输字节与基于真实墙钟时长的平均有效网速
-  - 并发传输的开始/结束时间戳在 worker 线程内采集，避免主线程串行回收结果时把 5 并发任务统计得比真实吞吐更慢
-  - 管理页任务栏展示当前任务网速与已传输大小
-- 百度网盘远端传输提速与恢复
-  - 导入上传默认并发 5 路
-  - 手动“缓存到本地”任务默认并发 5 路
-  - 设置页已支持分别持久化调整上传并发和下载并发，下载并发会影响手动缓存与播放预取，上传并发会影响导入上传
-  - 上传遇到 `errno=9013` / `hit frequence control` 时不会直接失败，而是按小时轮询后继续
-- 前端登录态体验优化
-  - 浏览器会缓存最近一次 session 结果
-  - 缓存 TTL 为 10 分钟；10 分钟内刷新/再次进入会先按上次结果放行
-  - 首次访问或超过 TTL 后才重新发起 session 检查，避免频繁阻塞首屏
-- 已完成任务与失败/取消任务分开清理
-  - 删除视频改为后台删除任务，并出现在同一个任务栏
-  - 删除远端对象后会继续尝试清理对应空视频目录
-- 视频 artwork 管理
-  - 首页、详情页、媒体库统一优先使用横版 poster
-  - 导入时默认只生成固定横版 poster（1280×720），不再额外生成竖版 cover
-  - poster 导入与手动替换统一转成 `AVIF`
-  - poster 本地文件改为轻量加密保存，通过 `/api/artwork/{name}` 解密回传给前端
-  - 用户手动替换过的 poster 会标记为自定义封面，并在约 10 分钟后与 manifest 一起同步到远端；catalog sync 可恢复这些自定义 poster
-  - 播放页可捕获当前帧，只需调整一次横版 poster 的缩放与截取位置后再保存
-  - 应用成功后会自动收起当前截图预览
-- Windows 打包与运行
-  - `npm run build:csp` 会先构建 `frontend/dist`，再在项目根目录生成 `start.exe` 与 `stop.exe`
-  - `start.exe` 会以无控制台方式启动后端，并把输出写入 `logs/start.out.log` 与 `logs/start.err.log`
-  - `stop.exe` 会先检查未完成导入/缓存任务，以及待同步 manifest / 自定义封面；若仍有未完成工作会直接列出并拒绝停机
-- 本地数据迁移
-  - `cloud-storage-player-save-data <zip路径>` 可导出本地数据库、内容密钥和可用的 `.env`
-  - `cloud-storage-player-load-data <zip路径>` 会校验归档格式，并在检测到本地已有 DB/密钥时拒绝覆盖恢复
-- 播放页交互增强
-  - 保留浏览器 / iPad 原生视频控件，不再额外叠加自定义播放 / 快进 / 后退图标
-  - 手动替换 cover / poster 后会立即刷新前端媒体库中的 artwork
-  - 推荐分 / 兴趣分 / 热门分继续保留在后端统计，但前端不再直接展示
-- 首页推荐位
-  - 顶部 Banner 改为 3 张横版 poster 的 3D 轮转展示
-  - 标题文字直接叠加在 poster 图片上
-  - Banner 高度不再用固定容器裁切，改为随 3D 轮播比例自然撑开
-- 顶部导航
-  - 搜索栏移动到顶部导航区
-  - 导航页签改为扁平文本风格，当前项仅做文字高亮与下划线提示
-- 首页筛选
-  - 内容区宽度调整为 90vw，左右留白约 5%
-  - 轮播图与下方内容区保持等宽，目录 / 标签栏放在轮播图下方，并通过短横线分区
-  - 一级标签默认显示，只有选中一级标签后才显示二级标签
-  - 视频卡片标签分为两行展示，并限制单行不换行溢出
-  - 二级标签前缀继续只作为内部存储细节处理，前端展示与编辑不再暴露
-- 管理页导入
-  - 改为先选择“导入视频”或“导入文件夹”，再显示对应输入框与提交按钮
-- 播放页 artwork 编辑
-  - poster 预览区改成左右两栏：左侧缩小预览，右侧裁切调节
-- 视频详情页
-  - 移除头部重复标签显示与源文件 meta，仅保留下方标签编辑区
-  - 去掉 `Video #id` 文案与“返回媒体库”按钮
-  - 封面可直接点击进入播放页，并修复手机端详情封面导致横向滚动的问题
-  - “缓存到本地”按钮改为“缓存”，仅在视频未完整缓存时显示；部分缓存时会跳过已存在分片继续补齐
-  - 删除按钮文案统一收敛为“删除”
-- 首页推荐位与媒体库布局微调
-  - 3D Banner 调整为更明显的透视旋转效果，并放宽到完整内容宽度显示
-  - 桌面端媒体库卡片保持 4 列展示，不再在中等宽度提前降到 3 列
-  - Banner 改为独立于媒体库内容区的顶部容器，Banner 与下方内容都直接按页面级 `90vw` 对齐，不再叠加嵌套百分比宽度
-  - Banner 调整为中间主卡 + 左右透视侧卡的轮播样式，补上实际过渡动画
-  - Banner 交互改为点击中间主卡进入视频详情，点击左右侧卡或左右箭头切换，不再支持按住拖动切换
-  - 首页 Banner 候选已从纯随机切到优先读取后端推荐位，个性化候选不足时回退热门内容
-  - 推荐页新增“最近观看”单行标题模块，直接展示上次播放位置较新的未看完视频
-  - Banner 外层高度改为跟随主卡宽度和 16:9 比例自动撑开，避免宽屏继续放大时被固定高度卡住
-  - Banner 动画终点与静态卡位统一，并修正中间卡切到侧卡时的 `transform-origin`，消除切换结束时额外跳帧和卡顿
-  - Banner 切换时复用同一批卡片节点，避免动画落点正确后仍因节点重建产生视觉卡顿
-  - Banner 支持每 10 秒自动轮转一次
-  - 推荐页“最近观看”继续沿用 `continue_watching` 候选，但进入页面会强制刷新，前端最多展示 5 条
-  - 媒体库页调整为“全部视频”视图：默认不选标签时展示全部视频，仅保留一级 / 二级标签筛选，视频网格按 12 张一批继续展开
-- 播放统计与推荐基础
-  - 新增单机单用户播放会话统计：有效播放次数、总会话数、总观看时长、最近播放位置、跳出率、重看倾向
-  - 后端会按一二级标签累计偏好分，并回写推荐分、继续观看分、缓存优先级
-  - 播放页新增观看心跳上报与“跳到高潮”按钮；高光区间基于轻量 heatmap 计算
-  - 媒体库 poster 墙改为每次先展示 12 张，并随滚动继续展开后续视频
-- 左上角站点标题已替换为 `frontend/asserts/` 中的 logo
-- `uv run pytest` 自动化测试
-
-## 2026-05-16 Plan.md Follow-Up
-- Added `videos.has_custom_poster`; manual poster replacements now enter the same delayed sync path as title/tag edits, rewrite the local manifest immediately, and sync remote custom-poster artifacts roughly 10 minutes later.
-- Remote catalog sync now restores only user-customized posters from remote metadata; default auto-generated 1/3-frame posters remain local-only.
-- Added Windows packaging/runtime flow: backend can serve `frontend/dist` directly, `npm run build:csp` builds `start.exe` and `stop.exe`, `start.exe` writes logs under `logs/`, and `stop.exe` refuses shutdown while import/cache or pending manifest/custom-poster sync work still exists.
-- Added local migration/archive scripts: `cloud-storage-player-save-data` exports DB/content-key/optional `.env` into zip, and `cloud-storage-player-load-data` restores only when local targets do not already exist.
-
-## 当前仍未完成
-
-- 新环境首次接入百度时，仍需要管理员手工完成一次 OAuth 授权码流程
-- 导入断点续传、LRU 分片缓存
-- 更完整的百度错误分类与更细粒度的长时退避策略
-- 当前前端只保证 Web 主链路，移动端不是本阶段目标
-- 目前还没有批量删除/批量清空媒体库，当前仍以单视频删除任务为主
-- 任务取消目前是协作式取消：已排队任务会立刻取消，运行中任务会在阶段边界停止
-
-## Python 版本
-
-项目当前目标版本为 `Python 3.12`。
-
-## 快速开始
-
-### 后端
+### 2. 安装依赖
 
 ```bash
 uv sync --dev
+npm install
+```
+
+### 3. 启动开发环境
+
+后端：
+
+```bash
 uv run cloud-storage-player
 ```
 
-默认监听：
-
-- Host: `0.0.0.0`
-- Port: `8000`
-
-### 前端开发
+前端：
 
 ```bash
-npm install
 npm run dev
 ```
 
-说明：在项目根目录执行一次 `npm install` 时，会自动继续安装 `frontend/` 下的依赖，不需要再单独进入 `frontend/` 执行安装。
+默认入口：
 
-当前页面结构：
+- 前端开发页：`http://127.0.0.1:5173`
+- 后端：`http://127.0.0.1:8000`
+- 管理员页面：`http://127.0.0.1:8000/admin`
 
-- `/`：重定向到 `/recommend`
-- `/recommend`：推荐页，包含 3D Banner、最近观看单行列表、12 宫格次推荐位
-- `/library`：独立媒体库，包含搜索、一级 / 二级标签筛选和 poster 分批展开
-- `/manage`：单文件导入、文件夹批量导入、同步与任务管理
-- `/settings`：运行设置与百度授权
+## ⚙️ 首次使用
 
-如果后端地址不是默认值，可创建 `.env.local`：
+首次使用时，建议按这个顺序：
 
-```bash
-VITE_API_BASE_URL=http://127.0.0.1:8000
-```
-
-## 环境变量
-
-统一使用 `CSP_` 前缀，可放在 `.env` 中。
-
-### 基础配置
-
-- `CSP_APP_NAME`
-- `CSP_HOST`
-- `CSP_PORT`
-- `CSP_SESSION_SECRET`
-- `CSP_PASSWORD`
-- `CSP_PASSWORD_HASH`
-- `CSP_DATABASE_PATH`
-
-### 媒体处理与本地文件
-
-- `CSP_FFPROBE_BINARY`
-- `CSP_FFMPEG_BINARY`
-- `CSP_COVERS_PATH`
-- `CSP_CONTENT_KEY_PATH`
-- `CSP_SEGMENT_STAGING_PATH`
-- `CSP_SEGMENT_SIZE_BYTES`
-
-### 存储后端
-
-- `CSP_STORAGE_BACKEND`
-  - 当前默认：`mock`
-  - 可选：`mock` / `baidu`
-- `CSP_REMOTE_TRANSFER_CONCURRENCY`
-  - 当前默认：`5`
-  - 兼容旧配置的总并发默认值；若未单独设置上传/下载并发，会作为两者的后备值
-- `CSP_UPLOAD_TRANSFER_CONCURRENCY`
-  - 可选，允许范围：`1` 到 `32`
-  - 未设置时回退到 `CSP_REMOTE_TRANSFER_CONCURRENCY`
-- `CSP_DOWNLOAD_TRANSFER_CONCURRENCY`
-  - 可选，允许范围：`1` 到 `32`
-  - 未设置时回退到 `CSP_REMOTE_TRANSFER_CONCURRENCY`
-- `CSP_BAIDU_UPLOAD_RESUME_POLL_INTERVAL_SECONDS`
-  - 当前默认：`3600`
-- `CSP_MOCK_STORAGE_PATH`
-  - 当前默认：`data/mock-remote`
-- `CSP_BAIDU_OAUTH_REDIRECT_URI`
-  - 当前默认：`oob`
-  - 用于百度 OAuth 授权码回调参数
-
-### 前后端联调
-
-- `CSP_CORS_ALLOWED_ORIGINS_RAW`
-- `VITE_API_BASE_URL`
-
-### 百度网盘开放平台凭据
-
-这些值按项目约定来自**不带 `CSP_` 前缀**的环境变量：
-
-- `BAIDU_APP_KEY`
-- `BAIDU_SECRET_KEY`
-- `BAIDU_SIGN_KEY`
+1. 启动后端服务
+2. 打开 `/admin`
+3. 填写管理员密码、百度 App Key / Secret Key、会话密钥等主机侧配置
+4. 再到前端 `/settings` 页面完成运行参数与百度授权码流程
 
 说明：
 
-- 当前上传 / 下载链路实际使用 `BAIDU_APP_KEY` 与 `BAIDU_SECRET_KEY`
-- `BAIDU_SIGN_KEY` 先保留，后续更深的开放能力接入时可能会用到
+- 百度 OAuth 授权码流程仍需管理员手工完成一次
+- `session_secret` 这类启动级配置保存后需要重启服务生效
 
-## 当前接口
+## 🗂️ 目录结构
 
-认证：
+- `src/`
+  FastAPI 后端、导入/加密/存储/播放逻辑
+- `frontend/`
+  React + TypeScript + Vite 前端
+- `docs/`
+  技术文档
+- `third/`
+  参考代码，不参与当前运行时
 
-- `GET /api/auth/session`
-- `POST /api/auth/login`
-- `POST /api/auth/logout`
-
-目录与播放：
-
-- `GET /api/videos`
-- `GET /api/videos/{video_id}`
-- `PATCH /api/videos/{video_id}/tags`
-- `POST /api/videos/{video_id}/like`
-  - 可通过请求体 `{"delta": 1}` / `{"delta": -1}` 或查询参数 `?delta=1` / `?delta=-1` 指定增减；缺省仍等价于点赞 `+1`
-- `POST /api/videos/{video_id}/artwork`
-- `DELETE /api/videos/{video_id}`（创建删除任务）
-- `GET /api/videos/{video_id}/stream`
-
-导入：
-
-- `POST /api/imports`
-- `POST /api/imports/folders`
-- `POST /api/imports/{job_id}/cancel`
-- `POST /api/imports/cancel-all`
-- `DELETE /api/imports?status_group=completed|failed`
-- `GET /api/imports`
-
-缓存：
-
-- `GET /api/cache`
-- `GET /api/cache/videos`
-- `DELETE /api/cache`
-- `DELETE /api/cache/videos/{video_id}`
-- `POST /api/videos/{video_id}/cache`
-- `GET /api/imports/{job_id}`
-
-同步：
-
-- `POST /api/videos/sync`
-
-设置：
-
-- `GET /api/settings`
-- `POST /api/settings`
-- `POST /api/settings/baidu/oauth`
-
-## 百度授权最小流程
-
-1. 在后端环境里配置 `BAIDU_APP_KEY`、`BAIDU_SECRET_KEY`
-2. 打开设置页或调用 `GET /api/settings`
-3. 取返回的 `baidu_authorize_url`
-4. 在浏览器打开授权页，完成授权
-5. 把返回的 `code` 提交到 `POST /api/settings/baidu/oauth`
-6. 再把 `storage_backend` 切到 `baidu`
-
-## 测试与验证
+## 🧪 常用验证
 
 后端测试：
 
 ```bash
 uv run pytest
 ```
-
-如果当前机器没有把 `ffmpeg` / `ffprobe` 放进 `PATH`，依赖真实视频生成与探测的集成测试会失败；本轮新增的远端传输并发 / 频控恢复 / 持续预取测试不依赖这些外部二进制。
 
 前端构建：
 
@@ -410,84 +108,9 @@ Windows 打包：
 npm run build:csp
 ```
 
-生成物：
+## 📚 文档
 
-- `start.exe`
-- `stop.exe`
-
-本地数据归档 / 恢复：
-
-```bash
-uv run cloud-storage-player-save-data backup.zip
-uv run cloud-storage-player-load-data backup.zip
-```
-
-真实百度 smoke：
-
-```bash
-uv run cloud-storage-player-baidu-smoke
-```
-
-如果还没有 refresh token，先按脚本打印的授权链接拿到 `code`，再执行：
-
-```bash
-uv run cloud-storage-player-baidu-smoke --oauth-code "你的百度授权码"
-```
-
-如果你想直接用 `tmp/rieri.mp4` 跑真实百度链路：
-
-```bash
-uv run cloud-storage-player-baidu-smoke --source-path tmp/rieri.mp4
-```
-
-如果你在项目 `tmp/` 目录放了测试视频，例如 `tmp/rieri.mp4`，可以在服务启动后通过 `POST /api/imports` 手工导入验证。
-
-## 技术文档
-
-- [docs/README.md](docs/README.md)
-- [docs/technical-overview.md](docs/technical-overview.md)
-- [docs/storage-backend-and-remote-fallback.md](docs/storage-backend-and-remote-fallback.md)
-- [docs/baidu-openapi-integration.md](docs/baidu-openapi-integration.md)
-
-## 2026-05-14 UI Follow-Up
-- Removed the player cache visualization overlay from the playback page to avoid misleading range rendering.
-- Library listing now defaults to newest imported videos first (by `created_at` descending, then `id` descending).
-- Recommendation secondary grid now switches from 3 columns to 2 columns earlier on medium-width viewports to prevent overflow.
-## 2026-05-15 Problem.md Follow-Up 2
-- Library page state restore now waits until the remembered item batch is rendered before replaying scroll position, so returning from a video detail page restores both filters and the previous scroll offset more reliably.
-- Cache cards on the management page now treat cover-card clicks as a real two-step interaction: first click arms the card and reveals the delete action, second click opens the matching video detail page.
-- Recommendation secondary cards now enforce min-width-safe shrink behavior down to card children, preventing the second column from overflowing on narrower page widths.
-## 2026-05-15 Problem.md Follow-Up 3
-- Kept the useful library-state restore implementation from the previous commit (filter + visible batch + scroll replay) because it directly addresses the "return to prior library position" requirement.
-- Refined cached-video card behavior on the management page: first click now arms the card, delete/guide UI auto-hides after 2 seconds, and the delete button style was adjusted to be less intrusive.
-- Updated player-page similar recommendations to a fixed one-row, four-column display and limited rendering to four items.
-- Added an extra overflow-safe text wrap guard for recommendation secondary cards on narrow viewports.
-## 2026-05-15 Problem.md Follow-Up 4
-- Library page batch expansion size is now `6` (was `12`) to improve scroll restoration precision when rebuilding list height from memory.
-- Library memory persistence now tracks the last known scroll position continuously and reuses that value during route unmount, preventing detail-page back navigation from overwriting memory with a stale scroll offset.
-- Recommendation page content shells now use fluid width (`width: 100%` + `max-width: 90vw`), so both "recent watch" and lower recommendation sections resize with viewport width consistently.
-## 2026-05-16 Recommendation Width Follow-Up
-- Root cause was not `body`/`main`, but `.library-content-shell` as a grid container using implicit track sizing; child max-content width could force the single column wider than the shell on narrow viewports.
-- Added an explicit track (`grid-template-columns: minmax(0, 1fr)`) and direct-child shrink guard (`.library-content-shell > * { min-width: 0; }`) so recommendation sections remain width-bound to the shell.
-- Verified with Playwright across multiple widths (1720/1440/1280/1100/980/900/820/768/640): `html.scrollWidth` now equals viewport width and recommendation secondary grid width follows shell width without page-level overflow.
-
-## 2026-05-16 Admin Backend Page Follow-Up
-- Added backend administrator page at `/admin` (served by FastAPI templates, not frontend SPA) for host-side operations.
-- Added playback fallback download concurrency setting on `/admin`, persisted as `playback_download_transfer_concurrency`, and separated from cache-job download concurrency in `/api/settings`.
-- Added login password update flow on `/admin` with current-password verification and confirm-new-password check; password updates now persist in DB setting key `password_hash`.
-- Updated both `/auth/login` and `/api/auth/login` to verify against persisted `password_hash` first, then fallback to environment/config password hash for compatibility.
-
-## 2026-05-16 Problem.md Follow-Up
-- Library-page memory restore now avoids clearing remembered primary/secondary tag filters while the video query is still loading, preventing Chrome refresh from frequently losing selected tags.
-- Library-page memory persistence now writes with storage-failure-safe fallback (`sessionStorage` first, then `localStorage`) and restores from either store, improving refresh stability on Windows Chrome.
-- Added extra save triggers on `beforeunload` and `visibilitychange(hidden)` in addition to `pagehide`, reducing cases where refresh/navigation misses the latest scroll/filter snapshot.
-
-## 2026-05-16 Problem.md Follow-Up 2
-- Library card links now set `preventScrollReset`, avoiding router-level forced scroll-top when entering video detail pages.
-- Library-page scroll tracking now freezes once a card navigation is triggered, so route-transition scroll noise from the detail page cannot overwrite remembered library position.
-- Removed eager scroll sampling on mount-time effect setup, preventing React StrictMode dev remount from writing a transient `0` back to library memory before restore completes.
-
-## 2026-05-16 Duplicate Import And Recommendation Exploration Follow-Up
-- Import jobs now reject duplicate video content by `content_fingerprint`; when a duplicate is found, the job fails with the existing video detail link so the admin can decide whether to delete and retry.
-- Added a `video_primary_tags` lookup table plus related indexes so duplicate checks can narrow matching by primary tag before falling back to the full fingerprint set.
-- Recommendation shelf now increases exploration weight and applies a stronger watched/resume penalty to the main `recommended` feed, reducing the chance that already watched videos dominate recommendations while keeping them in `continue_watching`.
+- [技术文档索引](docs/README.md)
+- [技术总览](docs/technical-overview.md)
+- [运行与配置](docs/runtime-and-configuration.md)
+- [HTTP 接口](docs/http-api.md)

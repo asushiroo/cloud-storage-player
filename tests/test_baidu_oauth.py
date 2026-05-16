@@ -74,3 +74,30 @@ def test_authorize_baidu_with_code_persists_refresh_and_access_tokens(monkeypatc
     assert api.calls == [
         ("demo-app-key", "demo-secret-key", "demo-code", settings.baidu_oauth_redirect_uri)
     ]
+
+
+def test_build_baidu_authorize_url_prefers_admin_stored_app_key(tmp_path: Path) -> None:
+    settings = build_settings(tmp_path)
+    from app.repositories.settings import set_setting
+
+    set_setting(settings, key="baidu_app_key", value="stored-app-key")
+
+    authorize_url = build_baidu_authorize_url(settings)
+
+    assert authorize_url is not None
+    assert "client_id=stored-app-key" in authorize_url
+
+
+def test_authorize_baidu_with_code_uses_admin_stored_credentials(tmp_path: Path) -> None:
+    settings = build_settings(tmp_path)
+    from app.repositories.settings import set_setting
+
+    set_setting(settings, key="baidu_app_key", value="stored-app-key")
+    set_setting(settings, key="baidu_secret_key", value="stored-secret-key")
+    api = FakeBaiduApi()
+
+    authorize_baidu_with_code(settings, code="demo-code", api=api)
+
+    assert api.calls == [
+        ("stored-app-key", "stored-secret-key", "demo-code", settings.baidu_oauth_redirect_uri)
+    ]

@@ -3,8 +3,8 @@
 {% block content %}
   <section class="card stack">
     <div class="stack">
-      <h1>Admin</h1>
-      <p>Backend-only administrator controls.</p>
+      <h1>管理员设置</h1>
+      <p>这里用于配置主机侧运行参数、百度开放平台接入信息以及登录密码。</p>
     </div>
 
     {% if error %}
@@ -15,10 +15,56 @@
     {% endif %}
 
     <section class="stack">
-      <h2>Transfer Concurrency</h2>
-      <p>Playback fallback download concurrency (when local segment cache is missing).</p>
+      <h2>基础配置</h2>
+      <p>以下配置保存在本地数据库中。百度凭据会立即用于授权和远端访问；`session_secret` 属于启动级配置，保存后需要重启服务才会完全生效。</p>
       <form action="/admin/settings" method="post">
-        <label for="playback_download_transfer_concurrency">Playback fallback download concurrency (1-32)</label>
+        <label for="baidu_app_key">百度 App Key</label>
+        <input
+          id="baidu_app_key"
+          name="baidu_app_key"
+          type="text"
+          value="{{ admin_settings.baidu_app_key }}"
+          autocomplete="off"
+        >
+
+        <label for="baidu_secret_key">百度 Secret Key</label>
+        <input
+          id="baidu_secret_key"
+          name="baidu_secret_key"
+          type="text"
+          value="{{ admin_settings.baidu_secret_key }}"
+          autocomplete="off"
+        >
+
+        <label for="baidu_sign_key">百度 Sign Key</label>
+        <input
+          id="baidu_sign_key"
+          name="baidu_sign_key"
+          type="text"
+          value="{{ admin_settings.baidu_sign_key }}"
+          autocomplete="off"
+        >
+
+        <label for="baidu_oauth_redirect_uri">百度 OAuth 回调地址</label>
+        <input
+          id="baidu_oauth_redirect_uri"
+          name="baidu_oauth_redirect_uri"
+          type="text"
+          value="{{ admin_settings.baidu_oauth_redirect_uri }}"
+          required
+        >
+
+        <label for="session_secret">会话密钥（至少 16 个字符）</label>
+        <input
+          id="session_secret"
+          name="session_secret"
+          type="text"
+          value="{{ admin_settings.session_secret }}"
+          minlength="16"
+          required
+        >
+
+        <label for="playback_download_transfer_concurrency">播放回退下载并发（1-32）</label>
         <input
           id="playback_download_transfer_concurrency"
           name="playback_download_transfer_concurrency"
@@ -28,29 +74,29 @@
           value="{{ admin_settings.playback_download_transfer_concurrency }}"
           required
         >
-        <button type="submit">Save playback concurrency</button>
+        <button type="submit">保存管理员配置</button>
       </form>
-      <p>Cache job download concurrency (configured in /settings API): {{ cache_download_transfer_concurrency }}</p>
+      <p>缓存任务下载并发（前端设置页 `/settings` 配置）：{{ cache_download_transfer_concurrency }}</p>
     </section>
 
     <section class="stack">
-      <h2>Password</h2>
+      <h2>登录密码</h2>
       <form action="/admin/password" method="post">
-        <label for="current_password">Current password</label>
+        <label for="current_password">当前密码</label>
         <input id="current_password" name="current_password" type="password" autocomplete="current-password" required>
 
-        <label for="new_password">New password</label>
+        <label for="new_password">新密码</label>
         <input id="new_password" name="new_password" type="password" autocomplete="new-password" required>
 
-        <label for="confirm_new_password">Confirm new password</label>
+        <label for="confirm_new_password">确认新密码</label>
         <input id="confirm_new_password" name="confirm_new_password" type="password" autocomplete="new-password" required>
 
-        <button type="submit">Update password</button>
+        <button type="submit">更新登录密码</button>
       </form>
     </section>
 
     <form action="/auth/logout" method="post">
-      <button type="submit">Sign out</button>
+      <button type="submit">退出登录</button>
     </form>
   </section>
 {% endblock %}

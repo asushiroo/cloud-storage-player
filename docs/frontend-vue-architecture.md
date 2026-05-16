@@ -1,108 +1,100 @@
-# Vue 前端架构
+# 前端架构（React）
 
 ## 技术栈
 
 当前前端使用：
 
-- Vue 3
+- React
 - TypeScript
 - Vite
-- Vue Router
-- Pinia
-- Axios
+- React Router
+- TanStack Query
 
 ## 目录结构
 
-- `frontend/src/main.ts`
-  - 应用入口
-- `frontend/src/router/`
-  - 路由与登录守卫
-- `frontend/src/stores/`
-  - Pinia 状态
+- `frontend/src/main.tsx`
+  应用入口
+- `frontend/src/App.tsx`
+  路由定义
 - `frontend/src/api/`
-  - API 调用封装
-- `frontend/src/views/`
-  - 路由级页面
+  后端 API 调用封装
+- `frontend/src/pages/`
+  路由级页面
 - `frontend/src/components/`
-  - 复用组件
+  通用组件
+- `frontend/src/hooks/`
+  会话与共享逻辑
 - `frontend/src/types/`
-  - TypeScript 类型
+  前后端契约类型
+- `frontend/src/utils/`
+  纯工具函数
 
-## 当前页面
+## 当前页面职责
 
-### 1. 登录页
+### 登录页
 
 - 调用 `/api/auth/login`
-- 登录成功后跳转媒体库
+- 恢复或校验当前 session
 
-### 2. 媒体库页
+### 推荐页
 
-- 读取目录列表
+- 读取推荐数据
+- 展示 3D Banner、最近观看、次推荐位
+
+### 媒体库页
+
 - 读取视频列表
-- 读取导入任务
-- 提交本地主机路径导入
+- 支持搜索、标签筛选、分批展开
+- 记忆过滤条件与滚动位置
 
-### 3. 视频详情页
+### 视频详情页
 
 - 读取 `/api/videos/{id}`
-- 展示基础元数据
-- 直接消费 `/api/videos/{id}/stream`
-- 当前已接通后端播放器链路
+- 编辑标签
+- 管理封面
+- 进入播放页
 
-### 4. 设置页
+### 播放页
+
+- 直接使用 `/api/videos/{id}/stream`
+- 保留原生播放器控件
+- 负责点赞、跳高光、观看心跳与推荐联动 UI
+
+### 管理页
+
+- 发起单文件导入或文件夹导入
+- 查看后台任务
+- 查看与清理缓存
+- 发起同步
+
+### 设置页
 
 - 读取 `/api/settings`
-- 更新 `/api/settings`
-- 展示 `storage_backend` 与百度授权状态
-- 调用 `/api/settings/baidu/oauth` 提交授权码
+- 更新运行设置
+- 提交百度 OAuth 授权码
+- 当没有授权链接时，提示去 `/admin` 填写百度凭据
 
-## API 分层原则
+## API 协作原则
 
-前端 API 统一放在 `src/api/`，当前主要包括：
+前端只依赖后端契约，不依赖后端内部实现细节。
 
-- `auth.ts`
-- `library.ts`
-- `imports.ts`
-- `settings.ts`
-
-统一 HTTP 客户端在 `src/api/http.ts` 中处理：
-
-- `baseURL`
-- `withCredentials`
-- 资源 URL 拼接
-
-## 当前与后端的协作边界
-
-前端知道的只是：
+前端关心的是：
 
 - 视频列表和详情 JSON
 - 导入任务 JSON
 - 设置 JSON
 - 播放流 URL
-- 百度授权链接和授权状态
+- 授权链接与授权状态
 
-前端**不需要知道**：
+前端不关心的是：
 
 - 分片如何加密
-- 分片是否来自本地 staging、mock 远端还是百度远端
-- refresh token 如何保存
-- access token 如何刷新
-- 内容密钥在哪里
+- 分片来自本地还是百度
+- refresh token 如何持久化
+- manifest 如何写入与同步
 
-这些细节全部由后端处理。
+## 当前实现边界
 
-## 当前还没有做的前端能力
-
-- 任务自动轮询刷新
-- 更细的错误码统一处理
-- 前端单元测试 / E2E
-- 更完整的播放器状态 UI
-- 组件库与设计系统
-
-## 为什么当前不引入更重方案
-
-当前没有引入 Nuxt、SSR、组件库或更重状态框架，原因很直接：
-
-1. 当前核心风险仍在后端导入/加密/回放链路
-2. 页面数量还不多
-3. 先把 API 契约稳定下来更重要
+- 前端主实现已经完全转到 React
+- 旧 Vue 方案仅作为历史文档背景，不再是当前运行时
+- 播放、推荐、媒体库和管理流程都以 `frontend/` 为准

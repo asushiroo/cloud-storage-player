@@ -38,6 +38,11 @@ def update_admin_settings_view(
         updated = update_admin_settings(
             settings,
             playback_download_transfer_concurrency=payload.playback_download_transfer_concurrency,
+            baidu_app_key=payload.baidu_app_key,
+            baidu_secret_key=payload.baidu_secret_key,
+            baidu_sign_key=payload.baidu_sign_key,
+            baidu_oauth_redirect_uri=payload.baidu_oauth_redirect_uri,
+            session_secret=payload.session_secret,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

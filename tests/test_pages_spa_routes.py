@@ -41,4 +41,4 @@ def test_protected_spa_routes_render_shell_when_logged_in(tmp_path: Path) -> Non
 
     admin_response = client.get("/admin")
     assert admin_response.status_code == 200
-    assert "Admin" in admin_response.text
+    assert "管理员设置" in admin_response.text

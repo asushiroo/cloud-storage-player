@@ -270,7 +270,7 @@ export function SettingsPage() {
             打开百度授权页
           </a>
         ) : (
-          <p className="muted">当前没有可用授权链接，请先配置环境变量。</p>
+          <p className="muted">当前没有可用授权链接，请先到 `/admin` 管理员页面填写百度 App Key / Secret Key。</p>
         )}
         <div className="form-stack top-gap">
           <input

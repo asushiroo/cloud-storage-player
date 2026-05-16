@@ -25,3 +25,8 @@ class PublicSettings:
 @dataclass(slots=True)
 class AdminSettings:
     playback_download_transfer_concurrency: int
+    baidu_app_key: str
+    baidu_secret_key: str
+    baidu_sign_key: str
+    baidu_oauth_redirect_uri: str
+    session_secret: str

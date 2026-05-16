@@ -5,6 +5,11 @@ from urllib.parse import urlencode
 
 from app.core.config import Settings
 from app.repositories.settings import get_setting, set_setting
+from app.services.admin_runtime_config import (
+    get_baidu_app_key,
+    get_baidu_oauth_redirect_uri,
+    get_baidu_secret_key,
+)
 from app.storage.baidu_api import BaiduAuthorizationError, BaiduOpenApi, BaiduToken
 
 BAIDU_ACCESS_TOKEN_KEY = "baidu_access_token"
@@ -19,14 +24,15 @@ class BaiduOAuthConfigurationError(ValueError):
 
 
 def build_baidu_authorize_url(settings: Settings) -> str | None:
-    if not settings.baidu_app_key:
+    baidu_app_key = get_baidu_app_key(settings)
+    if not baidu_app_key:
         return None
 
     query = urlencode(
         {
             "response_type": "code",
-            "client_id": settings.baidu_app_key,
-            "redirect_uri": settings.baidu_oauth_redirect_uri,
+            "client_id": baidu_app_key,
+            "redirect_uri": get_baidu_oauth_redirect_uri(settings),
             "scope": BAIDU_SCOPE,
             "force_login": 1,
         }
@@ -109,19 +115,21 @@ def authorize_baidu_with_code(
     normalized_code = code.strip()
     if not normalized_code:
         raise ValueError("Baidu authorization code must not be empty.")
-    if not settings.baidu_app_key:
+    baidu_app_key = get_baidu_app_key(settings)
+    if not baidu_app_key:
         raise BaiduOAuthConfigurationError("BAIDU_APP_KEY is not configured.")
-    if not settings.baidu_secret_key:
+    baidu_secret_key = get_baidu_secret_key(settings)
+    if not baidu_secret_key:
         raise BaiduOAuthConfigurationError("BAIDU_SECRET_KEY is not configured.")
 
     client = api or BaiduOpenApi()
     owns_client = api is None
     try:
         token = client.exchange_authorization_code(
-            client_id=settings.baidu_app_key,
-            client_secret=settings.baidu_secret_key,
+            client_id=baidu_app_key,
+            client_secret=baidu_secret_key,
             code=normalized_code,
-            redirect_uri=settings.baidu_oauth_redirect_uri,
+            redirect_uri=get_baidu_oauth_redirect_uri(settings),
         )
     except BaiduAuthorizationError:
         raise

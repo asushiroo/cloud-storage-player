@@ -1,165 +1,88 @@
 # 数据库设计
 
-## 说明
+## 1. 说明
 
-当前数据库使用 SQLite，启动时自动初始化。
+项目当前使用 SQLite 作为本地主数据源。
 
-它现在承担三类职责：
+它承担这些职责：
 
-1. 作为本地目录与视频元数据事实来源
-2. 记录导入任务状态
-3. 记录分片元数据、远端对象逻辑路径与授权状态
+- 视频与标签元数据
+- 导入 / 删除 / 缓存任务状态
+- 分片元数据
+- 运行设置与管理员设置
+- 百度 refresh token / access token 等本地凭据状态
+- 播放统计与推荐基础数据
 
-当前仍然没有独立 migration 框架，而是采用：
+数据库初始化仍采用启动时 bootstrap，而不是独立 migration 框架。
 
-- `CREATE TABLE IF NOT EXISTS`
-- 启动时补齐必要列
+## 2. 关键表
 
-这是当前阶段刻意保持简单的选择。
+### `videos`
 
-## 表：folders
+保存视频主记录，包括：
 
-字段：
+- 标题
+- 时长
+- MIME 类型
+- 大小
+- 源文件路径
+- 远端 manifest 路径
+- artwork 路径
+- 自定义 poster 标记
 
-- `id INTEGER PRIMARY KEY AUTOINCREMENT`
-- `name TEXT NOT NULL`
-- `cover_path TEXT`
-- `created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP`
+### `video_segments`
 
-用途：
+保存每个分片的：
 
-- 表示前端媒体库中的目录分类
+- 分片序号
+- 原始偏移与长度
+- 密文大小
+- 校验摘要
+- nonce / tag
+- 远端路径
+- 本地缓存相对路径
 
-## 表：videos
+当前 `local_staging_path` 使用缓存根目录相对后缀，而不是绝对路径。
 
-字段：
+### `import_jobs`
 
-- `id INTEGER PRIMARY KEY AUTOINCREMENT`
-- `folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL`
-- `title TEXT NOT NULL`
-- `cover_path TEXT`
-- `mime_type TEXT NOT NULL`
-- `size INTEGER NOT NULL DEFAULT 0`
-- `duration_seconds REAL`
-- `manifest_path TEXT`
-- `source_path TEXT`
-- `created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP`
+保存导入、删除、缓存等后台任务状态，包括：
 
-字段说明：
+- 任务类型
+- 状态
+- 进度
+- 错误信息
+- 关联视频
 
-- `manifest_path`
-  - 保存远端 manifest 的逻辑路径
-  - 当前默认会写成 `/apps/CloudStoragePlayer/<opaque_video_dir>/<opaque_manifest>.bin`
-  - 这里的 `<opaque_*>` 基于内容密钥稳定推导，不直接暴露 `video_id` 或 `manifest.json`
-- `source_path`
-  - 保存最初导入时的主机本地源文件路径
-  - 当前阶段仍用于最后一层播放回退
-- `cover_path`
-  - 保存浏览器可访问路径，例如 `/covers/12.jpg`
+### `settings`
 
-## 表：video_segments
+键值表，保存运行与管理员配置，例如：
 
-字段：
-
-- `id INTEGER PRIMARY KEY AUTOINCREMENT`
-- `video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE`
-- `segment_index INTEGER NOT NULL`
-- `original_offset INTEGER NOT NULL`
-- `original_length INTEGER NOT NULL`
-- `ciphertext_size INTEGER NOT NULL`
-- `plaintext_sha256 TEXT NOT NULL`
-- `nonce_b64 TEXT NOT NULL`
-- `tag_b64 TEXT NOT NULL`
-- `cloud_path TEXT`
-- `local_staging_path TEXT`
-- `created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP`
-
-字段说明：
-
-- `cloud_path`
-  - 远端分片逻辑路径
-  - 当前默认格式：`/apps/CloudStoragePlayer/<opaque_video_dir>/<opaque_segment>.bin`
-  - 远端路径名已混淆，不直接暴露分片序号
-- `local_staging_path`
-  - 本地已加密分片暂存文件路径
-  - 播放时会优先读取这里
-- `plaintext_sha256`
-  - 当前用于记录加密前明文摘要，便于后续校验与调试
-
-## 表：settings
-
-字段：
-
-- `key TEXT PRIMARY KEY`
-- `value TEXT NOT NULL`
-- `updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP`
-
-用途：
-
-- 存储公开本地设置项
-- 存储百度授权后的 refresh token
-
-当前已使用的 key 包括：
-
-- `baidu_root_path`
-- `cache_limit_bytes`
 - `storage_backend`
+- `baidu_root_path`
+- `segment_cache_root_path`
+- `cache_limit_bytes`
+- `upload_transfer_concurrency`
+- `download_transfer_concurrency`
+- `playback_download_transfer_concurrency`
+- `password_hash`
+- `baidu_app_key`
+- `baidu_secret_key`
+- `baidu_sign_key`
+- `baidu_oauth_redirect_uri`
+- `session_secret`
 - `baidu_refresh_token`
+- `baidu_access_token`
 
-注意：
+## 3. 设计取向
 
-- `BAIDU_APP_KEY`、`BAIDU_SECRET_KEY`、`BAIDU_SIGN_KEY` 仍然来自环境变量，不进库
-- `GET /api/settings` 也不会返回 refresh token 明文
+- 后端配置优先落库，减少首次使用必须手改环境变量的门槛
+- 密码不存明文，只存 `password_hash`
+- 远端访问凭据不回传到前端公开设置接口
+- 分片缓存路径尽量相对化，便于目录迁移
 
-## 表：import_jobs
+## 4. 当前注意点
 
-字段：
-
-- `id INTEGER PRIMARY KEY AUTOINCREMENT`
-- `source_path TEXT NOT NULL`
-- `folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL`
-- `requested_title TEXT`
-- `status TEXT NOT NULL`
-- `progress_percent INTEGER NOT NULL DEFAULT 0`
-- `error_message TEXT`
-- `video_id INTEGER REFERENCES videos(id) ON DELETE SET NULL`
-- `created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP`
-- `updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP`
-
-当前状态：
-
-- `queued`
-- `running`
-- `completed`
-- `failed`
-
-当前进度推进大致会经过：
-
-- 探测前后
-- 分片完成后
-- manifest 完成后
-- 远端上传完成后
-- 任务完成
-
-## 启动时 schema bootstrap
-
-当前 `initialize_database()` 负责：
-
-1. 创建表
-2. 为旧数据库补齐必要列
-
-当前补齐逻辑已经覆盖：
-
-- `videos.source_path`
-
-## 当前未做的数据库能力
-
-还没有实现：
-
-- 版本化 migration
-- 更细索引设计
-- 远端对象同步状态字段
-- 导入恢复断点字段
-- 分片缓存表
-
-这些等真实在线验收、异步导入和同步链路继续展开后再补更合适。
+- `session_secret` 已允许持久化到数据库，但中间件仍在启动时初始化，所以完全生效需要重启
+- 百度 App Key / Secret Key 现在允许保存在本地数据库；这是主机可信前提下的工程折中
+- 历史数据兼容逻辑仍保留，用于旧路径、旧并发字段与旧 artwork 路径恢复

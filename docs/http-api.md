@@ -1,257 +1,205 @@
 # HTTP 接口说明
 
-## 认证约定
+## 1. 总体约定
 
-当前存在两类路由：
+- 新前端主契约是 `/api/*`
+- 页面模板路由主要用于登录页、兼容入口和 `/admin`
+- JSON API 未登录时返回 `401`
+- 页面路由未登录时通常 `303` 跳转到 `/login`
 
-1. 页面兼容路由
-2. JSON API 路由
-
-对于新的 Vue 前端，主契约是 `/api/*`。
-
-页面路由中的未登录访问通常会跳转到 `/login`；JSON API 未登录时返回：
-
-```json
-{"detail":"Authentication required."}
-```
-
-状态码为 `401`。
-
-## 页面兼容接口
+## 2. 页面路由
 
 ### `GET /login`
 
 - 返回登录页
-- 已登录时 `303` 跳转到 `/`
-
-### `GET /`
-
-- 返回当前兼容首页
-- 未登录时 `303` 跳转到 `/login`
 
 ### `POST /auth/login`
 
-- 表单参数：`password`
-- 成功：写入 Session，`303` 跳转到 `/`
-- 失败：返回 `401`
+- 表单登录
+- 成功后写入 session，跳转到 `/`
 
 ### `POST /auth/logout`
 
-- 清空 Session
-- `303` 跳转到 `/login`
+- 清空 session
+- 跳转到 `/login`
 
-这些接口当前只用于迁移兼容和简单 smoke 测试。
+### `GET /admin`
 
-## JSON 认证接口
+- 后端模板管理员页面
+- 用于主机级配置与密码管理
+
+### `POST /admin/settings`
+
+- 提交管理员配置表单
+
+### `POST /admin/password`
+
+- 提交密码修改表单
+
+## 3. 认证接口
 
 ### `GET /api/auth/session`
 
-用途：读取当前登录态。
-
-返回示例：
-
-```json
-{"authenticated": true}
-```
+- 返回当前登录态
 
 ### `POST /api/auth/login`
 
-请求体：
-
-```json
-{"password": "shared-secret"}
-```
-
-成功：
-
-- `200`
-- 写入 Session Cookie
-- 返回：
-
-```json
-{"authenticated": true}
-```
-
-失败：
-
-- `401`
+- JSON 登录
 
 ### `POST /api/auth/logout`
 
-成功：
+- JSON 退出登录
 
-- `200`
-- 清除 Session
-- 返回：
-
-```json
-{"authenticated": false}
-```
-
-## 目录接口
-
-### `GET /api/folders`
-
-- 需要登录
-- 返回目录列表
-- 按 `name`、`id` 升序
+## 4. 媒体接口
 
 ### `GET /api/videos`
 
-- 需要登录
-- 返回视频列表
-- 可用查询参数：`folder_id`
-
-返回字段包括：
-
-- `id`
-- `folder_id`
-- `title`
-- `cover_path`
-- `mime_type`
-- `size`
-- `duration_seconds`
-- `manifest_path`
-- `source_path`
-- `created_at`
-- `segment_count`
+- 视频列表
+- 支持搜索与标签筛选
 
 ### `GET /api/videos/{video_id}`
 
-- 需要登录
-- 返回单个视频详情
-- 不存在时返回 `404`
+- 单个视频详情
 
-## 播放接口
+### `PATCH /api/videos/{video_id}/tags`
+
+- 更新标签
+
+### `POST /api/videos/{video_id}/like`
+
+- 点赞或取消点赞
+
+### `POST /api/videos/{video_id}/artwork`
+
+- 更新封面或 poster
+
+### `DELETE /api/videos/{video_id}`
+
+- 创建删除任务
 
 ### `GET /api/videos/{video_id}/stream`
 
-用途：返回浏览器播放器可直接消费的原始字节流。
+- 视频原始字节流
+- 支持 Range
 
-认证：
+### `GET /api/videos/{video_id}/similar`
 
-- 需要登录
+- 获取相似推荐
 
-当前实现能力：
-
-- 支持 `Accept-Ranges: bytes`
-- 支持 `206 Partial Content`
-- 支持单段 `Range`
-- 支持 suffix range，例如 `bytes=-1024`
-
-当前读取优先级：
-
-1. 本地加密分片 staging
-2. 当前配置的 storage backend
-3. 本地源文件
-
-注意：
-
-- 浏览器拿到的仍是**原始视频字节**，不是加密分片
-- 分片解密发生在服务端
-- 当前 storage backend 可以是 `mock` 或 `baidu`
-
-常见响应：
-
-- `200`：未带 `Range`，返回整文件流
-- `206`：有效范围请求
-- `404`：视频不存在或本地/远端/源文件都不可用
-- `416`：范围不可满足
-
-## 导入接口
+## 5. 导入与任务接口
 
 ### `POST /api/imports`
 
-用途：从 Windows 主机本地路径创建导入任务。
+- 创建单文件导入任务
 
-请求体示例：
+### `POST /api/imports/folders`
 
-```json
-{
-  "source_path": "D:/videos/demo.mp4",
-  "folder_id": 1,
-  "title": "Imported Demo"
-}
-```
-
-当前处理行为：
-
-1. 创建 `queued` 状态的 `import_jobs`
-2. 把任务交给后台 worker 异步执行
-3. worker 探测媒体元数据
-4. 创建 `videos`
-5. 切片并加密
-6. 写入 `video_segments`
-7. 生成本地 manifest
-8. 上传远端加密 manifest / 远端加密分片到当前 storage backend
-9. 尝试抽取封面
-
-成功时：
-
-- 状态码 `201`
-- 返回任务详情
-- 初始通常是 `queued`
-- 前端应继续轮询 `GET /api/imports/{job_id}` 获取 `running` / `completed` / `failed` 状态
+- 创建文件夹批量导入任务
 
 ### `GET /api/imports`
 
-- 需要登录
-- 返回导入任务列表
+- 获取任务列表
 
 ### `GET /api/imports/{job_id}`
 
-- 需要登录
-- 返回导入任务详情
+- 获取任务详情
 
-## 设置接口
+### `POST /api/imports/{job_id}/cancel`
+
+- 取消任务
+
+### `POST /api/imports/{job_id}/retry`
+
+- 重试失败任务
+
+### `POST /api/imports/cancel-all`
+
+- 取消全部活动任务
+
+## 6. 缓存接口
+
+### `GET /api/cache`
+
+- 本地缓存摘要
+
+### `GET /api/cache/videos`
+
+- 已缓存视频列表
+
+### `DELETE /api/cache`
+
+- 清空全部缓存
+
+### `DELETE /api/cache/videos/{video_id}`
+
+- 清理单视频缓存
+
+### `POST /api/videos/{video_id}/cache`
+
+- 创建手动缓存任务
+
+## 7. 设置接口
 
 ### `GET /api/settings`
 
-- 需要登录
-- 返回当前公开设置
-
-当前字段：
-
-- `baidu_root_path`
-- `cache_limit_bytes`
-- `storage_backend`
-- `baidu_authorize_url`
-- `baidu_has_refresh_token`
+- 公开运行设置
 
 ### `POST /api/settings`
 
-- 需要登录
-- 更新公开设置
+- 更新运行设置
 
-当前可更新字段：
+字段包括：
 
-- `baidu_root_path`
-- `cache_limit_bytes`
 - `storage_backend`
-
-说明：
-
-- 当 `storage_backend=baidu` 时，`baidu_root_path` 必须以 `/apps/` 开头
-- 当前默认值是 `/apps/CloudStoragePlayer`
+- `baidu_root_path`
+- `segment_cache_root_path`
+- `cache_limit_bytes`
+- `upload_transfer_concurrency`
+- `download_transfer_concurrency`
 
 ### `POST /api/settings/baidu/oauth`
 
-- 需要登录
-- 提交百度授权页返回的 `code`
-- 后端会换取并保存 refresh token
+- 提交百度 OAuth 授权码
 
-请求体示例：
+## 8. 管理员设置接口
 
-```json
-{"code":"your-baidu-auth-code"}
-```
+### `GET /api/admin/settings`
 
-成功后：
+- 获取管理员设置快照
 
-- 返回最新设置快照
-- `baidu_has_refresh_token` 会变成 `true`
+当前返回字段包括：
+
+- `playback_download_transfer_concurrency`
+- `baidu_app_key`
+- `baidu_secret_key`
+- `baidu_sign_key`
+- `baidu_oauth_redirect_uri`
+- `session_secret`
+
+### `POST /api/admin/settings`
+
+- 更新管理员设置
+
+当前可更新字段包括：
+
+- `playback_download_transfer_concurrency`
+- `baidu_app_key`
+- `baidu_secret_key`
+- `baidu_sign_key`
+- `baidu_oauth_redirect_uri`
+- `session_secret`
 
 说明：
 
-- 当前接口不会返回 refresh token 明文
-- `BAIDU_APP_KEY` 和 `BAIDU_SECRET_KEY` 仍必须由后端环境变量提供
+- 百度 App Key / Secret Key 保存后，OAuth 授权链接与百度存储访问会优先使用这些值
+- `session_secret` 保存后需要重启后端才能完全生效
+
+### `POST /api/admin/settings/password`
+
+- 更新登录密码
+
+## 9. Artwork 路由说明
+
+- 新的前端统一使用 `/api/artwork/*`
+- 后端兼容部分历史 `/covers/*` 路径
+- 历史 `.jpg` poster 在需要时可回退到同名 `.avif`

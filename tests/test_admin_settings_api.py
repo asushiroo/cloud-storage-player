@@ -46,7 +46,14 @@ def test_admin_settings_returns_default_playback_transfer_concurrency(tmp_path: 
     response = client.get("/api/admin/settings")
 
     assert response.status_code == 200
-    assert response.json() == {"playback_download_transfer_concurrency": 5}
+    assert response.json() == {
+        "playback_download_transfer_concurrency": 5,
+        "baidu_app_key": "",
+        "baidu_secret_key": "",
+        "baidu_sign_key": "",
+        "baidu_oauth_redirect_uri": "oob",
+        "session_secret": "test-session-secret-123456",
+    }
 
 
 def test_admin_settings_updates_playback_transfer_concurrency(tmp_path: Path) -> None:
@@ -59,7 +66,14 @@ def test_admin_settings_updates_playback_transfer_concurrency(tmp_path: Path) ->
     )
 
     assert response.status_code == 200
-    assert response.json() == {"playback_download_transfer_concurrency": 7}
+    assert response.json() == {
+        "playback_download_transfer_concurrency": 7,
+        "baidu_app_key": "",
+        "baidu_secret_key": "",
+        "baidu_sign_key": "",
+        "baidu_oauth_redirect_uri": "oob",
+        "session_secret": "test-session-secret-123456",
+    }
     read_back = get_setting(
         client.app.state.settings,
         PLAYBACK_DOWNLOAD_TRANSFER_CONCURRENCY_KEY,
@@ -77,6 +91,31 @@ def test_admin_settings_uses_legacy_download_transfer_concurrency_as_fallback(tm
 
     assert response.status_code == 200
     assert response.json()["playback_download_transfer_concurrency"] == 8
+
+
+def test_admin_settings_updates_bootstrap_configuration(tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    login(client, password)
+
+    response = client.post(
+        "/api/admin/settings",
+        json={
+            "baidu_app_key": "demo-app-key",
+            "baidu_secret_key": "demo-secret-key",
+            "baidu_sign_key": "demo-sign-key",
+            "baidu_oauth_redirect_uri": "http://127.0.0.1/callback",
+            "session_secret": "0123456789abcdef",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["baidu_app_key"] == "demo-app-key"
+    assert response.json()["baidu_secret_key"] == "demo-secret-key"
+    assert response.json()["baidu_sign_key"] == "demo-sign-key"
+    assert response.json()["baidu_oauth_redirect_uri"] == "http://127.0.0.1/callback"
+    assert response.json()["session_secret"] == "0123456789abcdef"
+    assert settings.session_secret == "0123456789abcdef"
+    assert settings.baidu_oauth_redirect_uri == "http://127.0.0.1/callback"
 
 
 def test_admin_settings_password_update_changes_login_password(tmp_path: Path) -> None:
@@ -153,7 +192,10 @@ def test_admin_page_allows_password_update_via_form(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 303
-    assert response.headers["location"] == "/login?message=Password%20updated.%20Please%20sign%20in%20again."
+    assert (
+        response.headers["location"]
+        == "/login?message=%E5%AF%86%E7%A0%81%E5%B7%B2%E6%9B%B4%E6%96%B0%EF%BC%8C%E8%AF%B7%E9%87%8D%E6%96%B0%E7%99%BB%E5%BD%95%E3%80%82"
+    )
 
     old_password_response = client.post("/api/auth/login", json={"password": password})
     assert old_password_response.status_code == 401
@@ -176,4 +218,15 @@ def test_admin_page_rejects_password_confirm_mismatch(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 400
-    assert "must match" in response.text
+    assert "两次输入的新密码不一致" in response.text
+
+
+def test_admin_page_renders_chinese_admin_copy(tmp_path: Path) -> None:
+    client, _, password = build_client(tmp_path)
+    login(client, password)
+
+    response = client.get("/admin")
+
+    assert response.status_code == 200
+    assert "管理员设置" in response.text
+    assert "登录密码" in response.text

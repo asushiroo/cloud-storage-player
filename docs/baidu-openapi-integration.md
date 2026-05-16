@@ -81,7 +81,8 @@
 ### `BAIDU_APP_KEY`
 ### `BAIDU_SECRET_KEY`
 
-- 当前必须由后端环境变量提供
+- 当前优先读取后端 `/admin` 页面保存的本地设置
+- 如果本地设置为空，则回退读取环境变量
 - 用于生成授权地址，以及授权码换 token / refresh token 刷新 access token
 
 ## 4.3 当前数据落点

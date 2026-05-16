@@ -4,6 +4,7 @@ import hashlib
 from pathlib import Path, PurePosixPath
 
 from app.core.config import Settings
+from app.services.admin_runtime_config import get_baidu_app_key, get_baidu_secret_key
 from app.services.baidu_oauth import (
     BaiduOAuthConfigurationError,
     get_baidu_access_token,
@@ -146,14 +147,16 @@ class BaiduStorageBackend(StorageBackend):
         refresh_token = get_baidu_refresh_token(self.settings)
         if not refresh_token:
             raise BaiduOAuthConfigurationError("Baidu refresh token is not configured.")
-        if not self.settings.baidu_app_key:
+        baidu_app_key = get_baidu_app_key(self.settings)
+        if not baidu_app_key:
             raise BaiduOAuthConfigurationError("BAIDU_APP_KEY is not configured.")
-        if not self.settings.baidu_secret_key:
+        baidu_secret_key = get_baidu_secret_key(self.settings)
+        if not baidu_secret_key:
             raise BaiduOAuthConfigurationError("BAIDU_SECRET_KEY is not configured.")
 
         token = self.api.refresh_access_token(
-            client_id=self.settings.baidu_app_key,
-            client_secret=self.settings.baidu_secret_key,
+            client_id=baidu_app_key,
+            client_secret=baidu_secret_key,
             refresh_token=refresh_token,
         )
         if token.refresh_token != refresh_token:
