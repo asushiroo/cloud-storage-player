@@ -5,6 +5,7 @@ from pathlib import Path
 from pathlib import PurePosixPath
 
 from app.core.config import Settings
+from app.core.keys import load_content_key
 from app.models.imports import ImportJob
 from app.models.library import Video
 from app.repositories.import_jobs import (
@@ -19,7 +20,7 @@ from app.repositories.import_jobs import (
 from app.repositories.video_segments import list_video_segments
 from app.repositories.videos import delete_video, get_video
 from app.services.artwork_storage import resolve_artwork_storage_paths
-from app.services.manifests import local_segment_path
+from app.services.manifests import build_remote_poster_path, local_segment_path
 from app.services.segment_local_paths import resolve_segment_local_staging_path
 from app.storage.factory import build_storage_backend
 
@@ -92,6 +93,11 @@ def _collect_remote_paths(settings: Settings, video: Video) -> list[str]:
         for path in [video.manifest_path, *(segment.cloud_path for segment in segments)]
         if path
     }
+    if video.has_custom_poster:
+        try:
+            paths.add(build_remote_poster_path(settings, video_id=video.id, key=load_content_key(settings)))
+        except Exception:
+            pass
     return sorted(paths)
 
 

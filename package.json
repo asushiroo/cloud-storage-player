@@ -8,6 +8,7 @@
     "backend": "uv run cloud-storage-player",
     "frontend": "npm run dev --prefix frontend",
     "build": "npm run build --prefix frontend",
+    "build:csp": "node scripts/build-csp.mjs",
     "csp": "node scripts/csp-dev.mjs",
     "csp:concurrently": "concurrently -n server,client -c cyan,magenta \"npm run backend\" \"npm run frontend\""
   },

@@ -19,6 +19,7 @@ class VideoResponse(BaseModel):
     title: str
     cover_path: str | None
     poster_path: str | None
+    has_custom_poster: bool = False
     mime_type: str
     size: int
     duration_seconds: float | None

@@ -21,13 +21,19 @@ dependencies = [
 [dependency-groups]
 dev = [
     "httpx>=0.27,<1.0",
+    "pyinstaller>=6.16,<7.0",
     "pytest>=8.3,<9.0",
 ]
 
 [project.scripts]
 cloud-storage-player = "app.main:main"
+cloud-storage-player-start-server = "app.main:main"
 cloud-storage-player-baidu-smoke = "app.cli.baidu_smoke:main"
 cloud-storage-player-rebuild-posters = "app.cli.poster_rebuild:main"
+cloud-storage-player-start = "app.cli.runtime_start:main"
+cloud-storage-player-stop = "app.cli.runtime_stop:main"
+cloud-storage-player-save-data = "app.cli.save_data:main"
+cloud-storage-player-load-data = "app.cli.load_data:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

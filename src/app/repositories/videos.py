@@ -13,6 +13,7 @@ VIDEO_SELECT_SQL = """
            videos.title,
            videos.cover_path,
            videos.poster_path,
+           videos.has_custom_poster,
            videos.mime_type,
            videos.size,
            videos.duration_seconds,
@@ -90,6 +91,7 @@ def create_video(
     tags: list[str] | None = None,
     cover_path: str | None = None,
     poster_path: str | None = None,
+    has_custom_poster: bool = False,
     duration_seconds: float | None = None,
     manifest_path: str | None = None,
     source_path: str | None = None,
@@ -103,6 +105,7 @@ def create_video(
                 title,
                 cover_path,
                 poster_path,
+                has_custom_poster,
                 mime_type,
                 size,
                 duration_seconds,
@@ -112,12 +115,13 @@ def create_video(
                 content_fingerprint,
                 is_visible
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 title,
                 cover_path,
                 poster_path,
+                int(has_custom_poster),
                 mime_type,
                 size,
                 duration_seconds,
@@ -188,6 +192,7 @@ def update_video_artwork_paths(
     *,
     cover_path: str | None | _UnchangedValue = _UNCHANGED,
     poster_path: str | None | _UnchangedValue = _UNCHANGED,
+    has_custom_poster: bool | _UnchangedValue = _UNCHANGED,
 ) -> Video:
     assignments: list[str] = []
     parameters: list[object] = []
@@ -197,6 +202,9 @@ def update_video_artwork_paths(
     if not isinstance(poster_path, _UnchangedValue):
         assignments.append("poster_path = ?")
         parameters.append(poster_path)
+    if not isinstance(has_custom_poster, _UnchangedValue):
+        assignments.append("has_custom_poster = ?")
+        parameters.append(int(has_custom_poster))
     if not assignments:
         video = get_video(settings, video_id)
         if video is None:
@@ -251,6 +259,7 @@ def update_video_sync_metadata(
     source_path: str | None,
     tags: list[str] | None,
     content_fingerprint: str | None = None,
+    has_custom_poster: bool = False,
 ) -> Video:
     with connect_database(settings) as connection:
         connection.execute(
@@ -264,6 +273,7 @@ def update_video_sync_metadata(
                 source_path = ?,
                 tags_json = ?,
                 content_fingerprint = ?,
+                has_custom_poster = ?,
                 is_visible = 1,
                 manifest_sync_dirty = 0
             WHERE id = ?
@@ -277,6 +287,7 @@ def update_video_sync_metadata(
                 source_path,
                 encode_tags(tags),
                 content_fingerprint,
+                int(has_custom_poster),
                 video_id,
             ),
         )
@@ -370,30 +381,37 @@ def update_video_import_metadata(
     source_path: str | None,
     tags: list[str] | None,
     is_visible: bool,
+    has_custom_poster: bool | _UnchangedValue = _UNCHANGED,
 ) -> Video:
+    assignments = [
+        "title = ?",
+        "mime_type = ?",
+        "size = ?",
+        "duration_seconds = ?",
+        "source_path = ?",
+        "tags_json = ?",
+        "is_visible = ?",
+    ]
+    parameters: list[object] = [
+        title,
+        mime_type,
+        size,
+        duration_seconds,
+        source_path,
+        encode_tags(tags),
+        int(is_visible),
+    ]
+    if not isinstance(has_custom_poster, _UnchangedValue):
+        assignments.append("has_custom_poster = ?")
+        parameters.append(int(has_custom_poster))
     with connect_database(settings) as connection:
         connection.execute(
-            """
+            f"""
             UPDATE videos
-            SET title = ?,
-                mime_type = ?,
-                size = ?,
-                duration_seconds = ?,
-                source_path = ?,
-                tags_json = ?,
-                is_visible = ?
+            SET {", ".join(assignments)}
             WHERE id = ?
             """,
-            (
-                title,
-                mime_type,
-                size,
-                duration_seconds,
-                source_path,
-                encode_tags(tags),
-                int(is_visible),
-                video_id,
-            ),
+            (*parameters, video_id),
         )
         _replace_video_primary_tags(connection, video_id=video_id, tags=tags)
         connection.commit()
@@ -422,6 +440,23 @@ def update_video_metadata(
             (title, encode_tags(tags), video_id),
         )
         _replace_video_primary_tags(connection, video_id=video_id, tags=tags)
+        connection.commit()
+        row = _fetch_video_row(connection, video_id)
+
+    return _row_to_video(row)
+
+
+def request_video_manifest_sync(settings: Settings, video_id: int) -> Video:
+    with connect_database(settings) as connection:
+        connection.execute(
+            """
+            UPDATE videos
+            SET manifest_sync_dirty = 1,
+                manifest_sync_requested_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (video_id,),
+        )
         connection.commit()
         row = _fetch_video_row(connection, video_id)
 
@@ -709,6 +744,7 @@ def _row_to_video(row: sqlite3.Row) -> Video:
         title=row["title"],
         cover_path=row["cover_path"],
         poster_path=row["poster_path"],
+        has_custom_poster=bool(row["has_custom_poster"]),
         mime_type=row["mime_type"],
         size=row["size"],
         duration_seconds=row["duration_seconds"],

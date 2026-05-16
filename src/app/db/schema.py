@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS videos (
     title TEXT NOT NULL,
     cover_path TEXT,
     poster_path TEXT,
+    has_custom_poster INTEGER NOT NULL DEFAULT 0,
     mime_type TEXT NOT NULL,
     size INTEGER NOT NULL DEFAULT 0,
     duration_seconds REAL,
@@ -136,6 +137,7 @@ def initialize_database(settings: Settings) -> None:
         _migrate_legacy_schema(connection)
         _ensure_column(connection, "videos", "cover_path", "TEXT")
         _ensure_column(connection, "videos", "poster_path", "TEXT")
+        _ensure_column(connection, "videos", "has_custom_poster", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(connection, "videos", "tags_json", "TEXT NOT NULL DEFAULT '[]'")
         _ensure_column(connection, "videos", "content_fingerprint", "TEXT")
         _ensure_column(connection, "videos", "is_visible", "INTEGER NOT NULL DEFAULT 1")
@@ -207,6 +209,7 @@ def _rebuild_videos_table_without_folder(connection: sqlite3.Connection) -> None
             title TEXT NOT NULL,
             cover_path TEXT,
             poster_path TEXT,
+            has_custom_poster INTEGER NOT NULL DEFAULT 0,
             mime_type TEXT NOT NULL,
             size INTEGER NOT NULL DEFAULT 0,
             duration_seconds REAL,
@@ -239,7 +242,7 @@ def _rebuild_videos_table_without_folder(connection: sqlite3.Connection) -> None
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         INSERT INTO videos_new (
-            id, title, cover_path, poster_path, mime_type, size, duration_seconds,
+            id, title, cover_path, poster_path, has_custom_poster, mime_type, size, duration_seconds,
             manifest_path, source_path, tags_json, content_fingerprint, is_visible, manifest_sync_dirty,
             manifest_sync_requested_at, valid_play_count, total_session_count, total_watch_seconds,
             last_watched_at, last_position_seconds, avg_completion_ratio, bounce_count, bounce_rate,
@@ -248,7 +251,7 @@ def _rebuild_videos_table_without_folder(connection: sqlite3.Connection) -> None
             highlight_bucket_count, highlight_heatmap_json, created_at
         )
         SELECT
-            id, title, cover_path, poster_path, mime_type, size, duration_seconds,
+            id, title, cover_path, poster_path, 0, mime_type, size, duration_seconds,
             manifest_path, source_path, tags_json, content_fingerprint, 1, manifest_sync_dirty,
             manifest_sync_requested_at, valid_play_count, total_session_count, total_watch_seconds,
             last_watched_at, last_position_seconds, avg_completion_ratio, bounce_count, bounce_rate,

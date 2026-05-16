@@ -15,6 +15,7 @@ from app.repositories.import_jobs import create_import_job
 from app.repositories.settings import set_setting
 from app.repositories.video_segments import list_video_segments
 from app.services.manifests import decrypt_manifest_payload, local_manifest_path
+from app.services.video_manifest_sync import sync_due_video_manifests
 from app.services.segment_local_paths import resolve_segment_local_staging_path
 from app.storage.mock import MockStorageBackend
 
@@ -160,6 +161,7 @@ def test_import_video_creates_queued_job_and_completes_in_background(tmp_path: P
     assert video_payload["source_path"] == str(source_path)
     assert video_payload["cover_path"] is None
     assert video_payload["poster_path"] is not None
+    assert video_payload["has_custom_poster"] is False
     assert video_payload["poster_path"].endswith("-poster.avif")
     assert video_payload["segment_count"] >= 1
     assert video_payload["tags"] == ["动画", "治愈"]
@@ -586,7 +588,49 @@ def test_update_video_artwork_replaces_cover_and_poster(tmp_path: Path) -> None:
     payload = response.json()
     assert payload["cover_path"] is None
     assert payload["poster_path"].endswith("-poster.avif")
+    assert payload["has_custom_poster"] is True
     assert client.get(payload["poster_path"]).status_code == 200
+
+
+def test_custom_poster_sync_uploads_remote_artifact_after_delay(tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    source_path = create_sample_video(tmp_path / "custom-poster.mp4")
+    login(client, password)
+
+    create_response = client.post("/api/imports", json={"source_path": str(source_path)})
+    completed_payload = wait_for_job_status(client, create_response.json()["id"], expected_status="completed")
+    video_id = completed_payload["video_id"]
+    assert video_id is not None
+
+    png_data_url = (
+        "data:image/png;base64,"
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII="
+    )
+    artwork_response = client.post(
+        f"/api/videos/{video_id}/artwork",
+        json={"poster_data_url": png_data_url},
+    )
+    assert artwork_response.status_code == 200
+    video_payload = artwork_response.json()
+    assert video_payload["has_custom_poster"] is True
+
+    remote_manifest_path = video_payload["manifest_path"]
+    assert remote_manifest_path is not None
+    storage = MockStorageBackend(settings.mock_storage_dir)
+    remote_video_dir = storage.local_path_for(remote_manifest_path).parent
+    before_files = {path.name for path in remote_video_dir.iterdir()}
+
+    synced_count = sync_due_video_manifests(settings)
+    assert synced_count == 0
+    after_early_files = {path.name for path in remote_video_dir.iterdir()}
+    assert after_early_files == before_files
+
+    from datetime import UTC, datetime, timedelta
+
+    synced_count = sync_due_video_manifests(settings, now=datetime.now(UTC) + timedelta(minutes=11))
+    assert synced_count == 1
+    after_files = {path.name for path in remote_video_dir.iterdir()}
+    assert len(after_files) == len(before_files) + 1
 
 
 def test_video_api_normalizes_legacy_covers_artwork_paths(tmp_path: Path) -> None:

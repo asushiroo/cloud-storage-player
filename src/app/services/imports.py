@@ -306,6 +306,7 @@ def _create_video_from_probe(
         source_path=source_path,
         tags=tags,
         content_fingerprint=None,
+        has_custom_poster=False,
     )
 
 
@@ -333,6 +334,7 @@ def _reuse_or_create_video_from_probe(
                 source_path=source_path,
                 tags=tags,
                 is_visible=False,
+                has_custom_poster=existing.has_custom_poster,
             )
     video = _create_video_from_probe(
         settings,
@@ -377,6 +379,7 @@ def _maybe_extract_cover(
         video.id,
         cover_path=None,
         poster_path=poster_web_path,
+        has_custom_poster=False,
     )
 
 

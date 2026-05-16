@@ -17,7 +17,9 @@ from app.repositories.videos import (
 )
 from app.services.manifests import (
     build_remote_manifest_path,
+    build_remote_poster_path,
     encrypted_remote_manifest_upload_path,
+    local_custom_poster_path,
     write_encrypted_remote_manifest,
     write_local_manifest,
 )
@@ -59,6 +61,7 @@ def sync_due_video_manifests(settings: Settings, *, now: datetime | None = None)
             continue
         try:
             _upload_remote_manifest(settings, video)
+            _sync_remote_custom_poster(settings, video)
         except Exception as exc:
             logger.warning("Failed to sync remote manifest for video %s: %s", video.id, exc)
             continue
@@ -80,6 +83,22 @@ def _upload_remote_manifest(settings: Settings, video: Video) -> None:
     storage = build_storage_backend(settings)
     try:
         storage.upload_file(upload_path, video.manifest_path)
+    finally:
+        close = getattr(storage, "close", None)
+        if callable(close):
+            close()
+
+
+def _sync_remote_custom_poster(settings: Settings, video: Video) -> None:
+    content_key = load_content_key(settings)
+    remote_poster_path = build_remote_poster_path(settings, video_id=video.id, key=content_key)
+    local_poster_path = local_custom_poster_path(settings, video=video)
+    storage = build_storage_backend(settings)
+    try:
+        if video.has_custom_poster and local_poster_path is not None and local_poster_path.exists():
+            storage.upload_file(local_poster_path, remote_poster_path)
+            return
+        storage.delete_path(remote_poster_path)
     finally:
         close = getattr(storage, "close", None)
         if callable(close):

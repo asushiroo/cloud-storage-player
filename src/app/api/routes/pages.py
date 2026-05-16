@@ -9,7 +9,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from app.core.security import clear_session, is_authenticated
 from app.services.admin_settings import get_admin_settings, update_admin_settings, update_login_password
 from app.services.settings import get_download_transfer_concurrency
-from app.web.templates import templates
+from app.web.spa_assets import render_spa_index_html
+from app.web.templates import build_templates
 
 router = APIRouter()
 
@@ -19,7 +20,7 @@ def login_page(request: Request) -> HTMLResponse:
     if is_authenticated(request):
         return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
-    return templates.TemplateResponse(
+    return build_templates(request.app.state.settings).TemplateResponse(
         request,
         "login.html",
         {
@@ -36,11 +37,10 @@ def library_page(request: Request) -> HTMLResponse:
     if not is_authenticated(request):
         return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
 
-    return templates.TemplateResponse(
-        request,
-        "library.html",
-        {},
-    )
+    spa_response = _render_spa_if_enabled(request)
+    if spa_response is not None:
+        return spa_response
+    return build_templates(request.app.state.settings).TemplateResponse(request, "library.html", {})
 
 
 @router.get("/manage", response_class=HTMLResponse)
@@ -51,11 +51,10 @@ def spa_protected_page(request: Request) -> HTMLResponse:
     if not is_authenticated(request):
         return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
 
-    return templates.TemplateResponse(
-        request,
-        "library.html",
-        {},
-    )
+    spa_response = _render_spa_if_enabled(request)
+    if spa_response is not None:
+        return spa_response
+    return build_templates(request.app.state.settings).TemplateResponse(request, "library.html", {})
 
 
 @router.get("/admin", response_class=HTMLResponse)
@@ -127,7 +126,7 @@ def _render_admin_page(
 ) -> HTMLResponse:
     settings = request.app.state.settings
     admin_settings = get_admin_settings(settings)
-    return templates.TemplateResponse(
+    return build_templates(settings).TemplateResponse(
         request,
         "admin.html",
         {
@@ -151,3 +150,10 @@ def _redirect_admin(*, feedback: str | None = None, error: str | None = None) ->
         url=f"/admin{suffix}",
         status_code=status.HTTP_303_SEE_OTHER,
     )
+
+
+def _render_spa_if_enabled(request: Request) -> HTMLResponse | None:
+    settings = request.app.state.settings
+    if not settings.use_frontend_dist:
+        return None
+    return render_spa_index_html(settings)

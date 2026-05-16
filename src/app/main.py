@@ -15,6 +15,7 @@ from app.api.routes.cache import router as cache_router
 from app.api.routes.imports import router as imports_router
 from app.api.routes.library_api import router as library_api_router
 from app.api.routes.pages import router as pages_router
+from app.api.routes.runtime_control import router as runtime_control_router
 from app.api.routes.settings import router as settings_router
 from app.api.routes.stream import router as stream_router
 from app.core.config import Settings, get_settings
@@ -23,6 +24,7 @@ from app.services.import_worker import ImportWorker
 from app.services.manifest_sync_scheduler import ManifestSyncScheduler
 from app.services.playback_cache_flush import PlaybackCacheFlushRegistry
 from app.services.segment_prefetch import set_playback_cache_registry
+from app.web.spa_assets import frontend_dist_assets_dir
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -60,12 +62,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
     app.mount("/covers", StaticFiles(directory=str(app_settings.covers_dir)), name="covers")
+    if app_settings.use_frontend_dist and frontend_dist_assets_dir(app_settings).exists():
+        app.mount(
+            "/assets",
+            StaticFiles(directory=str(frontend_dist_assets_dir(app_settings))),
+            name="frontend-assets",
+        )
     app.include_router(auth_router)
     app.include_router(auth_api_router)
     app.include_router(admin_settings_router)
     app.include_router(cache_router)
     app.include_router(imports_router)
     app.include_router(library_api_router)
+    app.include_router(runtime_control_router)
     app.include_router(settings_router)
     app.include_router(stream_router)
     app.include_router(pages_router)
@@ -75,13 +84,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 app = create_app()
 
 
+def run_server(settings: Settings) -> None:
+    app = create_app(settings)
+    config = uvicorn.Config(app, host=settings.host, port=settings.port)
+    server = uvicorn.Server(config)
+    app.state.server = server
+    server.run()
+
+
 def main() -> None:
     settings = get_settings()
-    uvicorn.run(
-        create_app(settings),
-        host=settings.host,
-        port=settings.port,
-    )
+    run_server(settings)
 
 
 if __name__ == "__main__":

@@ -8,9 +8,11 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from app.core.config import Settings
+from app.core.keys import load_content_key
 from app.media.crypto import TAG_SIZE_BYTES, decrypt_segment, encrypt_segment
 from app.models.library import Video
 from app.models.segments import VideoSegment
+from app.services.artwork_storage import encrypted_artwork_path
 from app.services.segment_local_paths import build_segment_local_staging_path
 from app.services.settings import get_public_settings, get_segment_cache_root
 
@@ -18,6 +20,7 @@ ENCRYPTED_MANIFEST_MAGIC = b"CSPMETA1"
 VIDEO_DIR_LABEL_PREFIX = "video-dir"
 SEGMENT_FILE_LABEL_PREFIX = "segment-file"
 MANIFEST_FILE_LABEL = "manifest-file"
+POSTER_FILE_LABEL = "poster-file"
 
 
 def build_remote_manifest_path(settings: Settings, *, video_id: int, key: bytes) -> str:
@@ -42,6 +45,11 @@ def build_remote_segment_path(
         PurePosixPath(remote_video_dir)
         / build_encrypted_segment_filename(video_id=video_id, segment_index=segment_index, key=key)
     )
+
+
+def build_remote_poster_path(settings: Settings, *, video_id: int, key: bytes) -> str:
+    remote_video_dir = build_remote_video_dir_path(settings, video_id=video_id, key=key)
+    return str(PurePosixPath(remote_video_dir) / build_encrypted_poster_filename(video_id=video_id, key=key))
 
 
 def write_local_manifest(
@@ -90,6 +98,12 @@ def local_segment_path(settings: Settings, *, video_id: int, segment_index: int)
     )
 
 
+def local_custom_poster_path(settings: Settings, *, video: Video) -> Path | None:
+    if not video.has_custom_poster or not video.poster_path:
+        return None
+    return encrypted_artwork_path(settings, file_name=Path(video.poster_path).name)
+
+
 def build_manifest_payload(
     settings: Settings,
     *,
@@ -107,6 +121,15 @@ def build_manifest_payload(
             "duration_seconds": video.duration_seconds,
         },
         "content_fingerprint": video.content_fingerprint,
+        "custom_poster": {
+            "enabled": video.has_custom_poster and bool(video.poster_path),
+            "remote_path": (
+                build_remote_poster_path(settings, video_id=video.id, key=load_content_key(settings))
+                if video.has_custom_poster and video.poster_path
+                else None
+            ),
+            "file_name": Path(video.poster_path).name if video.has_custom_poster and video.poster_path else None,
+        },
         "segment_size_bytes": settings.segment_size_bytes,
         "segment_count": len(segments),
         "original_size": video.size,
@@ -168,6 +191,10 @@ def build_encrypted_segment_filename(*, video_id: int, segment_index: int, key: 
 
 def build_encrypted_manifest_filename(key: bytes) -> str:
     return _build_obfuscated_name(key, MANIFEST_FILE_LABEL) + ".bin"
+
+
+def build_encrypted_poster_filename(*, video_id: int, key: bytes) -> str:
+    return _build_obfuscated_name(key, f"{POSTER_FILE_LABEL}:{video_id}") + ".bin"
 
 
 def _build_obfuscated_name(key: bytes, label: str) -> str:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
@@ -13,12 +13,14 @@ from app.repositories.videos import (
     create_video,
     get_video_by_manifest_path,
     update_video_sync_metadata,
+    update_video_artwork_paths,
 )
 from app.services.manifests import (
     build_encrypted_manifest_filename,
     decrypt_manifest_payload,
     local_segment_path,
 )
+from app.services.artwork_storage import build_poster_file_name, store_encrypted_artwork_bytes
 from app.services.segment_local_paths import serialize_local_staging_path
 from app.services.settings import get_public_settings
 from app.storage.baidu_api import BaiduApiError
@@ -63,6 +65,7 @@ class ManifestPayload(BaseModel):
     tags: list[str] = Field(default_factory=list)
     source: ManifestSourcePayload
     content_fingerprint: str | None = None
+    custom_poster: dict[str, object] | None = None
     original_size: int = Field(ge=0)
     mime_type: str = Field(min_length=1)
     segment_count: int = Field(ge=0)
@@ -104,6 +107,7 @@ def sync_remote_catalog(settings: Settings) -> CatalogSyncResult:
                     source_path=manifest.source.path,
                     tags=manifest.tags,
                     content_fingerprint=manifest.content_fingerprint,
+                    has_custom_poster=False,
                 )
                 result.created_video_count += 1
             else:
@@ -118,6 +122,7 @@ def sync_remote_catalog(settings: Settings) -> CatalogSyncResult:
                     source_path=manifest.source.path,
                     tags=manifest.tags,
                     content_fingerprint=manifest.content_fingerprint,
+                    has_custom_poster=existing_video.has_custom_poster,
                 )
                 delete_video_segments(settings, video_id=video.id)
                 result.updated_video_count += 1
@@ -142,6 +147,20 @@ def sync_remote_catalog(settings: Settings) -> CatalogSyncResult:
                     )
                     for segment in manifest.segments
                 ],
+            )
+            video = _restore_custom_poster(settings, storage, video=video, manifest=manifest)
+            update_video_sync_metadata(
+                settings,
+                video.id,
+                title=video.title,
+                mime_type=video.mime_type,
+                size=video.size,
+                duration_seconds=video.duration_seconds,
+                manifest_path=video.manifest_path or manifest_path,
+                source_path=video.source_path,
+                tags=video.tags,
+                content_fingerprint=video.content_fingerprint,
+                has_custom_poster=video.has_custom_poster,
             )
         except (OSError, ValueError, ValidationError) as exc:
             result.failed_manifest_count += 1
@@ -193,3 +212,39 @@ def _load_manifest(storage, manifest_path: str, *, content_key: bytes | None) ->
     else:
         payload = decrypt_manifest_payload(payload_bytes, key=content_key)
     return ManifestPayload.model_validate(payload)
+
+
+def _restore_custom_poster(settings: Settings, storage, *, video, manifest: ManifestPayload):
+    custom_poster = manifest.custom_poster or {}
+    if not isinstance(custom_poster, dict) or not custom_poster.get("enabled"):
+        return update_video_artwork_paths(
+            settings,
+            video.id,
+            has_custom_poster=False,
+        )
+
+    remote_path = custom_poster.get("remote_path")
+    if not isinstance(remote_path, str) or not remote_path.strip():
+        return update_video_artwork_paths(
+            settings,
+            video.id,
+            has_custom_poster=False,
+        )
+
+    file_name = custom_poster.get("file_name")
+    if not isinstance(file_name, str) or not file_name.strip():
+        file_name = build_poster_file_name(video.id)
+
+    payload = storage.download_bytes(remote_path)
+    poster_path = store_encrypted_artwork_bytes(
+        settings,
+        file_name=Path(file_name).name,
+        payload=payload,
+    )
+    return update_video_artwork_paths(
+        settings,
+        video.id,
+        cover_path=None,
+        poster_path=poster_path,
+        has_custom_poster=True,
+    )

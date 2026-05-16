@@ -8,12 +8,13 @@ from tempfile import TemporaryDirectory
 from app.core.config import Settings
 from app.models.library import Video
 from app.media.covers import CoverExtractionError, transcode_image_to_avif
-from app.repositories.videos import get_video, update_video_artwork_paths
+from app.repositories.videos import get_video, request_video_manifest_sync, update_video_artwork_paths
 from app.services.artwork_storage import (
     build_poster_file_name,
     delete_video_artwork_files,
     store_encrypted_artwork_file,
 )
+from app.services.video_manifest_sync import can_rewrite_video_manifests, rewrite_local_video_manifests
 
 _IMAGE_EXTENSIONS = {
     "image/jpeg": "jpg",
@@ -50,12 +51,17 @@ def replace_video_artwork(
         raise VideoArtworkValidationError("At least one artwork image is required.")
 
     delete_video_artwork_files(settings, video_id=video_id, kind="cover")
-    return update_video_artwork_paths(
+    updated_video = update_video_artwork_paths(
         settings,
         video_id,
         cover_path=None,
         poster_path=_write_poster_artwork_file(settings, video_id=video_id, data_url=poster_source),
+        has_custom_poster=True,
     )
+    if not can_rewrite_video_manifests(settings, video_id):
+        return updated_video
+    request_video_manifest_sync(settings, video_id)
+    return rewrite_local_video_manifests(settings, video_id)
 
 
 def _write_poster_artwork_file(settings: Settings, *, video_id: int, data_url: str) -> str:

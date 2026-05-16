@@ -60,6 +60,7 @@ def rebuild_all_video_posters(settings: Settings) -> PosterRebuildResult:
                 video.id,
                 cover_path=None,
                 poster_path=poster_path,
+                has_custom_poster=False,
             )
             rebuilt_count += 1
         except (MediaProbeError, CoverExtractionError, OSError):

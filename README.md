@@ -154,8 +154,16 @@
   - 导入时默认只生成固定横版 poster（1280×720），不再额外生成竖版 cover
   - poster 导入与手动替换统一转成 `AVIF`
   - poster 本地文件改为轻量加密保存，通过 `/api/artwork/{name}` 解密回传给前端
+  - 用户手动替换过的 poster 会标记为自定义封面，并在约 10 分钟后与 manifest 一起同步到远端；catalog sync 可恢复这些自定义 poster
   - 播放页可捕获当前帧，只需调整一次横版 poster 的缩放与截取位置后再保存
   - 应用成功后会自动收起当前截图预览
+- Windows 打包与运行
+  - `npm run build:csp` 会先构建 `frontend/dist`，再在项目根目录生成 `start.exe` 与 `stop.exe`
+  - `start.exe` 会以无控制台方式启动后端，并把输出写入 `logs/start.out.log` 与 `logs/start.err.log`
+  - `stop.exe` 会先检查未完成导入/缓存任务，以及待同步 manifest / 自定义封面；若仍有未完成工作会直接列出并拒绝停机
+- 本地数据迁移
+  - `cloud-storage-player-save-data <zip路径>` 可导出本地数据库、内容密钥和可用的 `.env`
+  - `cloud-storage-player-load-data <zip路径>` 会校验归档格式，并在检测到本地已有 DB/密钥时拒绝覆盖恢复
 - 播放页交互增强
   - 保留浏览器 / iPad 原生视频控件，不再额外叠加自定义播放 / 快进 / 后退图标
   - 手动替换 cover / poster 后会立即刷新前端媒体库中的 artwork
@@ -205,12 +213,17 @@
 - 左上角站点标题已替换为 `frontend/asserts/` 中的 logo
 - `uv run pytest` 自动化测试
 
+## 2026-05-16 Plan.md Follow-Up
+- Added `videos.has_custom_poster`; manual poster replacements now enter the same delayed sync path as title/tag edits, rewrite the local manifest immediately, and sync remote custom-poster artifacts roughly 10 minutes later.
+- Remote catalog sync now restores only user-customized posters from remote metadata; default auto-generated 1/3-frame posters remain local-only.
+- Added Windows packaging/runtime flow: backend can serve `frontend/dist` directly, `npm run build:csp` builds `start.exe` and `stop.exe`, `start.exe` writes logs under `logs/`, and `stop.exe` refuses shutdown while import/cache or pending manifest/custom-poster sync work still exists.
+- Added local migration/archive scripts: `cloud-storage-player-save-data` exports DB/content-key/optional `.env` into zip, and `cloud-storage-player-load-data` restores only when local targets do not already exist.
+
 ## 当前仍未完成
 
 - 新环境首次接入百度时，仍需要管理员手工完成一次 OAuth 授权码流程
 - 导入断点续传、LRU 分片缓存
 - 更完整的百度错误分类与更细粒度的长时退避策略
-- 远端封面同步与更完整的 catalog 元数据恢复
 - 当前前端只保证 Web 主链路，移动端不是本阶段目标
 - 目前还没有批量删除/批量清空媒体库，当前仍以单视频删除任务为主
 - 任务取消目前是协作式取消：已排队任务会立刻取消，运行中任务会在阶段边界停止
@@ -389,6 +402,24 @@ uv run pytest
 
 ```bash
 npm run build
+```
+
+Windows 打包：
+
+```bash
+npm run build:csp
+```
+
+生成物：
+
+- `start.exe`
+- `stop.exe`
+
+本地数据归档 / 恢复：
+
+```bash
+uv run cloud-storage-player-save-data backup.zip
+uv run cloud-storage-player-load-data backup.zip
 ```
 
 真实百度 smoke：
