@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import sys
 
-import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
@@ -86,6 +86,8 @@ app = create_app()
 
 def run_server(settings: Settings) -> None:
     app = create_app(settings)
+    import uvicorn
+
     config = uvicorn.Config(app, host=settings.host, port=settings.port)
     server = uvicorn.Server(config)
     app.state.server = server

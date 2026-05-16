@@ -48,13 +48,19 @@ npm install
 后端：
 
 ```bash
-uv run cloud-storage-player
+npm run backend
 ```
 
 前端：
 
 ```bash
 npm run dev
+```
+
+一键启动:
+
+```
+npm run csp
 ```
 
 默认入口：
@@ -85,8 +91,6 @@ npm run dev
   React + TypeScript + Vite 前端
 - `docs/`
   技术文档
-- `third/`
-  参考代码，不参与当前运行时
 
 ## 🧪 常用验证
 
@@ -114,3 +118,10 @@ npm run build:csp
 - [技术总览](docs/technical-overview.md)
 - [运行与配置](docs/runtime-and-configuration.md)
 - [HTTP 接口](docs/http-api.md)
+
+## 进度
+
+- [x] 修复推荐页宽度自适应壳层，避免与媒体库共用布局约束
+- [x] 修复打包版 `start.exe` 缺失 `cryptography` 原生扩展导致的启动失败
+- [x] 将打包版 `start.exe` 改为 `onedir` 入口，规避 `onefile` 解压启动链路问题
+- [x] 修复 `npm run csp` 后端启动依赖 `uv` 缓存目录权限的问题，改为直接使用 `.venv` Python
