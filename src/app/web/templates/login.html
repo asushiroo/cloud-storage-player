@@ -10,6 +10,9 @@
     {% if error %}
       <p class="error">{{ error }}</p>
     {% endif %}
+    {% if message %}
+      <p>{{ message }}</p>
+    {% endif %}
 
     <form action="/auth/login" method="post">
       <label for="password">Password</label>

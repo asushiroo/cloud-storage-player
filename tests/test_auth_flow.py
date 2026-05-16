@@ -5,6 +5,8 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings
 from app.core.security import hash_password
 from app.main import create_app
+from app.repositories.settings import set_setting
+from app.services.admin_settings import PASSWORD_HASH_KEY
 
 
 def build_client(
@@ -75,3 +77,28 @@ def test_logout_clears_session(tmp_path: Path) -> None:
     home_response = client.get("/", follow_redirects=False)
     assert home_response.status_code == 303
     assert home_response.headers["location"] == "/login"
+
+
+def test_html_login_uses_password_hash_from_settings_table(tmp_path: Path) -> None:
+    client, password = build_client(tmp_path)
+    app_settings = client.app.state.settings
+    set_setting(
+        app_settings,
+        key=PASSWORD_HASH_KEY,
+        value=hash_password("new-shared-secret"),
+    )
+
+    old_password_response = client.post(
+        "/auth/login",
+        data={"password": password},
+        follow_redirects=False,
+    )
+    assert old_password_response.status_code == 401
+
+    new_password_response = client.post(
+        "/auth/login",
+        data={"password": "new-shared-secret"},
+        follow_redirects=False,
+    )
+    assert new_password_response.status_code == 303
+    assert new_password_response.headers["location"] == "/"

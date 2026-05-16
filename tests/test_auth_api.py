@@ -5,6 +5,8 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings
 from app.core.security import hash_password
 from app.main import create_app
+from app.repositories.settings import set_setting
+from app.services.admin_settings import PASSWORD_HASH_KEY
 
 
 def build_client(tmp_path: Path, password: str = "shared-secret") -> tuple[TestClient, str]:
@@ -53,3 +55,21 @@ def test_auth_api_rejects_invalid_password(tmp_path: Path) -> None:
 
     assert response.status_code == 401
     assert response.json() == {"detail": "Invalid password."}
+
+
+def test_auth_api_uses_password_hash_from_settings_table(tmp_path: Path) -> None:
+    client, password = build_client(tmp_path)
+    app_settings = client.app.state.settings
+    set_setting(
+        app_settings,
+        key=PASSWORD_HASH_KEY,
+        value=hash_password("new-shared-secret"),
+    )
+
+    old_password_response = client.post("/api/auth/login", json={"password": password})
+    assert old_password_response.status_code == 401
+    assert old_password_response.json() == {"detail": "Invalid password."}
+
+    new_password_response = client.post("/api/auth/login", json={"password": "new-shared-secret"})
+    assert new_password_response.status_code == 200
+    assert new_password_response.json() == {"authenticated": True}

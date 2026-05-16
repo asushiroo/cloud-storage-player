@@ -24,7 +24,7 @@ def login(client: TestClient, password: str) -> None:
 def test_protected_spa_routes_redirect_to_login_when_logged_out(tmp_path: Path) -> None:
     client, _ = build_client(tmp_path)
 
-    for path in ("/", "/recommend", "/library", "/manage", "/settings", "/videos/1", "/videos/1/play"):
+    for path in ("/", "/recommend", "/library", "/manage", "/settings", "/admin", "/videos/1", "/videos/1/play"):
         response = client.get(path, follow_redirects=False)
         assert response.status_code == 303
         assert response.headers["location"] == "/login"
@@ -38,3 +38,7 @@ def test_protected_spa_routes_render_shell_when_logged_in(tmp_path: Path) -> Non
         response = client.get(path)
         assert response.status_code == 200
         assert "Library" in response.text
+
+    admin_response = client.get("/admin")
+    assert admin_response.status_code == 200
+    assert "Admin" in admin_response.text

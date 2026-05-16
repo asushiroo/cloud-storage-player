@@ -7,9 +7,9 @@ from app.db.schema import initialize_database
 from app.models.segments import VideoSegment
 from app.repositories.settings import set_setting
 from app.repositories.videos import create_video
+from app.services.admin_settings import PLAYBACK_DOWNLOAD_TRANSFER_CONCURRENCY_KEY
 from app.services.segment_prefetch import acquire_prefetch_session, release_prefetch_session
 from app.services.segment_local_paths import serialize_local_staging_path
-from app.services.settings import DOWNLOAD_TRANSFER_CONCURRENCY_KEY
 from app.storage.mock import MockStorageBackend
 
 
@@ -104,7 +104,7 @@ def test_prefetch_session_uses_runtime_configured_transfer_concurrency(monkeypat
     for segment in segments:
         storage.upload_bytes(f"segment-{segment.segment_index}".encode("utf-8"), segment.cloud_path or "")
 
-    set_setting(settings, key=DOWNLOAD_TRANSFER_CONCURRENCY_KEY, value="4")
+    set_setting(settings, key=PLAYBACK_DOWNLOAD_TRANSFER_CONCURRENCY_KEY, value="4")
 
     class TrackingStorage:
         def download_bytes(self, remote_path: str) -> bytes:

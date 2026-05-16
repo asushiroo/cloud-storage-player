@@ -18,7 +18,7 @@ from app.services.segment_local_paths import (
     resolve_segment_local_staging_path,
     serialize_local_staging_path,
 )
-from app.services.settings import get_download_transfer_concurrency
+from app.services.admin_settings import get_playback_download_transfer_concurrency
 from app.storage.base import StorageBackend
 from app.storage.factory import build_storage_backend
 
@@ -112,7 +112,7 @@ class SegmentPrefetchSession:
                             storage_backend=storage,
                         ),
                         concurrency=min(
-                            get_download_transfer_concurrency(self.settings),
+                            get_playback_download_transfer_concurrency(self.settings),
                             _PREFETCH_WINDOW_SIZE,
                         ),
                         stop_event=self.stop_event,

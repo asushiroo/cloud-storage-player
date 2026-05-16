@@ -20,3 +20,8 @@ class PublicSettings:
     download_transfer_concurrency: int
     baidu_authorize_url: str | None
     baidu_has_refresh_token: bool
+
+
+@dataclass(slots=True)
+class AdminSettings:
+    playback_download_transfer_concurrency: int

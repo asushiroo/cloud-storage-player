@@ -148,6 +148,24 @@ def test_settings_api_reads_legacy_remote_transfer_concurrency_for_both_values(t
     assert response.json()["download_transfer_concurrency"] == 6
 
 
+def test_settings_api_download_concurrency_can_differ_from_admin_playback_concurrency(tmp_path: Path) -> None:
+    client, settings, password = build_client(tmp_path)
+    login(client, password)
+    set_setting(settings, key="playback_download_transfer_concurrency", value="11")
+
+    response = client.post(
+        "/api/settings",
+        json={"download_transfer_concurrency": 4},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["download_transfer_concurrency"] == 4
+
+    admin_response = client.get("/api/admin/settings")
+    assert admin_response.status_code == 200
+    assert admin_response.json()["playback_download_transfer_concurrency"] == 11
+
+
 def test_settings_api_rejects_non_apps_root_for_baidu_backend(tmp_path: Path) -> None:
     client, _, password = build_client(tmp_path)
     login(client, password)

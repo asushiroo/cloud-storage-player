@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Form, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from app.services.admin_settings import get_login_password_hash
 from app.core.security import (
     clear_session,
     mark_session_authenticated,
@@ -18,7 +19,7 @@ router = APIRouter()
 @router.post("/auth/login", response_class=HTMLResponse)
 def login(request: Request, password: Annotated[str, Form()]) -> HTMLResponse:
     settings = request.app.state.settings
-    if verify_password(password, settings.effective_password_hash):
+    if verify_password(password, get_login_password_hash(settings)):
         mark_session_authenticated(request)
         return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 

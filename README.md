@@ -439,3 +439,9 @@ uv run cloud-storage-player-baidu-smoke --source-path tmp/rieri.mp4
 - Root cause was not `body`/`main`, but `.library-content-shell` as a grid container using implicit track sizing; child max-content width could force the single column wider than the shell on narrow viewports.
 - Added an explicit track (`grid-template-columns: minmax(0, 1fr)`) and direct-child shrink guard (`.library-content-shell > * { min-width: 0; }`) so recommendation sections remain width-bound to the shell.
 - Verified with Playwright across multiple widths (1720/1440/1280/1100/980/900/820/768/640): `html.scrollWidth` now equals viewport width and recommendation secondary grid width follows shell width without page-level overflow.
+
+## 2026-05-16 Admin Backend Page Follow-Up
+- Added backend administrator page at `/admin` (served by FastAPI templates, not frontend SPA) for host-side operations.
+- Added playback fallback download concurrency setting on `/admin`, persisted as `playback_download_transfer_concurrency`, and separated from cache-job download concurrency in `/api/settings`.
+- Added login password update flow on `/admin` with current-password verification and confirm-new-password check; password updates now persist in DB setting key `password_hash`.
+- Updated both `/auth/login` and `/api/auth/login` to verify against persisted `password_hash` first, then fallback to environment/config password hash for compatibility.

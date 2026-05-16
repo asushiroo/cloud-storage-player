@@ -168,7 +168,7 @@ def get_upload_transfer_concurrency(settings: Settings) -> int:
 
 def get_download_transfer_concurrency(settings: Settings) -> int:
     stored = get_setting(settings, DOWNLOAD_TRANSFER_CONCURRENCY_KEY)
-    return _resolve_download_transfer_concurrency(
+    return _resolve_cache_download_transfer_concurrency(
         settings,
         stored_value=stored.value if stored else None,
     )
@@ -207,6 +207,13 @@ def _resolve_upload_transfer_concurrency(settings: Settings, *, stored_value: st
 
 
 def _resolve_download_transfer_concurrency(settings: Settings, *, stored_value: str | None) -> int:
+    return _resolve_cache_download_transfer_concurrency(
+        settings,
+        stored_value=stored_value,
+    )
+
+
+def _resolve_cache_download_transfer_concurrency(settings: Settings, *, stored_value: str | None) -> int:
     if stored_value is not None:
         return _parse_named_transfer_concurrency(
             stored_value,

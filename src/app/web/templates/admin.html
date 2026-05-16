@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="card stack">
+    <div class="stack">
+      <h1>Admin</h1>
+      <p>Backend-only administrator controls.</p>
+    </div>
+
+    {% if error %}
+      <p class="error">{{ error }}</p>
+    {% endif %}
+    {% if feedback %}
+      <p>{{ feedback }}</p>
+    {% endif %}
+
+    <section class="stack">
+      <h2>Transfer Concurrency</h2>
+      <p>Playback fallback download concurrency (when local segment cache is missing).</p>
+      <form action="/admin/settings" method="post">
+        <label for="playback_download_transfer_concurrency">Playback fallback download concurrency (1-32)</label>
+        <input
+          id="playback_download_transfer_concurrency"
+          name="playback_download_transfer_concurrency"
+          type="number"
+          min="1"
+          max="32"
+          value="{{ admin_settings.playback_download_transfer_concurrency }}"
+          required
+        >
+        <button type="submit">Save playback concurrency</button>
+      </form>
+      <p>Cache job download concurrency (configured in /settings API): {{ cache_download_transfer_concurrency }}</p>
+    </section>
+
+    <section class="stack">
+      <h2>Password</h2>
+      <form action="/admin/password" method="post">
+        <label for="current_password">Current password</label>
+        <input id="current_password" name="current_password" type="password" autocomplete="current-password" required>
+
+        <label for="new_password">New password</label>
+        <input id="new_password" name="new_password" type="password" autocomplete="new-password" required>
+
+        <label for="confirm_new_password">Confirm new password</label>
+        <input id="confirm_new_password" name="confirm_new_password" type="password" autocomplete="new-password" required>
+
+        <button type="submit">Update password</button>
+      </form>
+    </section>
+
+    <form action="/auth/logout" method="post">
+      <button type="submit">Sign out</button>
+    </form>
+  </section>
+{% endblock %}

@@ -1,9 +1,14 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Request, status
+from typing import Annotated
+from urllib.parse import urlencode
+
+from fastapi import APIRouter, Form, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from app.core.security import is_authenticated
+from app.core.security import clear_session, is_authenticated
+from app.services.admin_settings import get_admin_settings, update_admin_settings, update_login_password
+from app.services.settings import get_download_transfer_concurrency
 from app.web.templates import templates
 
 router = APIRouter()
@@ -17,7 +22,10 @@ def login_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
         "login.html",
-        {"error": None},
+        {
+            "error": None,
+            "message": request.query_params.get("message"),
+        },
     )
 
 
@@ -47,4 +55,99 @@ def spa_protected_page(request: Request) -> HTMLResponse:
         request,
         "library.html",
         {},
+    )
+
+
+@router.get("/admin", response_class=HTMLResponse)
+def admin_page(request: Request) -> HTMLResponse:
+    if not is_authenticated(request):
+        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+    return _render_admin_page(
+        request,
+        feedback=request.query_params.get("feedback"),
+        error=request.query_params.get("error"),
+    )
+
+
+@router.post("/admin/settings", response_class=HTMLResponse)
+def update_admin_settings_page(
+    request: Request,
+    playback_download_transfer_concurrency: Annotated[int, Form()],
+) -> HTMLResponse:
+    if not is_authenticated(request):
+        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+    settings = request.app.state.settings
+    try:
+        update_admin_settings(
+            settings,
+            playback_download_transfer_concurrency=playback_download_transfer_concurrency,
+        )
+    except ValueError as exc:
+        return _render_admin_page(request, error=str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+    return _redirect_admin(feedback="Playback fallback concurrency updated.")
+
+
+@router.post("/admin/password", response_class=HTMLResponse)
+def update_admin_password_page(
+    request: Request,
+    current_password: Annotated[str, Form()],
+    new_password: Annotated[str, Form()],
+    confirm_new_password: Annotated[str, Form()],
+) -> HTMLResponse:
+    if not is_authenticated(request):
+        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+    if new_password != confirm_new_password:
+        return _render_admin_page(
+            request,
+            error="new_password and confirm_new_password must match.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    settings = request.app.state.settings
+    try:
+        update_login_password(
+            settings,
+            current_password=current_password,
+            new_password=new_password,
+        )
+    except ValueError as exc:
+        return _render_admin_page(request, error=str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+    clear_session(request)
+    return RedirectResponse(
+        url="/login?message=Password%20updated.%20Please%20sign%20in%20again.",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+def _render_admin_page(
+    request: Request,
+    *,
+    feedback: str | None = None,
+    error: str | None = None,
+    status_code: int = status.HTTP_200_OK,
+) -> HTMLResponse:
+    settings = request.app.state.settings
+    admin_settings = get_admin_settings(settings)
+    return templates.TemplateResponse(
+        request,
+        "admin.html",
+        {
+            "feedback": feedback,
+            "error": error,
+            "admin_settings": admin_settings,
+            "cache_download_transfer_concurrency": get_download_transfer_concurrency(settings),
+        },
+        status_code=status_code,
+    )
+
+
+def _redirect_admin(*, feedback: str | None = None, error: str | None = None) -> RedirectResponse:
+    query_params: dict[str, str] = {}
+    if feedback:
+        query_params["feedback"] = feedback
+    if error:
+        query_params["error"] = error
+    suffix = f"?{urlencode(query_params)}" if query_params else ""
+    return RedirectResponse(
+        url=f"/admin{suffix}",
+        status_code=status.HTTP_303_SEE_OTHER,
     )
