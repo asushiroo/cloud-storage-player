@@ -63,4 +63,4 @@ Detailed frontend architecture lives in [frontend/AGENTS.md](/root/cloud-storage
 
 在生成代码的同时要同步在README.md中更新进度，docs文档只有我让更新时再更新，避免每轮都更新浪费token
 在完成一个阶段时就用 git 进行 commit, commit的格式要符合工程规范，e. feat(cli): add run command;
-当前在windows平台，直接用utf-8进行解码文件
+当前在windows平台，直接用utf-8进行解码文件, e. Get-Content -Raw -Encoding utf8
