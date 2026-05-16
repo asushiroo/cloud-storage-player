@@ -10,32 +10,62 @@ export interface LibraryPageMemory {
   savedAt: number;
 }
 
+function parseStoredMemory(raw: string | null, search: string): LibraryPageMemory | null {
+  if (!raw) {
+    return null;
+  }
+  const parsed = JSON.parse(raw) as LibraryPageMemory;
+  if (!parsed || parsed.search !== search) {
+    return null;
+  }
+  if (Date.now() - parsed.savedAt > TTL_MS) {
+    return null;
+  }
+  return parsed;
+}
+
 export function loadLibraryPageMemory(search: string): LibraryPageMemory | null {
   try {
-    const raw = window.sessionStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      return null;
+    const fromSession = parseStoredMemory(window.sessionStorage.getItem(STORAGE_KEY), search);
+    if (fromSession) {
+      return fromSession;
     }
-    const parsed = JSON.parse(raw) as LibraryPageMemory;
-    if (!parsed || parsed.search !== search) {
-      return null;
+    const fromLocal = parseStoredMemory(window.localStorage.getItem(STORAGE_KEY), search);
+    if (fromLocal) {
+      return fromLocal;
     }
-    if (Date.now() - parsed.savedAt > TTL_MS) {
-      window.sessionStorage.removeItem(STORAGE_KEY);
-      return null;
-    }
-    return parsed;
   } catch {
     return null;
   }
+
+  try {
+    window.sessionStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // ignore storage cleanup failures
+  }
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // ignore storage cleanup failures
+  }
+  return null;
 }
 
 export function saveLibraryPageMemory(memory: Omit<LibraryPageMemory, "savedAt">) {
-  window.sessionStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      ...memory,
-      savedAt: Date.now(),
-    } satisfies LibraryPageMemory),
-  );
+  const payload = JSON.stringify({
+    ...memory,
+    savedAt: Date.now(),
+  } satisfies LibraryPageMemory);
+
+  try {
+    window.sessionStorage.setItem(STORAGE_KEY, payload);
+  } catch {
+    // ignore sessionStorage failures and continue to localStorage fallback
+  }
+
+  try {
+    window.localStorage.setItem(STORAGE_KEY, payload);
+  } catch {
+    // ignore localStorage failures
+  }
 }

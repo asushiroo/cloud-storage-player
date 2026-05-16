@@ -445,3 +445,8 @@ uv run cloud-storage-player-baidu-smoke --source-path tmp/rieri.mp4
 - Added playback fallback download concurrency setting on `/admin`, persisted as `playback_download_transfer_concurrency`, and separated from cache-job download concurrency in `/api/settings`.
 - Added login password update flow on `/admin` with current-password verification and confirm-new-password check; password updates now persist in DB setting key `password_hash`.
 - Updated both `/auth/login` and `/api/auth/login` to verify against persisted `password_hash` first, then fallback to environment/config password hash for compatibility.
+
+## 2026-05-16 Problem.md Follow-Up
+- Library-page memory restore now avoids clearing remembered primary/secondary tag filters while the video query is still loading, preventing Chrome refresh from frequently losing selected tags.
+- Library-page memory persistence now writes with storage-failure-safe fallback (`sessionStorage` first, then `localStorage`) and restores from either store, improving refresh stability on Windows Chrome.
+- Added extra save triggers on `beforeunload` and `visibilitychange(hidden)` in addition to `pagehide`, reducing cases where refresh/navigation misses the latest scroll/filter snapshot.

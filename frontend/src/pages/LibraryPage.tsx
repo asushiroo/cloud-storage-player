@@ -190,6 +190,14 @@ function LibraryPageContent({ appliedSearch }: LibraryPageContentProps) {
     const handlePageHide = () => {
       saveMemorySnapshot(true);
     };
+    const handleBeforeUnload = () => {
+      saveMemorySnapshot(true);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        saveMemorySnapshot(true);
+      }
+    };
     const trackScroll = () => {
       lastKnownScrollYRef.current = window.scrollY;
     };
@@ -197,6 +205,8 @@ function LibraryPageContent({ appliedSearch }: LibraryPageContentProps) {
     trackScroll();
     window.addEventListener("scroll", trackScroll, { passive: true });
     window.addEventListener("pagehide", handlePageHide);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       if (restoreFrameRef.current !== null) {
@@ -205,10 +215,15 @@ function LibraryPageContent({ appliedSearch }: LibraryPageContentProps) {
       saveMemorySnapshot(false);
       window.removeEventListener("scroll", trackScroll);
       window.removeEventListener("pagehide", handlePageHide);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [saveMemorySnapshot]);
 
   useEffect(() => {
+    if (videosQuery.isLoading) {
+      return;
+    }
     if (!activePrimaryTag) {
       return;
     }
@@ -216,16 +231,19 @@ function LibraryPageContent({ appliedSearch }: LibraryPageContentProps) {
       setActivePrimaryTag(undefined);
       setActiveSecondaryTag(undefined);
     }
-  }, [activePrimaryTag, primaryTagGroups]);
+  }, [activePrimaryTag, primaryTagGroups, videosQuery.isLoading]);
 
   useEffect(() => {
+    if (videosQuery.isLoading) {
+      return;
+    }
     if (!activeSecondaryTag) {
       return;
     }
     if (!secondaryTagGroups.some((secondary) => secondary.label === activeSecondaryTag)) {
       setActiveSecondaryTag(undefined);
     }
-  }, [activeSecondaryTag, secondaryTagGroups]);
+  }, [activeSecondaryTag, secondaryTagGroups, videosQuery.isLoading]);
 
   useEffect(() => {
     const sentinel = loadMoreRef.current;
