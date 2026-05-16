@@ -791,7 +791,9 @@ h2 {
 }
 
 .library-banner-shell,
-.library-content-shell {
+.library-content-shell,
+.recommendation-banner-shell,
+.recommendation-content-shell {
   width: 100%;
   max-width: 90vw;
   margin: 0 auto;
@@ -805,6 +807,16 @@ h2 {
 }
 
 .library-content-shell > * {
+  min-width: 0;
+}
+
+.recommendation-content-shell {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.recommendation-content-shell > * {
   min-width: 0;
 }
 

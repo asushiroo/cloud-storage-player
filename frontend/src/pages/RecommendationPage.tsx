@@ -66,7 +66,7 @@ export function RecommendationPage() {
 
   return (
     <div className="library-page recommendation-page">
-      <div className="library-banner-shell">
+      <div className="recommendation-banner-shell">
         {bannerVideos.length > 0 ? (
           <BannerCarousel versionToken={artworkVersionToken} videos={bannerVideos} />
         ) : (
@@ -79,7 +79,7 @@ export function RecommendationPage() {
 
       <div className="section-divider" />
 
-      <div className="library-content-shell page-stack">
+      <div className="recommendation-content-shell page-stack">
         <Surface>
           <div className="section-head">
             <div>
