@@ -230,3 +230,4 @@ def test_admin_page_renders_chinese_admin_copy(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert "管理员设置" in response.text
     assert "登录密码" in response.text
+    assert "填写百度开放平台应用的 App Key" in response.text

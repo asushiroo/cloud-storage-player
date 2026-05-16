@@ -208,7 +208,7 @@ export function SettingsPage() {
             value={baiduRootPath}
           />
           <SettingInputField
-            hint="缓存目录，例如 D:\\cache\\segments"
+            hint="缓存目录，例如 D:/cache/segments"
             onChange={setSegmentCacheRootPath}
             value={segmentCacheRootPath}
           />
@@ -245,19 +245,11 @@ export function SettingsPage() {
             {saveMutation.isPending ? "保存中..." : "保存设置"}
           </button>
         </div>
-        {settings ? (
-          <p className="muted" style={{ marginTop: "1rem" }}>
-            当前缓存上限：{formatBytes(settings.cache_limit_bytes)} · 当前缓存目录：
-            {settings.segment_cache_root_path} · 当前后端：{settings.storage_backend} · 上传并发：
-            {currentUploadConcurrency} · 下载并发：{currentDownloadConcurrency}
-          </p>
-        ) : null}
         {backendIsLegacyConcurrencyOnly ? (
           <p className="error-text">
             当前连接到的后端仍只支持旧的单并发字段。要分别保存上传并发和下载并发，请先重启后端到最新代码。
           </p>
         ) : null}
-        <p className="muted">上传并发影响导入上传；下载并发影响手动缓存下载和播放预取，范围都为 1 到 32。</p>
       </Surface>
 
       <div className="section-divider" />

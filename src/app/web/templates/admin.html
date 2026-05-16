@@ -1,102 +1,165 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <section class="card stack">
-    <div class="stack">
-      <h1>管理员设置</h1>
-      <p>这里用于配置主机侧运行参数、百度开放平台接入信息以及登录密码。</p>
+  <div class="page-shell">
+    <div class="page-stack">
+      {% if error %}
+        <section class="surface">
+          <p class="error-text">{{ error }}</p>
+        </section>
+      {% endif %}
+      {% if feedback %}
+        <section class="surface">
+          <p>{{ feedback }}</p>
+        </section>
+      {% endif %}
+
+      <section class="surface">
+        <h1>管理员设置</h1>
+      </section>
+
+      <section class="surface">
+        <h2>基础配置</h2>
+        <div class="form-stack">
+          <p class="muted section-copy">以下配置保存在本地数据库中。百度凭据会立即用于授权和远端访问, 保存后需要重启服务后才会完全生效。</p>
+          <form action="/admin/settings" class="form-stack" method="post">
+            <label class="setting-input-shell">
+              <input
+                id="baidu_app_key"
+                name="baidu_app_key"
+                class="text-input"
+                type="text"
+                value="{{ admin_settings.baidu_app_key }}"
+                autocomplete="off"
+              >
+              <span class="setting-input-hint" role="note">{{ admin_setting_hints.baidu_app_key }}</span>
+            </label>
+
+            <label class="setting-input-shell">
+              <input
+                id="baidu_secret_key"
+                name="baidu_secret_key"
+                class="text-input"
+                type="text"
+                value="{{ admin_settings.baidu_secret_key }}"
+                autocomplete="off"
+              >
+              <span class="setting-input-hint" role="note">{{ admin_setting_hints.baidu_secret_key }}</span>
+            </label>
+
+            <label class="setting-input-shell">
+              <input
+                id="baidu_sign_key"
+                name="baidu_sign_key"
+                class="text-input"
+                type="text"
+                value="{{ admin_settings.baidu_sign_key }}"
+                autocomplete="off"
+              >
+              <span class="setting-input-hint" role="note">{{ admin_setting_hints.baidu_sign_key }}</span>
+            </label>
+
+            <label class="setting-input-shell">
+              <input
+                id="baidu_oauth_redirect_uri"
+                name="baidu_oauth_redirect_uri"
+                class="text-input"
+                type="text"
+                value="{{ admin_settings.baidu_oauth_redirect_uri }}"
+                required
+              >
+              <span class="setting-input-hint" role="note">{{ admin_setting_hints.baidu_oauth_redirect_uri }}</span>
+            </label>
+
+            <label class="setting-input-shell">
+              <input
+                id="session_secret"
+                name="session_secret"
+                class="text-input"
+                type="text"
+                value="{{ admin_settings.session_secret }}"
+                minlength="16"
+                required
+              >
+              <span class="setting-input-hint" role="note">{{ admin_setting_hints.session_secret }}</span>
+            </label>
+
+            <label class="setting-input-shell">
+              <input
+                id="playback_download_transfer_concurrency"
+                name="playback_download_transfer_concurrency"
+                class="text-input"
+                type="number"
+                min="1"
+                max="32"
+                value="{{ admin_settings.playback_download_transfer_concurrency }}"
+                required
+              >
+              <span class="setting-input-hint" role="note">{{ admin_setting_hints.playback_download_transfer_concurrency }}</span>
+            </label>
+
+            <div class="button-row top-gap">
+              <button class="primary-button" type="submit">保存管理员配置</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <div class="section-divider"></div>
+
+      <section class="surface">
+        <h2>登录密码</h2>
+        <p class="muted section-copy" style="margin-bottom: 1px;">密码更新后会清空当前登录态，并要求使用新密码重新登录。</p>
+        <form action="/admin/password" class="form-stack" method="post">
+          <label class="setting-input-shell">
+            <input
+              id="current_password"
+              name="current_password"
+              class="text-input"
+              type="password"
+              autocomplete="current-password"
+              required
+            >
+            <span class="setting-input-hint" role="note">{{ admin_setting_hints.current_password }}</span>
+          </label>
+
+          <label class="setting-input-shell">
+            <input
+              id="new_password"
+              name="new_password"
+              class="text-input"
+              type="password"
+              autocomplete="new-password"
+              required
+            >
+            <span class="setting-input-hint" role="note">{{ admin_setting_hints.new_password }}</span>
+          </label>
+
+          <label class="setting-input-shell">
+            <input
+              id="confirm_new_password"
+              name="confirm_new_password"
+              class="text-input"
+              type="password"
+              autocomplete="new-password"
+              required
+            >
+            <span class="setting-input-hint" role="note">{{ admin_setting_hints.confirm_new_password }}</span>
+          </label>
+
+          <div class="button-row top-gap">
+            <button class="primary-button" type="submit">更新登录密码</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="surface">
+        <div class="button-row">
+          <form action="/auth/logout" method="post">
+            <button class="secondary-button" type="submit">退出登录</button>
+          </form>
+        </div>
+      </section>
     </div>
-
-    {% if error %}
-      <p class="error">{{ error }}</p>
-    {% endif %}
-    {% if feedback %}
-      <p>{{ feedback }}</p>
-    {% endif %}
-
-    <section class="stack">
-      <h2>基础配置</h2>
-      <p>以下配置保存在本地数据库中。百度凭据会立即用于授权和远端访问；`session_secret` 属于启动级配置，保存后需要重启服务才会完全生效。</p>
-      <form action="/admin/settings" method="post">
-        <label for="baidu_app_key">百度 App Key</label>
-        <input
-          id="baidu_app_key"
-          name="baidu_app_key"
-          type="text"
-          value="{{ admin_settings.baidu_app_key }}"
-          autocomplete="off"
-        >
-
-        <label for="baidu_secret_key">百度 Secret Key</label>
-        <input
-          id="baidu_secret_key"
-          name="baidu_secret_key"
-          type="text"
-          value="{{ admin_settings.baidu_secret_key }}"
-          autocomplete="off"
-        >
-
-        <label for="baidu_sign_key">百度 Sign Key</label>
-        <input
-          id="baidu_sign_key"
-          name="baidu_sign_key"
-          type="text"
-          value="{{ admin_settings.baidu_sign_key }}"
-          autocomplete="off"
-        >
-
-        <label for="baidu_oauth_redirect_uri">百度 OAuth 回调地址</label>
-        <input
-          id="baidu_oauth_redirect_uri"
-          name="baidu_oauth_redirect_uri"
-          type="text"
-          value="{{ admin_settings.baidu_oauth_redirect_uri }}"
-          required
-        >
-
-        <label for="session_secret">会话密钥（至少 16 个字符）</label>
-        <input
-          id="session_secret"
-          name="session_secret"
-          type="text"
-          value="{{ admin_settings.session_secret }}"
-          minlength="16"
-          required
-        >
-
-        <label for="playback_download_transfer_concurrency">播放回退下载并发（1-32）</label>
-        <input
-          id="playback_download_transfer_concurrency"
-          name="playback_download_transfer_concurrency"
-          type="number"
-          min="1"
-          max="32"
-          value="{{ admin_settings.playback_download_transfer_concurrency }}"
-          required
-        >
-        <button type="submit">保存管理员配置</button>
-      </form>
-      <p>缓存任务下载并发（前端设置页 `/settings` 配置）：{{ cache_download_transfer_concurrency }}</p>
-    </section>
-
-    <section class="stack">
-      <h2>登录密码</h2>
-      <form action="/admin/password" method="post">
-        <label for="current_password">当前密码</label>
-        <input id="current_password" name="current_password" type="password" autocomplete="current-password" required>
-
-        <label for="new_password">新密码</label>
-        <input id="new_password" name="new_password" type="password" autocomplete="new-password" required>
-
-        <label for="confirm_new_password">确认新密码</label>
-        <input id="confirm_new_password" name="confirm_new_password" type="password" autocomplete="new-password" required>
-
-        <button type="submit">更新登录密码</button>
-      </form>
-    </section>
-
-    <form action="/auth/logout" method="post">
-      <button type="submit">退出登录</button>
-    </form>
-  </section>
+  </div>
 {% endblock %}

@@ -182,7 +182,7 @@ export function VideoDetailPage() {
               <p className="muted">{formatDuration(video.duration_seconds)} · {formatBytes(video.size)} · {video.mime_type}</p>
               <div className="detail-info">
                 <p>本地缓存：{video.cached_segment_count}/{video.segment_count} 分片 · {formatBytes(video.cached_size_bytes)}</p>
-                <p>点赞：{video.like_count}/99</p>
+                <p>点赞：{video.like_count}</p>
               </div>
               <div className="action-row">
                 <Link className="primary-button link-button" to={`/videos/${video.id}/play`}>

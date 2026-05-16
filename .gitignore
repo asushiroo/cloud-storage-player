@@ -14,4 +14,9 @@ tmp/
 third/
 Problem.md
 PLAN.md
-start.bat
+
+*.exe
+*.spec
+build/
+logs/
+run/

@@ -606,7 +606,6 @@ export function PlayerPage() {
           <div className="section-head">
             <div>
               <h2>相似推荐</h2>
-              <p className="muted">基于现有标签和观看偏好，优先推荐同类型的其他视频。</p>
             </div>
           </div>
           <div className="player-recommendation-row top-gap">

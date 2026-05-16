@@ -48,7 +48,7 @@ npm install
 后端：
 
 ```bash
-npm run backend
+uv run cloud-storage-player
 ```
 
 前端：

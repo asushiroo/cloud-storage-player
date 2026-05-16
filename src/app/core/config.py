@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     app_name: str = "Cloud Storage Player"
     host: str = "0.0.0.0"
     port: int = 8000
-    session_secret: str = Field(default="change-me-before-production", min_length=16)
+    session_secret: str = Field(default="e12GjjfAK0gto!7$Q", min_length=16)
     password: str = "admin"
     password_hash: str | None = None
     database_path: Path = Path("data/cloud_storage_player.db")

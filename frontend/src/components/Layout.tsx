@@ -51,10 +51,10 @@ export function Layout({ children }: PropsWithChildren) {
           </Link>
           <nav className="header-nav">
             <NavLink className="nav-link" to="/recommend">
-              推荐
+              首页
             </NavLink>
             <NavLink className="nav-link" to="/library">
-              媒体库
+              影片
             </NavLink>
             <NavLink className="nav-link" to="/manage">
               管理

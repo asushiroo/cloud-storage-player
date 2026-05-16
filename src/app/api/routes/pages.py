@@ -144,6 +144,17 @@ def _render_admin_page(
             "error": error,
             "admin_settings": admin_settings,
             "cache_download_transfer_concurrency": get_download_transfer_concurrency(settings),
+            "admin_setting_hints": {
+                "baidu_app_key": "填写百度开放平台应用的 App Key",
+                "baidu_secret_key": "填写百度开放平台应用的 Secret Key",
+                "baidu_sign_key": "填写百度开放平台应用的 Sign Key，没有可留空",
+                "baidu_oauth_redirect_uri": "填写百度 OAuth 使用的 redirect_uri，默认通常为 oob",
+                "session_secret": "填写用于 Session 签名的密钥，至少 16 个字符",
+                "playback_download_transfer_concurrency": "填写本地无缓存时的播放回退下载并发，范围 1 到 32",
+                "current_password": "填写当前正在使用的登录密码",
+                "new_password": "填写你要更新成的新登录密码",
+                "confirm_new_password": "再次输入新密码，必须和上一项一致",
+            },
         },
         status_code=status_code,
     )

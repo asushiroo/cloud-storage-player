@@ -20,6 +20,22 @@ const run = (command, args) => {
 const pyinstallerAddData = (source, target) =>
   process.platform === "win32" ? `${source};${target}` : `${source}:${target}`;
 
+const pythonRoot = process.platform === "win32"
+  ? path.join(process.env.USERPROFILE ?? "", "AppData", "Roaming", "uv", "python", "cpython-3.12.11-windows-x86_64-none")
+  : "";
+const pythonDllDir = path.join(pythonRoot, "DLLs");
+const pythonExtensionArgs = [
+  "--add-binary",
+  pyinstallerAddData(path.join(pythonDllDir, "_sqlite3.pyd"), "."),
+  "--add-binary",
+  pyinstallerAddData(path.join(pythonDllDir, "_multiprocessing.pyd"), "."),
+  "--add-binary",
+  pyinstallerAddData(path.join(pythonDllDir, "unicodedata.pyd"), "."),
+];
+
+const pythonHiddenImports = ["_sqlite3", "_multiprocessing", "unicodedata"];
+const pythonHiddenImportArgs = pythonHiddenImports.flatMap((moduleName) => ["--hidden-import", moduleName]);
+
 run("npm", ["run", "build"]);
 
 const distDir = path.join(projectRoot, "dist");
@@ -30,9 +46,13 @@ rmSync(buildDir, { recursive: true, force: true });
 const sharedArgs = [
   "--noconfirm",
   "--clean",
-  "--onefile",
+  "--onedir",
   "--paths",
   "src",
+  "--collect-all",
+  "cryptography",
+  ...pythonExtensionArgs,
+  ...pythonHiddenImportArgs,
   "--add-data",
   pyinstallerAddData("src/app/web/templates", "src/app/web/templates"),
   "--add-data",
@@ -52,8 +72,8 @@ if (!existsSync(pyinstallerExecutable)) {
 run(pyinstallerExecutable, [...sharedArgs, "--name", "start", "src/app/cli/runtime_start.py"]);
 run(pyinstallerExecutable, [...sharedArgs, "--name", "stop", "src/app/cli/runtime_stop.py"]);
 
-const startExe = path.join(distDir, "start.exe");
-const stopExe = path.join(distDir, "stop.exe");
+const startExe = path.join(distDir, "start", "start.exe");
+const stopExe = path.join(distDir, "stop", "stop.exe");
 if (existsSync(startExe)) {
   copyFileSync(startExe, path.join(projectRoot, "start.exe"));
 }
